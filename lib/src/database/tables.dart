@@ -31,3 +31,26 @@ class JsonMapper extends TypeConverter<Map<String, dynamic>, String> {
   @override
   String toSql(Map<String, dynamic> value) => jsonEncode(value);
 }
+
+// abstract class RawJson<T> {
+//   RawJson(this.value);
+//   final T value;
+
+//   String toJson() => jsonEncode(value);
+
+//   static RawJson fromJson(String source) {
+//     final decoded = json.decode(source);
+//     if (decoded is List<dynamic>) {
+//       return JsonList(decoded);
+//     }
+//     return JsonMap(decoded);
+//   }
+// }
+
+// class JsonMap extends RawJson<Map<String, dynamic>> {
+//   JsonMap(super.value);
+// }
+
+// class JsonList extends RawJson<List<dynamic>> {
+//   JsonList(super.value);
+// }

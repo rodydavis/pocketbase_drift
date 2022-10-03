@@ -102,15 +102,33 @@ void main() {
     });
 
     final local = await client.getRecords('todo');
-    final search = await client.search('test', collection: 'todo');
+    final search = await client.search('this is a test', collection: 'todo');
 
     expect(local.length >= 4, true);
-    expect(search.length, 4);
+    expect(search.isNotEmpty, true);
 
     await client.deleteRecord('todo', a.id);
     await client.deleteRecord('todo', b.id);
     await client.deleteRecord('todo', c.id);
     await client.deleteRecord('todo', d.id);
+  });
+
+  test('check for double inserts', () async {
+    final item = await client.pocketbase.records.create('todo', body: {
+      'name': 'test item',
+    });
+
+    // Insert into database
+    final id1 = await client.database.setRecord(item);
+    final id2 = await client.database.setRecord(item);
+
+    // Expect id1 to be missing from database
+    final result = await client.database.get(id1);
+    expect(result, null);
+
+    // Expect id2 to be present in database
+    final result2 = await client.database.get(id2);
+    expect(result2 != null, true);
   });
 
   test('check collection stream progress', () async {

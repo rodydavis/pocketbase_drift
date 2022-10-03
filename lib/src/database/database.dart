@@ -16,14 +16,18 @@ class PocketBaseDatabase extends _$PocketBaseDatabase {
   @override
   int get schemaVersion => 1;
 
-  Future<void> setRecord(RecordModel item) {
-    return into(records).insertOnConflictUpdate(item.toCompanion());
+  Future<int> setRecord(RecordModel item) async {
+    final id = await into(records).insert(
+      item.toCompanion(),
+      mode: InsertMode.insertOrReplace,
+    );
+    return id;
   }
 
   Future<void> setRecords(List<RecordModel> items) {
     return batch((batch) {
       final values = items.map((item) => item.toCompanion()).toList();
-      batch.insertAllOnConflictUpdate(records, values);
+      batch.insertAll(records, values, mode: InsertMode.insertOrReplace);
     });
   }
 
@@ -34,6 +38,23 @@ class PocketBaseDatabase extends _$PocketBaseDatabase {
     final item = await query.getSingleOrNull();
     if (item != null) return item.toModel();
     return null;
+  }
+
+  Future<RecordModel?> get(int id) async {
+    final query = select(records)..where((t) => t.id.equals(id));
+    final item = await query.getSingleOrNull();
+    return item?.toModel();
+  }
+
+  Future<int> set(RecordModel item) {
+    return into(records).insert(
+      item.toCompanion(),
+      mode: InsertMode.insertOrReplace,
+    );
+  }
+
+  Future<void> remove(int id) async {
+    await (delete(records)..where((t) => t.id.equals(id))).go();
   }
 
   Future<List<RecordModel>> getRecords(String collection) async {
