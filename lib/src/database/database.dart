@@ -1,0 +1,120 @@
+import 'package:drift/drift.dart';
+import 'package:pocketbase/pocketbase.dart';
+
+import 'connection/connection.dart' as impl;
+import 'tables.dart';
+
+part 'database.g.dart';
+
+@DriftDatabase(tables: [Records], include: {'sql.drift'})
+class PocketBaseDatabase extends _$PocketBaseDatabase {
+  PocketBaseDatabase(
+    String dbName, {
+    DatabaseConnection? connection,
+  }) : super.connect(connection ?? impl.connect(dbName));
+
+  @override
+  int get schemaVersion => 1;
+
+  Future<void> setRecord(RecordModel item) {
+    return into(records).insertOnConflictUpdate(item.toCompanion());
+  }
+
+  Future<void> setRecords(List<RecordModel> items) {
+    return batch((batch) {
+      final values = items.map((item) => item.toCompanion()).toList();
+      batch.insertAllOnConflictUpdate(records, values);
+    });
+  }
+
+  Future<RecordModel?> getRecord(String collection, String id) async {
+    final query = select(records)
+      ..where((t) => t.rowId.equals(id))
+      ..where((t) => t.collectionName.equals(collection));
+    final item = await query.getSingleOrNull();
+    if (item != null) return item.toModel();
+    return null;
+  }
+
+  Future<List<RecordModel>> getRecords(String collection) async {
+    final query = select(records)
+      ..where((t) => t.collectionName.equals(collection));
+    final items = await query.get();
+    return items.map((item) => item.toModel()).toList();
+  }
+
+  /// Delete a single record for a given collection and id
+  Future<void> deleteRecord(String collection, String id) async {
+    final query = delete(records)
+      ..where((t) => t.rowId.equals(id))
+      ..where((t) => t.collectionName.equals(collection));
+    await query.go();
+  }
+
+  /// Deletes all records for a collection
+  Future<void> deleteRecords(String collection) async {
+    final query = delete(records)
+      ..where((t) => t.collectionName.equals(collection));
+    await query.go();
+  }
+
+  Stream<List<RecordModel>> watchRecords(String collection) {
+    final query = select(records)
+      ..where((t) => t.collectionName.equals(collection));
+    return query
+        .watch()
+        .map((rows) => rows.map((row) => row.toModel()).toList());
+  }
+
+  Stream<RecordModel?> watchRecord(String collection, String id) {
+    final query = select(records)
+      ..where((t) => t.rowId.equals(id))
+      ..where((t) => t.collectionName.equals(collection));
+    return query.watchSingleOrNull().map((row) {
+      if (row != null) return row.toModel();
+      return null;
+    });
+  }
+
+  Future<List<RecordModel>> searchAll(String query) async {
+    final results = await _search(query).get();
+    return results.fold<List<RecordModel>>(<RecordModel>[], (prev, item) {
+      prev.add(item.r.toModel());
+      return prev;
+    });
+  }
+
+  Future<List<RecordModel>> searchCollection(
+    String query,
+    String collection,
+  ) async {
+    final results = await searchAll(query);
+    return results.where((item) => item.collectionName == collection).toList();
+  }
+}
+
+extension on RecordModel {
+  RecordsCompanion toCompanion() {
+    return RecordsCompanion.insert(
+      rowId: id,
+      collectionId: collectionId,
+      collectionName: collectionName,
+      data: toJson(),
+      created: created,
+      updated: updated,
+    );
+  }
+}
+
+extension on Record {
+  RecordModel toModel() {
+    return RecordModel(
+      id: rowId,
+      collectionId: collectionId,
+      collectionName: collectionName,
+      data: data,
+      created: created,
+      updated: updated,
+    );
+  }
+}
