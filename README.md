@@ -1,5 +1,7 @@
 # PocketBase Drift
 
+[PocketBase](https://pub.dev/packages/pocketbase) client cached with [Drift](https://pub.dev/packages/drift).
+
 - Full Text Search
 - Offline first
 - Partial updates
