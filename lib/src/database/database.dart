@@ -1,5 +1,4 @@
 import 'package:drift/drift.dart';
-import 'package:flutter/foundation.dart';
 import 'package:pocketbase/pocketbase.dart';
 
 import 'connection/connection.dart' as impl;

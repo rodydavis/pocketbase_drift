@@ -52,7 +52,7 @@ class PocketBaseDrift {
 
         final progress = list.page / list.totalPages;
         if (!progress.isInfinite) {
-            yield progress;
+          yield progress;
         }
 
         // Add to database

@@ -1,11 +1,12 @@
 import 'package:drift/drift.dart';
+import 'package:drift/native.dart';
 
 DatabaseConnection connect(
   String dbName, {
   bool useWebWorker = false,
   bool logStatements = false,
 }) {
-  throw UnsupportedError(
-    'No suitable database implementation was found on this platform.',
-  );
+  return DatabaseConnection(NativeDatabase.memory(
+    logStatements: logStatements,
+  ));
 }
