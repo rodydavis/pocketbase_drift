@@ -36,11 +36,12 @@ class _IsolateStartRequest {
 void _entrypointForDriftIsolate(_IsolateStartRequest request) {
   final databaseImpl = NativeDatabase(
     File(request.databasePath),
-    logStatements: kDebugMode,
+    logStatements: false,
   );
 
-  final driftServer =
-      DriftIsolate.inCurrent(() => DatabaseConnection(databaseImpl));
+  final driftServer = DriftIsolate.inCurrent(
+    () => DatabaseConnection(databaseImpl),
+  );
 
   request.talkToMain.send(driftServer);
 }
