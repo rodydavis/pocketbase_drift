@@ -57,7 +57,7 @@ class _ExampleState extends State<Example> {
   Future<void> refresh(BuildContext context) async {
     final messenger = ScaffoldMessenger.of(context);
     await for (final item in client.updateCollection('todo')) {
-      debugPrint('progress: $item');
+      debugPrint('todo progress: $item');
       if (mounted) {
         setState(() {
           progress = item;

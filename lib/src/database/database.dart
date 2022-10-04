@@ -1,4 +1,5 @@
 import 'package:drift/drift.dart';
+import 'package:flutter/foundation.dart';
 import 'package:pocketbase/pocketbase.dart';
 
 import 'connection/connection.dart' as impl;
@@ -8,10 +9,19 @@ part 'database.g.dart';
 
 @DriftDatabase(tables: [Records], include: {'sql.drift'})
 class PocketBaseDatabase extends _$PocketBaseDatabase {
-  PocketBaseDatabase(
-    String dbName, {
+  PocketBaseDatabase({
+    String dbName = 'database.db',
     DatabaseConnection? connection,
-  }) : super.connect(connection ?? impl.connect(dbName));
+    bool useWebWorker = false,
+    bool logStatements = false,
+  }) : super.connect(
+          connection ??
+              impl.connect(
+                dbName,
+                useWebWorker: useWebWorker,
+                logStatements: logStatements,
+              ),
+        );
 
   @override
   int get schemaVersion => 1;

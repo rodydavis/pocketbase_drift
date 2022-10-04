@@ -1,14 +1,14 @@
 
 import 'tables.dart';
 
--- Create a text index of todo entries, see https://www.sqlite.org/fts5.html#external_content_tables
+-- Create a text index of entries, see https://www.sqlite.org/fts5.html#external_content_tables
 CREATE VIRTUAL TABLE text_entries USING fts5 (
     data,
     content=records,
     content_rowid=id
 );
 
--- Triggers to keep todo entries and fts5 index in sync.
+-- Triggers to keep entries and fts5 index in sync.
 CREATE TRIGGER records_insert AFTER INSERT ON records BEGIN
   INSERT INTO text_entries(rowid, data) VALUES (new.id, new.data);
 END;

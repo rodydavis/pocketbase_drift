@@ -24,3 +24,7 @@ Replace a pocketbase client with a drift client.
     'http://127.0.0.1:8090'
 );
 ```
+
+## Web
+
+For web, you need to follow the instructions for [Drift](https://drift.simonbinder.eu/web/#drift-wasm) to copy the [sqlite wasm](https://github.com/simolus3/sqlite3.dart/releases) binary into the `web/` directory.

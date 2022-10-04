@@ -1,5 +1,7 @@
 part of '../pocketbase_drift.dart';
 
+const int _kDefaultPageSize = 250;
+
 /// [PocketBase] client backed by drift store (sqlite)
 class PocketBaseDrift {
   PocketBaseDrift(
@@ -19,13 +21,13 @@ class PocketBaseDrift {
 
   /// [PocketBase] internal database
   late final database = PocketBaseDatabase(
-    dbName,
+    dbName: dbName,
     connection: connection,
   );
 
   Stream<double> _fetchList(
     String collection, {
-    int perPage = 30,
+    int perPage = _kDefaultPageSize,
     String? filter,
     String? sort,
     Map<String, dynamic> query = const {},
@@ -49,10 +51,8 @@ class PocketBaseDrift {
         result.addAll(list.items);
 
         final progress = list.page / list.totalPages;
-        if (progress.isInfinite) {
-          yield 1.0;
-        } else {
-          yield progress;
+        if (!progress.isInfinite) {
+            yield progress;
         }
 
         // Add to database
@@ -114,7 +114,8 @@ class PocketBaseDrift {
     await database.deleteRecord(collection, id);
   }
 
-  Future<RecordModel> addRecord(String collection, Map<String, dynamic> data) async {
+  Future<RecordModel> addRecord(
+      String collection, Map<String, dynamic> data) async {
     final item = await pocketbase.records.create(collection, body: data);
     await database.setRecord(item);
     return item;
