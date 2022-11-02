@@ -34,19 +34,26 @@ class PocketBaseDatabase extends _$PocketBaseDatabase {
   }
 
   Future<void> setRecords(List<RecordModel> items) {
-    return batch((batch) {
-      final values = items.map((item) => item.toCompanion()).toList();
-      batch.insertAll(records, values, mode: InsertMode.insertOrReplace);
-    });
+    return transaction(
+      () => batch((batch) {
+        final values = items.map((item) => item.toCompanion()).toList();
+        batch.insertAll(records, values, mode: InsertMode.insertOrReplace);
+      }),
+    );
   }
 
   Future<RecordModel?> getRecord(String collection, String id) async {
+    final item = await getRawRecord(collection, id);
+    if (item != null) return item.toModel();
+    return null;
+  }
+
+  Future<Record?> getRawRecord(String collection, String id) async {
     final query = select(records)
       ..where((t) => t.rowId.equals(id))
       ..where((t) => t.collectionName.equals(collection));
     final item = await query.getSingleOrNull();
-    if (item != null) return item.toModel();
-    return null;
+    return item;
   }
 
   Future<RecordModel?> get(int id) async {
@@ -67,10 +74,15 @@ class PocketBaseDatabase extends _$PocketBaseDatabase {
   }
 
   Future<List<RecordModel>> getRecords(String collection) async {
+    final items = await getRawRecords(collection);
+    return items.map((item) => item.toModel()).toList();
+  }
+
+  Future<List<Record>> getRawRecords(String collection) async {
     final query = select(records)
       ..where((t) => t.collectionName.equals(collection));
     final items = await query.get();
-    return items.map((item) => item.toModel()).toList();
+    return items;
   }
 
   /// Delete a single record for a given collection and id
@@ -124,8 +136,9 @@ class PocketBaseDatabase extends _$PocketBaseDatabase {
 }
 
 extension on RecordModel {
-  RecordsCompanion toCompanion() {
+  RecordsCompanion toCompanion([int? currentId]) {
     return RecordsCompanion.insert(
+      id: currentId != null ? Value(currentId) : const Value.absent(),
       rowId: id,
       collectionId: collectionId,
       collectionName: collectionName,

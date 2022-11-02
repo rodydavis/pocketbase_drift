@@ -98,11 +98,12 @@ class PocketBaseDrift {
   Future<List<RecordModel>> getRecords(
     String collection, {
     FetchPolicy policy = FetchPolicy.localAndRemote,
+    String? filter,
   }) async {
     if (policy == FetchPolicy.remoteOnly) {
       await _fetchList(collection).last;
     } else if (policy == FetchPolicy.localAndRemote) {
-      await updateCollection(collection).last;
+      await updateCollection(collection, filter: filter).last;
     }
     final results = await database.getRecords(collection);
     debugPrint('$policy --> $collection --> ${results.length}');
@@ -110,18 +111,57 @@ class PocketBaseDrift {
   }
 
   Future<void> deleteRecord(String collection, String id) async {
-    await pocketbase.records.delete(collection, id);
+    try {
+      await pocketbase.records.delete(collection, id);
+    } catch (e) {
+      debugPrint('error deleting remote record $collection/$id --> $e');
+    }
     await database.deleteRecord(collection, id);
   }
 
   Future<RecordModel> addRecord(
-      String collection, Map<String, dynamic> data) async {
-    final item = await pocketbase.records.create(collection, body: data);
+    String collection,
+    Map<String, dynamic> data, {
+    bool removeId = false,
+  }) async {
+    if (removeId) {
+      data.remove('id');
+    }
+    final item = await pocketbase.records.create(
+      collection,
+      body: data,
+    );
     await database.setRecord(item);
     return item;
   }
 
-  Stream<List<RecordModel>> watchRecords(String collection) async* {
+  Future<RecordModel> updateRecord(
+    String collection,
+    String id,
+    Map<String, dynamic> data,
+  ) async {
+    final item = await pocketbase.records.update(
+      collection,
+      id,
+      body: data,
+    );
+    await database.setRecord(item);
+    return item;
+  }
+
+  Stream<List<RecordModel>> watchRecords(
+    String collection, {
+    FetchPolicy policy = FetchPolicy.localAndRemote,
+    String? filter,
+  }) async* {
+    yield await getRecords(
+      collection,
+      policy: FetchPolicy.localOnly,
+      filter: filter,
+    );
+    if (policy == FetchPolicy.localAndRemote) {
+      await updateCollection(collection, filter: filter).last;
+    }
     yield* database.watchRecords(collection);
   }
 
@@ -133,7 +173,7 @@ class PocketBaseDrift {
   }
 
   /// Update collection from remote server and return progress
-  Stream<double> updateCollection(String collection) async* {
+  Stream<double> updateCollection(String collection, {String? filter}) async* {
     yield 0.0;
     final local = await database.getRecords(collection);
     final lastRecord = local.newest();
@@ -141,7 +181,10 @@ class PocketBaseDrift {
     if (lastRecord != null) {
       yield* _fetchList(
         collection,
-        filter: "updated > '${lastRecord.updated}'",
+        filter: [
+          "updated > '${lastRecord.updated}'",
+          if (filter != null) filter,
+        ].join(' && '),
       );
     } else {
       // Missing last record, get all
