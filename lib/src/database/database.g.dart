@@ -2,11 +2,171 @@
 
 part of 'database.dart';
 
-// **************************************************************************
-// DriftDatabaseGenerator
-// **************************************************************************
-
 // ignore_for_file: type=lint
+class $RecordsTable extends Records with TableInfo<$RecordsTable, Record> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $RecordsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+      'id', aliasedName, false,
+      hasAutoIncrement: true,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('PRIMARY KEY AUTOINCREMENT'));
+  static const VerificationMeta _rowIdMeta = const VerificationMeta('rowId');
+  @override
+  late final GeneratedColumn<String> rowId = GeneratedColumn<String>(
+      'row_id', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _collectionIdMeta =
+      const VerificationMeta('collectionId');
+  @override
+  late final GeneratedColumn<String> collectionId = GeneratedColumn<String>(
+      'collection_id', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _collectionNameMeta =
+      const VerificationMeta('collectionName');
+  @override
+  late final GeneratedColumn<String> collectionName = GeneratedColumn<String>(
+      'collection_name', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _dataMeta = const VerificationMeta('data');
+  @override
+  late final GeneratedColumnWithTypeConverter<Map<String, dynamic>, String>
+      data = GeneratedColumn<String>('data', aliasedName, false,
+              type: DriftSqlType.string, requiredDuringInsert: true)
+          .withConverter<Map<String, dynamic>>($RecordsTable.$converterdata);
+  static const VerificationMeta _deletedMeta =
+      const VerificationMeta('deleted');
+  @override
+  late final GeneratedColumn<bool> deleted =
+      GeneratedColumn<bool>('deleted', aliasedName, true,
+          type: DriftSqlType.bool,
+          requiredDuringInsert: false,
+          defaultConstraints: GeneratedColumn.constraintsDependsOnDialect({
+            SqlDialect.sqlite: 'CHECK ("deleted" IN (0, 1))',
+            SqlDialect.mysql: '',
+            SqlDialect.postgres: '',
+          }));
+  static const VerificationMeta _createdMeta =
+      const VerificationMeta('created');
+  @override
+  late final GeneratedColumn<String> created = GeneratedColumn<String>(
+      'created', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _updatedMeta =
+      const VerificationMeta('updated');
+  @override
+  late final GeneratedColumn<String> updated = GeneratedColumn<String>(
+      'updated', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  @override
+  List<GeneratedColumn> get $columns => [
+        id,
+        rowId,
+        collectionId,
+        collectionName,
+        data,
+        deleted,
+        created,
+        updated
+      ];
+  @override
+  String get aliasedName => _alias ?? 'records';
+  @override
+  String get actualTableName => 'records';
+  @override
+  VerificationContext validateIntegrity(Insertable<Record> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('row_id')) {
+      context.handle(
+          _rowIdMeta, rowId.isAcceptableOrUnknown(data['row_id']!, _rowIdMeta));
+    } else if (isInserting) {
+      context.missing(_rowIdMeta);
+    }
+    if (data.containsKey('collection_id')) {
+      context.handle(
+          _collectionIdMeta,
+          collectionId.isAcceptableOrUnknown(
+              data['collection_id']!, _collectionIdMeta));
+    } else if (isInserting) {
+      context.missing(_collectionIdMeta);
+    }
+    if (data.containsKey('collection_name')) {
+      context.handle(
+          _collectionNameMeta,
+          collectionName.isAcceptableOrUnknown(
+              data['collection_name']!, _collectionNameMeta));
+    } else if (isInserting) {
+      context.missing(_collectionNameMeta);
+    }
+    context.handle(_dataMeta, const VerificationResult.success());
+    if (data.containsKey('deleted')) {
+      context.handle(_deletedMeta,
+          deleted.isAcceptableOrUnknown(data['deleted']!, _deletedMeta));
+    }
+    if (data.containsKey('created')) {
+      context.handle(_createdMeta,
+          created.isAcceptableOrUnknown(data['created']!, _createdMeta));
+    } else if (isInserting) {
+      context.missing(_createdMeta);
+    }
+    if (data.containsKey('updated')) {
+      context.handle(_updatedMeta,
+          updated.isAcceptableOrUnknown(data['updated']!, _updatedMeta));
+    } else if (isInserting) {
+      context.missing(_updatedMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  List<Set<GeneratedColumn>> get uniqueKeys => [
+        {collectionId, rowId},
+      ];
+  @override
+  Record map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return Record(
+      id: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}id'])!,
+      rowId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}row_id'])!,
+      collectionId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}collection_id'])!,
+      collectionName: attachedDatabase.typeMapping.read(
+          DriftSqlType.string, data['${effectivePrefix}collection_name'])!,
+      data: $RecordsTable.$converterdata.fromSql(attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}data'])!),
+      deleted: attachedDatabase.typeMapping
+          .read(DriftSqlType.bool, data['${effectivePrefix}deleted']),
+      created: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}created'])!,
+      updated: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}updated'])!,
+    );
+  }
+
+  @override
+  $RecordsTable createAlias(String alias) {
+    return $RecordsTable(attachedDatabase, alias);
+  }
+
+  static TypeConverter<Map<String, dynamic>, String> $converterdata =
+      const JsonMapper();
+}
+
 class Record extends DataClass implements Insertable<Record> {
   final int id;
   final String rowId;
@@ -33,7 +193,7 @@ class Record extends DataClass implements Insertable<Record> {
     map['collection_id'] = Variable<String>(collectionId);
     map['collection_name'] = Variable<String>(collectionName);
     {
-      final converter = $RecordsTable.$converter0;
+      final converter = $RecordsTable.$converterdata;
       map['data'] = Variable<String>(converter.toSql(data));
     }
     if (!nullToAbsent || deleted != null) {
@@ -232,7 +392,7 @@ class RecordsCompanion extends UpdateCompanion<Record> {
       map['collection_name'] = Variable<String>(collectionName.value);
     }
     if (data.present) {
-      final converter = $RecordsTable.$converter0;
+      final converter = $RecordsTable.$converterdata;
       map['data'] = Variable<String>(converter.toSql(data.value));
     }
     if (deleted.present) {
@@ -263,159 +423,60 @@ class RecordsCompanion extends UpdateCompanion<Record> {
   }
 }
 
-class $RecordsTable extends Records with TableInfo<$RecordsTable, Record> {
+class TextEntries extends Table
+    with
+        TableInfo<TextEntries, TextEntrie>,
+        VirtualTableInfo<TextEntries, TextEntrie> {
   @override
   final GeneratedDatabase attachedDatabase;
   final String? _alias;
-  $RecordsTable(this.attachedDatabase, [this._alias]);
-  final VerificationMeta _idMeta = const VerificationMeta('id');
+  TextEntries(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _dataMeta = const VerificationMeta('data');
+  late final GeneratedColumn<String> data = GeneratedColumn<String>(
+      'data', aliasedName, false,
+      type: DriftSqlType.string,
+      requiredDuringInsert: true,
+      $customConstraints: '');
   @override
-  late final GeneratedColumn<int> id = GeneratedColumn<int>(
-      'id', aliasedName, false,
-      type: DriftSqlType.int,
-      requiredDuringInsert: false,
-      defaultConstraints: 'PRIMARY KEY AUTOINCREMENT');
-  final VerificationMeta _rowIdMeta = const VerificationMeta('rowId');
+  List<GeneratedColumn> get $columns => [data];
   @override
-  late final GeneratedColumn<String> rowId = GeneratedColumn<String>(
-      'row_id', aliasedName, false,
-      type: DriftSqlType.string, requiredDuringInsert: true);
-  final VerificationMeta _collectionIdMeta =
-      const VerificationMeta('collectionId');
+  String get aliasedName => _alias ?? 'text_entries';
   @override
-  late final GeneratedColumn<String> collectionId = GeneratedColumn<String>(
-      'collection_id', aliasedName, false,
-      type: DriftSqlType.string, requiredDuringInsert: true);
-  final VerificationMeta _collectionNameMeta =
-      const VerificationMeta('collectionName');
+  String get actualTableName => 'text_entries';
   @override
-  late final GeneratedColumn<String> collectionName = GeneratedColumn<String>(
-      'collection_name', aliasedName, false,
-      type: DriftSqlType.string, requiredDuringInsert: true);
-  final VerificationMeta _dataMeta = const VerificationMeta('data');
-  @override
-  late final GeneratedColumnWithTypeConverter<Map<String, dynamic>, String>
-      data = GeneratedColumn<String>('data', aliasedName, false,
-              type: DriftSqlType.string, requiredDuringInsert: true)
-          .withConverter<Map<String, dynamic>>($RecordsTable.$converter0);
-  final VerificationMeta _deletedMeta = const VerificationMeta('deleted');
-  @override
-  late final GeneratedColumn<bool> deleted = GeneratedColumn<bool>(
-      'deleted', aliasedName, true,
-      type: DriftSqlType.bool,
-      requiredDuringInsert: false,
-      defaultConstraints: 'CHECK (deleted IN (0, 1))');
-  final VerificationMeta _createdMeta = const VerificationMeta('created');
-  @override
-  late final GeneratedColumn<String> created = GeneratedColumn<String>(
-      'created', aliasedName, false,
-      type: DriftSqlType.string, requiredDuringInsert: true);
-  final VerificationMeta _updatedMeta = const VerificationMeta('updated');
-  @override
-  late final GeneratedColumn<String> updated = GeneratedColumn<String>(
-      'updated', aliasedName, false,
-      type: DriftSqlType.string, requiredDuringInsert: true);
-  @override
-  List<GeneratedColumn> get $columns => [
-        id,
-        rowId,
-        collectionId,
-        collectionName,
-        data,
-        deleted,
-        created,
-        updated
-      ];
-  @override
-  String get aliasedName => _alias ?? 'records';
-  @override
-  String get actualTableName => 'records';
-  @override
-  VerificationContext validateIntegrity(Insertable<Record> instance,
+  VerificationContext validateIntegrity(Insertable<TextEntrie> instance,
       {bool isInserting = false}) {
     final context = VerificationContext();
     final data = instance.toColumns(true);
-    if (data.containsKey('id')) {
-      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
-    }
-    if (data.containsKey('row_id')) {
+    if (data.containsKey('data')) {
       context.handle(
-          _rowIdMeta, rowId.isAcceptableOrUnknown(data['row_id']!, _rowIdMeta));
+          _dataMeta, this.data.isAcceptableOrUnknown(data['data']!, _dataMeta));
     } else if (isInserting) {
-      context.missing(_rowIdMeta);
-    }
-    if (data.containsKey('collection_id')) {
-      context.handle(
-          _collectionIdMeta,
-          collectionId.isAcceptableOrUnknown(
-              data['collection_id']!, _collectionIdMeta));
-    } else if (isInserting) {
-      context.missing(_collectionIdMeta);
-    }
-    if (data.containsKey('collection_name')) {
-      context.handle(
-          _collectionNameMeta,
-          collectionName.isAcceptableOrUnknown(
-              data['collection_name']!, _collectionNameMeta));
-    } else if (isInserting) {
-      context.missing(_collectionNameMeta);
-    }
-    context.handle(_dataMeta, const VerificationResult.success());
-    if (data.containsKey('deleted')) {
-      context.handle(_deletedMeta,
-          deleted.isAcceptableOrUnknown(data['deleted']!, _deletedMeta));
-    }
-    if (data.containsKey('created')) {
-      context.handle(_createdMeta,
-          created.isAcceptableOrUnknown(data['created']!, _createdMeta));
-    } else if (isInserting) {
-      context.missing(_createdMeta);
-    }
-    if (data.containsKey('updated')) {
-      context.handle(_updatedMeta,
-          updated.isAcceptableOrUnknown(data['updated']!, _updatedMeta));
-    } else if (isInserting) {
-      context.missing(_updatedMeta);
+      context.missing(_dataMeta);
     }
     return context;
   }
 
   @override
-  Set<GeneratedColumn> get $primaryKey => {id};
+  Set<GeneratedColumn> get $primaryKey => const {};
   @override
-  List<Set<GeneratedColumn>> get uniqueKeys => [
-        {collectionId, rowId},
-      ];
-  @override
-  Record map(Map<String, dynamic> data, {String? tablePrefix}) {
+  TextEntrie map(Map<String, dynamic> data, {String? tablePrefix}) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
-    return Record(
-      id: attachedDatabase.options.types
-          .read(DriftSqlType.int, data['${effectivePrefix}id'])!,
-      rowId: attachedDatabase.options.types
-          .read(DriftSqlType.string, data['${effectivePrefix}row_id'])!,
-      collectionId: attachedDatabase.options.types
-          .read(DriftSqlType.string, data['${effectivePrefix}collection_id'])!,
-      collectionName: attachedDatabase.options.types.read(
-          DriftSqlType.string, data['${effectivePrefix}collection_name'])!,
-      data: $RecordsTable.$converter0.fromSql(attachedDatabase.options.types
-          .read(DriftSqlType.string, data['${effectivePrefix}data'])!),
-      deleted: attachedDatabase.options.types
-          .read(DriftSqlType.bool, data['${effectivePrefix}deleted']),
-      created: attachedDatabase.options.types
-          .read(DriftSqlType.string, data['${effectivePrefix}created'])!,
-      updated: attachedDatabase.options.types
-          .read(DriftSqlType.string, data['${effectivePrefix}updated'])!,
+    return TextEntrie(
+      data: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}data'])!,
     );
   }
 
   @override
-  $RecordsTable createAlias(String alias) {
-    return $RecordsTable(attachedDatabase, alias);
+  TextEntries createAlias(String alias) {
+    return TextEntries(attachedDatabase, alias);
   }
 
-  static TypeConverter<Map<String, dynamic>, String> $converter0 =
-      const JsonMapper();
+  @override
+  bool get dontWriteConstraints => true;
+  @override
+  String get moduleAndArgs => 'fts5(data, content=records, content_rowid=id)';
 }
 
 class TextEntrie extends DataClass implements Insertable<TextEntrie> {
@@ -470,23 +531,29 @@ class TextEntrie extends DataClass implements Insertable<TextEntrie> {
 
 class TextEntriesCompanion extends UpdateCompanion<TextEntrie> {
   final Value<String> data;
+  final Value<int> rowid;
   const TextEntriesCompanion({
     this.data = const Value.absent(),
+    this.rowid = const Value.absent(),
   });
   TextEntriesCompanion.insert({
     required String data,
+    this.rowid = const Value.absent(),
   }) : data = Value(data);
   static Insertable<TextEntrie> custom({
     Expression<String>? data,
+    Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
       if (data != null) 'data': data,
+      if (rowid != null) 'rowid': rowid,
     });
   }
 
-  TextEntriesCompanion copyWith({Value<String>? data}) {
+  TextEntriesCompanion copyWith({Value<String>? data, Value<int>? rowid}) {
     return TextEntriesCompanion(
       data: data ?? this.data,
+      rowid: rowid ?? this.rowid,
     );
   }
 
@@ -496,72 +563,20 @@ class TextEntriesCompanion extends UpdateCompanion<TextEntrie> {
     if (data.present) {
       map['data'] = Variable<String>(data.value);
     }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
     return map;
   }
 
   @override
   String toString() {
     return (StringBuffer('TextEntriesCompanion(')
-          ..write('data: $data')
+          ..write('data: $data, ')
+          ..write('rowid: $rowid')
           ..write(')'))
         .toString();
   }
-}
-
-class TextEntries extends Table
-    with
-        TableInfo<TextEntries, TextEntrie>,
-        VirtualTableInfo<TextEntries, TextEntrie> {
-  @override
-  final GeneratedDatabase attachedDatabase;
-  final String? _alias;
-  TextEntries(this.attachedDatabase, [this._alias]);
-  final VerificationMeta _dataMeta = const VerificationMeta('data');
-  late final GeneratedColumn<String> data = GeneratedColumn<String>(
-      'data', aliasedName, false,
-      type: DriftSqlType.string,
-      requiredDuringInsert: true,
-      $customConstraints: '');
-  @override
-  List<GeneratedColumn> get $columns => [data];
-  @override
-  String get aliasedName => _alias ?? 'text_entries';
-  @override
-  String get actualTableName => 'text_entries';
-  @override
-  VerificationContext validateIntegrity(Insertable<TextEntrie> instance,
-      {bool isInserting = false}) {
-    final context = VerificationContext();
-    final data = instance.toColumns(true);
-    if (data.containsKey('data')) {
-      context.handle(
-          _dataMeta, this.data.isAcceptableOrUnknown(data['data']!, _dataMeta));
-    } else if (isInserting) {
-      context.missing(_dataMeta);
-    }
-    return context;
-  }
-
-  @override
-  Set<GeneratedColumn> get $primaryKey => <GeneratedColumn>{};
-  @override
-  TextEntrie map(Map<String, dynamic> data, {String? tablePrefix}) {
-    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
-    return TextEntrie(
-      data: attachedDatabase.options.types
-          .read(DriftSqlType.string, data['${effectivePrefix}data'])!,
-    );
-  }
-
-  @override
-  TextEntries createAlias(String alias) {
-    return TextEntries(attachedDatabase, alias);
-  }
-
-  @override
-  bool get dontWriteConstraints => true;
-  @override
-  String get moduleAndArgs => 'fts5(data, content=records, content_rowid=id)';
 }
 
 abstract class _$PocketBaseDatabase extends GeneratedDatabase {
@@ -595,7 +610,7 @@ abstract class _$PocketBaseDatabase extends GeneratedDatabase {
   }
 
   @override
-  Iterable<TableInfo<Table, dynamic>> get allTables =>
+  Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
   @override
   List<DatabaseSchemaEntity> get allSchemaEntities =>

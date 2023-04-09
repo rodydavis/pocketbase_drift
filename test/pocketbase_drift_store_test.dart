@@ -21,7 +21,7 @@ void main() {
       url,
       connection: DatabaseConnection(NativeDatabase.memory()),
     );
-    await client.pocketbase.admins.authViaEmail(
+    await client.pocketbase.admins.authWithPassword(
       username,
       password,
     );
@@ -32,7 +32,7 @@ void main() {
   });
 
   test('check records call', () async {
-    final remote = await client.pocketbase.records.getFullList('todo');
+    final remote = await client.pocketbase.collection('todo').getFullList();
     final local = await client.getRecords('todo');
 
     expect(remote, isNotEmpty);
@@ -41,7 +41,7 @@ void main() {
   });
 
   test('check record call', () async {
-    final remote = await client.pocketbase.records.getFullList('todo');
+    final remote = await client.pocketbase.collection('todo').getFullList();
 
     final first = remote.first;
     final result = await client.getRecord('todo', first.id);
@@ -52,11 +52,11 @@ void main() {
   test('check new record update', () async {
     final records = await client.getRecords('todo');
 
-    final item = await client.pocketbase.records.create('todo', body: {
+    final item = await client.pocketbase.collection('todo').create(body: {
       'name': 'test',
     });
 
-    final remote = await client.pocketbase.records.getFullList('todo');
+    final remote = await client.pocketbase.collection('todo').getFullList();
 
     expect(remote, isNotEmpty);
     expect(remote.length, records.length + 1);
@@ -66,7 +66,7 @@ void main() {
     expect(newItems.length, remote.length);
 
     // Delete item
-    await client.pocketbase.records.delete('todo', item.id);
+    await client.pocketbase.collection('todo').delete(item.id);
   });
 
   test(
@@ -114,7 +114,7 @@ void main() {
   });
 
   test('check for double inserts', () async {
-    final item = await client.pocketbase.records.create('todo', body: {
+    final item = await client.pocketbase.collection('todo').create(body: {
       'name': 'test item',
     });
 

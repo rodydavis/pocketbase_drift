@@ -43,7 +43,7 @@ class _ExampleState extends State<Example> {
   }
 
   Future<void> init() async {
-    await client.pocketbase.admins.authViaEmail(
+    await client.pocketbase.admins.authWithPassword(
       username,
       password,
     );
