@@ -10,10 +10,10 @@ dependencies:
   flutter:
     sdk: flutter
   http: ^0.13.5
-  pocketbase: ^0.4.1
-  drift: ^2.1.0
-  sqlite3_flutter_libs: ^0.5.5
-  path_provider: ^2.0.0
+  pocketbase: ^0.8.0
+  drift: ^2.6.0
+  sqlite3_flutter_libs: ^0.5.13
+  path_provider: ^2.0.14
   path: ^1.8.2
   sqlite3: ^1.7.0
   drift_dev: ^2.1.0
@@ -21,8 +21,8 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^2.0.0
-  build_runner: ^2.2.0
+  flutter_lints: ^2.0.1
+  build_runner: ^2.3.3
 
 flutter:
 

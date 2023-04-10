@@ -38,15 +38,14 @@ class PocketBaseDrift {
 
     Stream<double> request(int page) async* {
       try {
-        final list = await pocketbase.records.getList(
-          collection,
-          page: page,
-          perPage: perPage,
-          filter: filter,
-          sort: sort,
-          query: query,
-          headers: headers,
-        );
+        final list = await pocketbase.collection(collection).getList(
+              page: page,
+              perPage: perPage,
+              filter: filter,
+              sort: sort,
+              query: query,
+              headers: headers,
+            );
         debugPrint('fetched ${list.items.length} records for $collection');
         result.addAll(list.items);
 
@@ -77,13 +76,13 @@ class PocketBaseDrift {
     FetchPolicy policy = FetchPolicy.localAndRemote,
   }) async {
     if (policy == FetchPolicy.remoteOnly) {
-      return pocketbase.records.getOne(collection, id);
+      return pocketbase.collection(collection).getOne(id);
     } else if (policy == FetchPolicy.localOnly) {
       return database.getRecord(collection, id);
     }
     final local = await database.getRecord(collection, id);
     try {
-      final remote = await pocketbase.records.getOne(collection, id);
+      final remote = await pocketbase.collection(collection).getOne(id);
       // ignore: unnecessary_null_comparison
       if (remote != null) {
         await database.setRecord(remote);
@@ -112,7 +111,7 @@ class PocketBaseDrift {
 
   Future<void> deleteRecord(String collection, String id) async {
     try {
-      await pocketbase.records.delete(collection, id);
+      await pocketbase.collection(collection).delete(id);
     } catch (e) {
       debugPrint('error deleting remote record $collection/$id --> $e');
     }
@@ -127,10 +126,9 @@ class PocketBaseDrift {
     if (removeId) {
       data.remove('id');
     }
-    final item = await pocketbase.records.create(
-      collection,
-      body: data,
-    );
+    final item = await pocketbase.collection(collection).create(
+          body: data,
+        );
     await database.setRecord(item);
     return item;
   }
@@ -140,11 +138,10 @@ class PocketBaseDrift {
     String id,
     Map<String, dynamic> data,
   ) async {
-    final item = await pocketbase.records.update(
-      collection,
-      id,
-      body: data,
-    );
+    final item = await pocketbase.collection(collection).update(
+          id,
+          body: data,
+        );
     await database.setRecord(item);
     return item;
   }
