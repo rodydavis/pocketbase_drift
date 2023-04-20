@@ -10,7 +10,7 @@ dependencies:
   flutter:
     sdk: flutter
   http: ^0.13.5
-  pocketbase: ^0.8.0
+  pocketbase: ^0.9.1
   drift: ^2.6.0
   sqlite3_flutter_libs: ^0.5.13
   path_provider: ^2.0.14
