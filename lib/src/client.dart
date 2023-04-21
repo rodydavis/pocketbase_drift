@@ -159,6 +159,8 @@ class PocketBaseDrift {
     if (policy == FetchPolicy.localAndRemote) {
       await updateCollection(collection, filter: filter).last;
     }
+    // TODO: update local db when remote db change.
+    // pocketbase.collection(collection).subscribe('*', (e) {});
     yield* database.watchRecords(collection);
   }
 
@@ -170,12 +172,13 @@ class PocketBaseDrift {
   }
 
   /// Update collection from remote server and return progress
-  Stream<double> updateCollection(String collection, {String? filter}) async* {
+  Stream<double> updateCollection(String collection,
+      {String? filter, bool forceRefreshAll = false}) async* {
     yield 0.0;
     final local = await database.getRecords(collection);
     final lastRecord = local.newest();
 
-    if (lastRecord != null) {
+    if (!forceRefreshAll && lastRecord != null) {
       yield* _fetchList(
         collection,
         filter: [
