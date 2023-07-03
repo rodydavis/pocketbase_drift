@@ -33,7 +33,7 @@ class Example extends StatefulWidget {
 class _ExampleState extends State<Example> {
   double? progress;
   bool loaded = false;
-  final client = PocketBaseDrift(url, dbName: 'database.db');
+  final client = PocketBaseDrift.file(url, dbName: 'database.db');
   final controller = TextEditingController();
 
   @override

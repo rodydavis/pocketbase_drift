@@ -6,24 +6,36 @@ const int _kDefaultPageSize = 250;
 class PocketBaseDrift {
   PocketBaseDrift(
     this.url, {
-    this.connection,
-    this.dbName = 'database.db',
+    required this.connection,
   });
+
+  factory PocketBaseDrift.file(
+    String url, {
+    String dbName = 'database.db',
+    bool useWebWorker = false,
+    bool logStatements = false,
+  }) {
+    final connection = db.connect(
+      dbName,
+      useWebWorker: useWebWorker,
+      logStatements: logStatements,
+    );
+    return PocketBaseDrift(
+      url,
+      connection: connection,
+    );
+  }
 
   /// [Url] of [PocketBase] server
   final String url;
 
-  final DatabaseConnection? connection;
-  final String dbName;
+  final DatabaseConnection connection;
 
   /// [PocketBase] internal client
   late final pocketbase = createPocketBaseClient(url);
 
   /// [PocketBase] internal database
-  late final database = PocketBaseDatabase(
-    dbName: dbName,
-    connection: connection,
-  );
+  late final database = DataBase(connection);
 
   Stream<double> _fetchList(
     String collection, {

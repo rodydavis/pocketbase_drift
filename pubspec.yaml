@@ -1,6 +1,6 @@
 name: pocketbase_drift
 description: A pocketbase client backed by drift database.\
-version: 0.0.1
+version: 0.1.0
 
 environment:
   sdk: ">=2.19.0-238.0.dev <3.0.0"

@@ -8,6 +8,7 @@ import 'package:pocketbase/pocketbase.dart';
 import 'package:http/http.dart' as http;
 
 import 'src/database/database.dart';
+import 'src/database/connection/connection.dart' as db;
 export 'src/database/database.dart';
 export 'package:pocketbase/pocketbase.dart' show RecordModel;
 
