@@ -43,11 +43,9 @@ class _ExampleState extends State<Example> {
     url,
     connection: memoryDatabase(),
   );
-  final controller = TextEditingController();
   $RecordService? collection;
   CollectionModel? col;
   List<RecordModel> records = [];
-  List<RecordModel> search = [];
   StreamSubscription? subscription;
 
   @override
@@ -69,14 +67,6 @@ class _ExampleState extends State<Example> {
           records = event;
         });
       }
-    });
-    controller.addListener(() async {
-      if (controller.text.trim().isNotEmpty) {
-        search = await collection!.search(controller.text.trim());
-      } else {
-        search = [];
-      }
-      if (mounted) setState(() {});
     });
     if (mounted) {
       setState(() {
@@ -102,12 +92,10 @@ class _ExampleState extends State<Example> {
         ),
       );
     }
-    final items = controller.text.trim().isNotEmpty ? search : records;
     final fields = col!.schema.toList();
     return Scaffold(
       appBar: AppBar(title: title),
       body: DataView<RecordModel>(
-        searchController: controller,
         columns: [
           const DataColumn(label: Text('ID')),
           ...fields.map((e) => DataColumn(label: Text(e.name))).toList(),
@@ -117,13 +105,22 @@ class _ExampleState extends State<Example> {
         onTap: (item) {},
         match: (query, record) {
           if (query.trim().isEmpty) return true;
-          return false;
+          final matches = <int>[];
+          for (final field in fields) {
+            final value = record.toJson()[field.name];
+            if (value != null) {
+              final match =
+                  '$value'.toLowerCase().contains(query.toLowerCase());
+              matches.add(match ? 1 : 0);
+            }
+          }
+          return matches.any((e) => e == 1);
         },
         actions: (selection) => [],
         onSort: (items, colIndex, asc) {
           return items;
         },
-        items: items,
+        items: records,
         rowBuilder: (index, record) {
           return [
             DataCell(Text(record.id)),
