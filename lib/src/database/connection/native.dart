@@ -17,8 +17,13 @@ DatabaseConnection connect(
     final dbPath = p.join(appDir.path, dbName);
 
     final receiveDriftIsolate = ReceivePort();
-    await Isolate.spawn(_entrypointForDriftIsolate,
-        _IsolateStartRequest(receiveDriftIsolate.sendPort, dbPath));
+    await Isolate.spawn(
+      _entrypointForDriftIsolate,
+      _IsolateStartRequest(
+        receiveDriftIsolate.sendPort,
+        dbPath,
+      ),
+    );
 
     final driftIsolate = await receiveDriftIsolate.first as DriftIsolate;
     return driftIsolate.connect();
