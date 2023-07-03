@@ -3,8 +3,10 @@ import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pocketbase/pocketbase.dart';
 
 import 'package:pocketbase_drift/src/pocketbase/pocketbase.dart';
+import 'package:pocketbase_drift/src/pocketbase/services/record.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -14,17 +16,10 @@ void main() {
   const password = 'Password123';
   const url = 'http://127.0.0.1:3000';
 
-  int idx = 0;
-
   late final $PocketBase client;
-  const collectionId = 'l1qxa33evkxxte0';
-  const collectionName = 'todo';
-  String idGenerator() => (++idx).toString().padLeft(15, '0');
-  late final col = client.$collection(
-    collectionId: collectionId,
-    collectionName: collectionName,
-    idGenerator: idGenerator,
-  );
+  late final CollectionModel collection;
+
+  late final $RecordService col;
 
   setUpAll(() async {
     final connection = DatabaseConnection(NativeDatabase.memory());
@@ -33,6 +28,8 @@ void main() {
       username,
       password,
     );
+    collection = await client.collections.getOne('l1qxa33evkxxte0');
+    col = client.$collection(collection);
     // Add 1000 records
     for (var i = 0; i < 1000; i++) {
       await col.create(body: {
@@ -43,20 +40,18 @@ void main() {
   });
 
   tearDownAll(() async {
-    final local = await client.db.getRecords(collectionName);
+    final local = await client.db.getRecords(collection.name);
     for (final item in local) {
       await col.delete(item.id);
     }
   });
 
+  // TODO: Check for files
+
+  // TODO: Sorting, filtering, fields
+
   test('check records call', () async {
-    final remote = await client
-        .$collection(
-          collectionId: 'v18d4c74bumrg35',
-          collectionName: 'todo',
-          idGenerator: () => DateTime.now().toIso8601String(),
-        )
-        .getFullList();
+    final remote = await col.getFullList();
     final local = await client.db.getRecords('todo');
 
     expect(remote, isNotEmpty);
@@ -66,7 +61,7 @@ void main() {
 
   test('check records call', () async {
     final remote = await col.getFullList();
-    final local = await client.db.getRecords(collectionName);
+    final local = await client.db.getRecords(collection.name);
 
     expect(remote, isNotEmpty);
     expect(local, isNotEmpty);
@@ -77,13 +72,13 @@ void main() {
     final remote = await col.getFullList();
 
     final first = remote.first;
-    final result = await client.db.getRecord(collectionName, first.id);
+    final result = await client.db.getRecord(collection.name, first.id);
 
     expect(first.id, result?.id);
   });
 
   test('check new record update', () async {
-    final records = await client.db.getRecords(collectionName);
+    final records = await client.db.getRecords(collection.name);
 
     final item = await col.create(body: {
       'name': 'test',
@@ -95,7 +90,7 @@ void main() {
     expect(remote.length, records.length + 1);
 
     // Server and cache should update
-    final newItems = await client.db.getRecords(collectionName);
+    final newItems = await client.db.getRecords(collection.name);
     expect(newItems.length, remote.length);
 
     // Delete item
@@ -113,7 +108,7 @@ void main() {
         debugPrint('added $i / 1000');
       }
 
-      final local = await client.db.getRecords(collectionName);
+      final local = await client.db.getRecords(collection.name);
 
       expect(local.length >= 1000, true);
     },
@@ -162,5 +157,126 @@ void main() {
     // Expect id2 to be present in database
     final result2 = await client.db.get(id2);
     expect(result2 != null, true);
+  });
+
+  group('fetch policy tests', () {
+    test('cache only', () async {
+      final item = await col.create(
+        body: {'name': 'test'},
+        fetchPolicy: FetchPolicy.cacheOnly,
+      );
+
+      final remote = await col.getOneOrNull(
+        item.id,
+        fetchPolicy: FetchPolicy.networkOnly,
+      );
+      final local = await col.getOneOrNull(
+        item.id,
+        fetchPolicy: FetchPolicy.cacheOnly,
+      );
+
+      expect(remote == null, true);
+      expect(local != null, true);
+
+      // Delete item
+      await col.delete(
+        item.id,
+        fetchPolicy: FetchPolicy.cacheOnly,
+      );
+    });
+    test('network only', () async {
+      final item = await col.create(
+        body: {'name': 'test'},
+        fetchPolicy: FetchPolicy.networkOnly,
+      );
+
+      final remote = await col.getOneOrNull(
+        item.id,
+        fetchPolicy: FetchPolicy.networkOnly,
+      );
+      final local = await col.getOneOrNull(
+        item.id,
+        fetchPolicy: FetchPolicy.cacheOnly,
+      );
+
+      expect(remote != null, true);
+      expect(local == null, true);
+
+      // Delete item
+      await col.delete(
+        item.id,
+        fetchPolicy: FetchPolicy.networkOnly,
+      );
+    });
+    group('offline tests', () {
+      test('creation', () async {
+        final item = await col.create(
+          body: {
+            'name': 'test',
+            'id': client.idGenerator(),
+          },
+          fetchPolicy: FetchPolicy.cacheOnly,
+        );
+
+        final remote = await col.getOneOrNull(
+          item.id,
+          fetchPolicy: FetchPolicy.networkOnly,
+        );
+        final local = await col.getOneOrNull(
+          item.id,
+          fetchPolicy: FetchPolicy.cacheOnly,
+        );
+
+        expect(remote == null, true);
+        expect(local != null, true);
+
+        // Delete item
+        await col.delete(
+          item.id,
+          fetchPolicy: FetchPolicy.cacheOnly,
+        );
+      });
+      test('mutation', () async {
+        final item = await col.create(
+          body: {'name': 'test'},
+          fetchPolicy: FetchPolicy.cacheAndNetwork,
+        );
+
+        await col.update(item.id, body: {'name': 'test2'});
+
+        await col.retryLocal().last;
+
+        final remote = await col.getOneOrNull(
+          item.id,
+          fetchPolicy: FetchPolicy.networkOnly,
+        );
+
+        expect(remote != null, true);
+        expect(remote?.getStringValue('name'), 'test2');
+
+        // Delete item
+        await col.delete(
+          item.id,
+          fetchPolicy: FetchPolicy.cacheOnly,
+        );
+      });
+      test('deletion', () async {
+        final item = await col.create(
+          body: {'name': 'test'},
+          fetchPolicy: FetchPolicy.cacheAndNetwork,
+        );
+
+        await col.delete(item.id, fetchPolicy: FetchPolicy.cacheOnly);
+
+        await col.retryLocal().last;
+
+        final remote = await col.getOneOrNull(
+          item.id,
+          fetchPolicy: FetchPolicy.networkOnly,
+        );
+
+        expect(remote == null, true);
+      });
+    });
   });
 }

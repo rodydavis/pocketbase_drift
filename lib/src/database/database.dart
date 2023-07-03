@@ -12,7 +12,7 @@ class DataBase extends _$DataBase {
   DataBase(DatabaseConnection connection) : super.connect(connection);
 
   factory DataBase.file({
-    String dbName = 'database.db',
+    String dbName = 'pocketbase.db',
     bool useWebWorker = false,
     bool logStatements = false,
   }) {
@@ -25,6 +25,21 @@ class DataBase extends _$DataBase {
 
   @override
   int get schemaVersion => 1;
+
+  @override
+  MigrationStrategy get migration {
+    return MigrationStrategy(
+      onCreate: (Migrator m) async {
+        await m.createAll();
+      },
+      onUpgrade: (Migrator m, int from, int to) async {
+        if (from < 2) {
+          await m.addColumn(records, records.synced);
+        }
+        return;
+      },
+    );
+  }
 
   Future<int> setRecord(
     RecordModel item, {

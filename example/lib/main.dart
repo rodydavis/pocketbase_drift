@@ -1,10 +1,16 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'package:pocketbase_drift/pocketbase_drift.dart';
+import 'package:pocketbase_drift/src/database/connection/native.dart';
+import 'package:simple_html_css/simple_html_css.dart';
+
+import 'data_view.dart';
 
 const username = 'test@admin.com';
 const password = 'Password123';
-const url = 'http://127.0.0.1:8090';
+const url = 'http://127.0.0.1:3000';
 
 void main() {
   runApp(const MyApp());
@@ -33,8 +39,16 @@ class Example extends StatefulWidget {
 class _ExampleState extends State<Example> {
   double? progress;
   bool loaded = false;
-  final client = PocketBaseDrift.file(url, dbName: 'database.db');
+  final client = $PocketBase(
+    url,
+    connection: memoryDatabase(),
+  );
   final controller = TextEditingController();
+  $RecordService? collection;
+  CollectionModel? col;
+  List<RecordModel> records = [];
+  List<RecordModel> search = [];
+  StreamSubscription? subscription;
 
   @override
   void initState() {
@@ -43,10 +57,27 @@ class _ExampleState extends State<Example> {
   }
 
   Future<void> init() async {
-    await client.pocketbase.admins.authWithPassword(
+    await client.admins.authWithPassword(
       username,
       password,
     );
+    col = await client.collections.getOne('l1qxa33evkxxte0');
+    collection = client.$collection(col!);
+    subscription = collection!.watchRecords().stream.listen((event) {
+      if (mounted) {
+        setState(() {
+          records = event;
+        });
+      }
+    });
+    controller.addListener(() async {
+      if (controller.text.trim().isNotEmpty) {
+        search = await collection!.search(controller.text.trim());
+      } else {
+        search = [];
+      }
+      if (mounted) setState(() {});
+    });
     if (mounted) {
       setState(() {
         loaded = true;
@@ -54,30 +85,16 @@ class _ExampleState extends State<Example> {
     }
   }
 
-  Future<void> refresh(BuildContext context) async {
-    final messenger = ScaffoldMessenger.of(context);
-    await for (final item in client.updateCollection('todo')) {
-      debugPrint('todo progress: $item');
-      if (mounted) {
-        setState(() {
-          progress = item;
-        });
-      }
-    }
-    if (mounted) {
-      setState(() {
-        progress = null;
-      });
-    }
-    messenger.showSnackBar(
-      const SnackBar(content: Text('Collection updated')),
-    );
+  @override
+  void dispose() {
+    subscription?.cancel();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     const title = Text('Pocketbase Drift Example');
-    if (!loaded) {
+    if (collection == null || col == null) {
       return Scaffold(
         appBar: AppBar(title: title),
         body: const Center(
@@ -85,70 +102,120 @@ class _ExampleState extends State<Example> {
         ),
       );
     }
+    final items = controller.text.trim().isNotEmpty ? search : records;
+    final fields = col!.schema.toList();
     return Scaffold(
-      appBar: AppBar(
-        title: title,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () => refresh(context),
-          ),
+      appBar: AppBar(title: title),
+      body: DataView<RecordModel>(
+        searchController: controller,
+        columns: [
+          const DataColumn(label: Text('ID')),
+          ...fields.map((e) => DataColumn(label: Text(e.name))).toList(),
+          const DataColumn(label: Text('Created')),
+          const DataColumn(label: Text('Updated')),
         ],
+        onTap: (item) {},
+        match: (query, record) {
+          if (query.trim().isEmpty) return true;
+          return false;
+        },
+        actions: (selection) => [],
+        onSort: (items, colIndex, asc) {
+          return items;
+        },
+        items: items,
+        rowBuilder: (index, record) {
+          return [
+            DataCell(Text(record.id)),
+            ...fields.map((e) {
+              final value = record.toJson()[e.name];
+              return DataCell(HTML.toRichText(
+                context,
+                '${value ?? ''}',
+                defaultTextStyle:
+                    Theme.of(context).textTheme.bodySmall!.copyWith(
+                          color: Theme.of(context).colorScheme.onSurface,
+                        ),
+              ));
+            }).toList(),
+            DataCell(Text(record.created)),
+            DataCell(Text(record.updated)),
+          ];
+        },
       ),
-      body: Column(
-        children: [
-          if (progress != null) LinearProgressIndicator(value: progress),
-          Container(
-            padding: const EdgeInsets.all(8),
-            child: TextField(
-              controller: controller,
-              decoration: const InputDecoration(
-                hintText: 'Search',
-                border: OutlineInputBorder(),
-              ),
-              onChanged: (value) {
-                if (mounted) {
-                  setState(() {});
-                }
-              },
-            ),
-          ),
-          Expanded(
-            child: controller.text.isNotEmpty
-                ? FutureBuilder(
-                    future: client.search(
-                      controller.text.trim(),
-                      collection: 'todo',
-                    ),
-                    builder: (context, snapshot) {
-                      if (snapshot.hasData) {
-                        final records = snapshot.data!;
-                        return buildList(context, records);
-                      }
-                      return const Center(
-                        child: CircularProgressIndicator(),
-                      );
-                    },
-                  )
-                : RefreshIndicator(
-                    onRefresh: () => refresh(context),
-                    child: StreamBuilder<List<RecordModel>>(
-                      stream: client.watchRecords('todo'),
-                      builder: (context, snapshot) {
-                        if (snapshot.hasData) {
-                          final records = snapshot.data!;
-                          return buildList(context, records);
-                        }
-                        return const Center(
-                          child: CircularProgressIndicator(),
-                        );
-                      },
-                    ),
-                  ),
-          ),
-        ],
+      floatingActionButton: FloatingActionButton(
+        child: const Icon(Icons.add),
+        onPressed: () async {
+          await collection!.create(
+            body: {
+              'name': 'Record ${DateTime.now().millisecondsSinceEpoch}',
+            },
+          );
+          if (mounted) setState(() {});
+        },
       ),
     );
+    // return Scaffold(
+    //   appBar: AppBar(title: title),
+    //   body: Column(
+    //     children: [
+    //       if (progress != null) LinearProgressIndicator(value: progress),
+    //       Container(
+    //         padding: const EdgeInsets.all(8),
+    //         child: TextField(
+    //           controller: controller,
+    //           decoration: const InputDecoration(
+    //             hintText: 'Search',
+    //             border: OutlineInputBorder(),
+    //           ),
+    //           onChanged: (value) {
+    //             if (mounted) {
+    //               setState(() {});
+    //             }
+    //           },
+    //         ),
+    //       ),
+    //       Expanded(
+    //         child: controller.text.isNotEmpty
+    //             ? FutureBuilder(
+    //                 future: collection!.search(controller.text.trim()),
+    //                 builder: (context, snapshot) {
+    //                   if (snapshot.hasData) {
+    //                     final records = snapshot.data!;
+    //                     return buildList(context, records);
+    //                   }
+    //                   return const Center(
+    //                     child: CircularProgressIndicator(),
+    //                   );
+    //                 },
+    //               )
+    //             : StreamBuilder<List<RecordModel>>(
+    //                 stream: collection!.watchRecords().stream,
+    //                 builder: (context, snapshot) {
+    //                   if (snapshot.hasData) {
+    //                     final records = snapshot.data!;
+    //                     return buildList(context, records);
+    //                   }
+    //                   return const Center(
+    //                     child: CircularProgressIndicator(),
+    //                   );
+    //                 },
+    //               ),
+    //       ),
+    //     ],
+    //   ),
+    //   floatingActionButton: FloatingActionButton(
+    //     child: const Icon(Icons.add),
+    //     onPressed: () async {
+    //       await collection!.create(
+    //         body: {
+    //           'name': 'Record ${DateTime.now().millisecondsSinceEpoch}',
+    //         },
+    //       );
+    //       if (mounted) setState(() {});
+    //     },
+    //   ),
+    // );
   }
 
   Widget buildList(BuildContext context, List<RecordModel> records) {
@@ -185,7 +252,7 @@ class _ExampleState extends State<Example> {
           trailing: IconButton(
             icon: const Icon(Icons.delete),
             onPressed: () async {
-              await client.deleteRecord('todo', record.id);
+              await collection!.delete(record.id);
               if (mounted) setState(() {});
             },
           ),

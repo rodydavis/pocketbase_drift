@@ -1,4 +1,5 @@
-part of '../pocketbase_drift.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/retry.dart';
 
 class PocketBaseHttpClient extends http.BaseClient {
   final _inner = http.Client();

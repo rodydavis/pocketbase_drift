@@ -17,6 +17,7 @@ dependencies:
   path: ^1.8.2
   sqlite3: ^1.7.0
   drift_dev: ^2.1.0
+  shortid: ^0.1.2
 
 dev_dependencies:
   flutter_test:

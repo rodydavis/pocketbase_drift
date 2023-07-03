@@ -30,6 +30,10 @@ DatabaseConnection connect(
   }));
 }
 
+DatabaseConnection memoryDatabase() {
+  return DatabaseConnection(NativeDatabase.memory());
+}
+
 class _IsolateStartRequest {
   final SendPort talkToMain;
   final String databasePath;

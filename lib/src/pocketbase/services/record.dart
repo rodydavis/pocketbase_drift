@@ -1,7 +1,8 @@
+// ignore_for_file: public_member_api_docs, sort_constructors_first
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import "package:http/http.dart" as http;
+import 'package:flutter/foundation.dart';
 import 'package:pocketbase/pocketbase.dart';
 
 import '../../database/database.dart';
@@ -11,87 +12,127 @@ typedef IdGenerator = String Function();
 
 // TODO: Files to path provider, web?
 class $RecordService extends RecordService {
-  $RecordService(
-    this.client, {
-    required this.collectionName,
-    required this.collectionId,
-    required this.idGenerator,
-  }) : super(client, collectionId);
+  $RecordService(this.client, this.collection) : super(client, collection.id);
 
   @override
   final $PocketBase client;
 
-  final String collectionName;
+  final CollectionModel collection;
 
-  final String collectionId;
-
-  final IdGenerator idGenerator;
-
-  Future<void> retryLocal({
+  Stream<RetryProgressEvent?> retryLocal({
     Map<String, dynamic> query = const {},
     Map<String, String> headers = const {},
-  }) async {
+  }) async* {
     final deleted = await client.db.getRecords(
-      collectionName,
+      collection.name,
       deleted: true,
     );
-    final pending = await client.db.getRecords(
-      collectionName,
+    final fresh = await client.db.getRecords(
+      collection.name,
+      deleted: false,
       synced: false,
     );
-
+    final pending = await client.db.getRecords(
+      collection.name,
+      synced: false,
+    );
+    yield RetryProgressEvent(
+      message: 'Found ${pending.length} pending records',
+      total: pending.length,
+      current: 0,
+    );
     final futures = <Future>[];
     for (final item in pending) {
       futures.add(Future(() async {
-        final isDeleted = deleted.indexWhere((e) => e.id == item.id) != -1;
-        if (isDeleted) {
-          await delete(
-            item.id,
-            query: query,
-            headers: headers,
-            body: item.data,
-          );
-        } else {
-          await update(
-            item.id,
-            query: query,
-            headers: headers,
-            body: item.data,
-          );
+        try {
+          final isDeleted = deleted.indexWhere((e) => e.id == item.id) != -1;
+          final isFresh = fresh.indexWhere((e) => e.id == item.id) != -1;
+          if (isDeleted) {
+            await delete(
+              item.id,
+              query: query,
+              headers: headers,
+              body: item.data,
+            );
+          } else if (isFresh) {
+            await create(
+              query: query,
+              headers: headers,
+              body: item.data,
+            );
+          } else {
+            await update(
+              item.id,
+              query: query,
+              headers: headers,
+              body: item.data,
+              merge: (current, remote) {
+                final remoteDate = DateTime.parse(remote.updated);
+                final currentDate = DateTime.parse(current.updated);
+                if (remoteDate.isAfter(currentDate)) {
+                  return remote;
+                } else {
+                  return current;
+                }
+              },
+            );
+          }
+        } catch (e) {
+          if (client.logging) debugPrint('retryLocal: ${item.id} $e');
         }
       }));
     }
     for (final item in futures) {
+      yield RetryProgressEvent(
+        message: 'Updating record',
+        total: pending.length,
+        current: futures.indexOf(item) + 1,
+      );
       await item;
     }
     final stale = await client.db.getRecords(
-      collectionName,
+      collection.name,
       deleted: true,
       synced: true,
+    );
+    yield RetryProgressEvent(
+      message: 'Deleting ${stale.length} stale records',
+      total: stale.length,
+      current: 0,
     );
     futures.clear();
     for (final item in stale) {
       futures.add(Future(() async {
-        await client.db.deleteRecord(collectionName, item.id);
+        await client.db.deleteRecord(collection.name, item.id);
       }));
     }
     for (final item in futures) {
+      yield RetryProgressEvent(
+        message: 'Deleting record',
+        total: stale.length,
+        current: futures.indexOf(item) + 1,
+      );
       await item;
     }
+    yield null;
   }
 
   Future<void> setLocal(List<Map<String, dynamic>> list) async {
     final items = list.map((e) {
       return RecordModel(
-        id: e['id'],
+        id: e['id'] ?? client.idGenerator(),
         data: e,
-        collectionId: collectionId,
-        collectionName: collectionName,
+        collectionId: collection.id,
+        collectionName: collection.name,
         created: e['created'] ?? DateTime.now().toIso8601String(),
         updated: e['updated'] ?? DateTime.now().toIso8601String(),
       );
     }).toList();
     await client.db.setRecords(items);
+  }
+
+  Future<List<RecordModel>> search(String query) {
+    return client.db.searchCollection(query, collection.name);
   }
 
   StreamController<RecordModel?> watchRecord(
@@ -125,7 +166,7 @@ class $RecordService extends RecordService {
               }
             });
           } catch (e) {
-            debugPrint('watchRecord: $e');
+            if (client.logging) debugPrint('watchRecord: $e');
           }
         }
       },
@@ -134,7 +175,7 @@ class $RecordService extends RecordService {
       },
     );
     controller.addStream(client.db.watchRecord(
-      collectionName,
+      collection.name,
       id,
       deleted: deleted,
       synced: synced,
@@ -172,16 +213,17 @@ class $RecordService extends RecordService {
               }
             });
           } catch (e) {
-            debugPrint('watchRecord: $e');
+            if (client.logging) debugPrint('watchRecord: $e');
           }
         }
+        await getFullList(fetchPolicy: fetchPolicy);
       },
       onCancel: () async {
         await cancel?.call();
       },
     );
     controller.addStream(client.db.watchRecords(
-      collectionName,
+      collection.name,
       deleted: deleted,
       synced: synced,
     ));
@@ -202,7 +244,8 @@ class $RecordService extends RecordService {
   }) async {
     List<RecordModel> result = [];
 
-    if (fetchPolicy == FetchPolicy.networkOnly) {
+    if (fetchPolicy == FetchPolicy.networkOnly ||
+        fetchPolicy == FetchPolicy.cacheAndNetwork) {
       try {
         result = await super.getFullList(
           batch: batch,
@@ -213,11 +256,9 @@ class $RecordService extends RecordService {
           headers: headers,
         );
       } catch (e) {
-        if (fetchPolicy == FetchPolicy.networkOnly) {
-          throw Exception(
-            'Failed to get records in collection $collectionName $e',
-          );
-        }
+        throw Exception(
+          'Failed to get records in collection $collection.name $e',
+        );
       }
     }
 
@@ -229,11 +270,13 @@ class $RecordService extends RecordService {
 
     if (fetchPolicy == FetchPolicy.cacheAndNetwork ||
         fetchPolicy == FetchPolicy.cacheOnly) {
-      result = await client.db.getRecords(
-        collectionName,
-        deleted: deleted,
-        synced: synced,
-      );
+      if (result.isEmpty) {
+        result = await client.db.getRecords(
+          collection.name,
+          deleted: deleted,
+          synced: synced,
+        );
+      }
     }
 
     return result;
@@ -268,7 +311,7 @@ class $RecordService extends RecordService {
       } catch (e) {
         if (fetchPolicy == FetchPolicy.networkOnly) {
           throw Exception(
-            'Failed to get records in collection $collectionName $e',
+            'Failed to get records in collection $collection.name $e',
           );
         }
       }
@@ -284,14 +327,14 @@ class $RecordService extends RecordService {
         fetchPolicy == FetchPolicy.cacheOnly) {
       if (result.items.isEmpty) {
         final items = await client.db.getRecords(
-          collectionName,
+          collection.name,
           deleted: deleted,
           synced: synced,
           page: page,
           perPage: perPage,
         );
         final count = await client.db.getRecordCount(
-          collectionName,
+          collection.name,
           deleted: deleted,
           synced: synced,
         );
@@ -329,7 +372,7 @@ class $RecordService extends RecordService {
       } catch (e) {
         if (fetchPolicy == FetchPolicy.networkOnly) {
           throw Exception(
-            'Failed to get record $id in collection $collectionName $e',
+            'Failed to get record $id in collection $collection.name $e',
           );
         }
       }
@@ -337,7 +380,7 @@ class $RecordService extends RecordService {
 
     if (fetchPolicy == FetchPolicy.cacheAndNetwork ||
         fetchPolicy == FetchPolicy.cacheOnly) {
-      final model = await client.db.getRawRecord(collectionName, id);
+      final model = await client.db.getRawRecord(collection.name, id);
       if (model?.deleted != true) {
         record = model?.toModel();
       }
@@ -345,7 +388,7 @@ class $RecordService extends RecordService {
 
     if (record == null) {
       throw Exception(
-        'Record $id does not exist in collection $collectionName',
+        'Record $id does not exist in collection $collection.name',
       );
     }
 
@@ -361,9 +404,9 @@ class $RecordService extends RecordService {
     Map<String, String> headers = const {},
   }) async {
     if (fetchPolicy == FetchPolicy.cacheAndNetwork) {
-      await client.db.deleteRecord(collectionName, id);
+      await client.db.deleteRecord(collection.name, id);
     }
-    RecordModel? record = await client.db.getRecord(collectionName, id);
+    RecordModel? record = await client.db.getRecord(collection.name, id);
     if (fetchPolicy == FetchPolicy.cacheOnly && record != null) {
       await client.db.setRecord(record, deleted: true, synced: false);
     }
@@ -379,7 +422,7 @@ class $RecordService extends RecordService {
       } catch (e) {
         if (fetchPolicy == FetchPolicy.networkOnly) {
           throw Exception(
-            'Failed to delete record $id in collection $collectionName $e',
+            'Failed to delete record $id in collection $collection.name $e',
           );
         }
       }
@@ -395,9 +438,9 @@ class $RecordService extends RecordService {
     List<http.MultipartFile> files = const [],
     Map<String, String> headers = const {},
     String? expand,
+    RecordModel? Function(RecordModel current, RecordModel remote)? merge,
   }) async {
-    assert(expand == null && fetchPolicy != FetchPolicy.cacheOnly);
-    RecordModel? record = await client.db.getRecord(collectionName, id);
+    RecordModel? record = await client.db.getRecord(collection.name, id);
     bool saved = false;
     if (record == null && fetchPolicy == FetchPolicy.cacheAndNetwork) {
       record = await super.getOne(
@@ -410,6 +453,20 @@ class $RecordService extends RecordService {
     if (fetchPolicy == FetchPolicy.cacheAndNetwork ||
         fetchPolicy == FetchPolicy.networkOnly) {
       try {
+        if (merge != null) {
+          final remote = await getOneOrNull(
+            id,
+            expand: expand,
+            query: query,
+            headers: headers,
+            fetchPolicy: FetchPolicy.networkOnly,
+          );
+          if (record != null) {
+            record = merge(record, remote!);
+          } else {
+            record = remote;
+          }
+        }
         record = await super.update(
           id,
           body: body,
@@ -422,7 +479,7 @@ class $RecordService extends RecordService {
       } catch (e) {
         if (fetchPolicy == FetchPolicy.networkOnly) {
           throw Exception(
-            'Failed to update record $id in collection $collectionName $e',
+            'Failed to update record $id in collection $collection.name $e',
           );
         }
       }
@@ -431,7 +488,7 @@ class $RecordService extends RecordService {
         fetchPolicy == FetchPolicy.cacheOnly) {
       if (record == null) {
         throw Exception(
-          'Record $id does not exist in collection $collectionName',
+          'Record $id does not exist in collection $collection.name',
         );
       }
       record.data.addAll(body);
@@ -452,9 +509,11 @@ class $RecordService extends RecordService {
     Map<String, String> headers = const {},
     String? expand,
   }) async {
-    assert(expand == null && fetchPolicy != FetchPolicy.cacheOnly);
-    final data = {...body, 'id': idGenerator()};
-    final id = data['id'] as String;
+    final data = {...body};
+    if (data['id'] == null) {
+      data['id'] = client.idGenerator();
+    }
+    var id = data['id'] as String;
     RecordModel? record;
     bool saved = false;
 
@@ -468,11 +527,13 @@ class $RecordService extends RecordService {
           expand: expand,
           files: files,
         );
+        id = record.id;
+        data['id'] = id;
         saved = true;
       } catch (e) {
         if (fetchPolicy == FetchPolicy.networkOnly) {
           throw Exception(
-            'Failed to create record $id in collection $collectionName $e',
+            'Failed to create record $id in collection $collection.name $e',
           );
         }
       }
@@ -480,10 +541,11 @@ class $RecordService extends RecordService {
 
     if (fetchPolicy == FetchPolicy.cacheAndNetwork ||
         fetchPolicy == FetchPolicy.cacheOnly) {
-      record = toRecord(data);
+      record ??= toRecord(data);
       await client.db.setRecord(
         record,
         synced: saved,
+        deleted: false,
       );
     }
 
@@ -497,8 +559,8 @@ class $RecordService extends RecordService {
       data: data,
       created: DateTime.now().toIso8601String(),
       updated: DateTime.now().toIso8601String(),
-      collectionId: collectionId,
-      collectionName: collectionName,
+      collectionId: collection.id,
+      collectionName: collection.name,
     );
   }
 }
@@ -518,16 +580,33 @@ extension RecordServiceUtils on $RecordService {
     Map<String, String> headers = const {},
   }) async {
     try {
-      return getOne(
+      final result = await getOne(
         id,
         fetchPolicy: fetchPolicy,
         expand: expand,
         query: query,
         headers: headers,
       );
+      return result;
     } catch (e) {
-      debugPrint('cannot find $id in $collectionName');
-      return null;
+      if (client.logging) {
+        debugPrint('cannot find $id in $collection.name $e');
+      }
     }
+    return null;
   }
+}
+
+class RetryProgressEvent {
+  final int total;
+  final int current;
+  final String message;
+
+  const RetryProgressEvent({
+    required this.total,
+    required this.current,
+    required this.message,
+  });
+
+  double get progress => current / total;
 }
