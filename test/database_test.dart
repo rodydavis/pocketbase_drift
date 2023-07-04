@@ -1,7 +1,8 @@
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pocketbase_drift/src/database/database.dart';
+
+import 'package:pocketbase_drift/pocketbase_drift.dart';
 
 void main() {
   final connection = DatabaseConnection(NativeDatabase.memory());
@@ -15,51 +16,51 @@ void main() {
     });
 
     test('create', () async {
-      final id = await db.collectionsDao.createCollection(
+      final id = await db.collectionsDao.createItem(CollectionModel(
         name: 'Test 123',
-      );
+      ).toModel());
 
       final items = await db.collectionsDao.getAll();
 
       expect(id.isNotEmpty, true);
       expect(items.length, 1);
 
-      await db.collectionsDao.deleteCollection(id: id);
+      await db.collectionsDao.deleteItem(id);
     });
 
     test('update', () async {
-      final id = await db.collectionsDao.createCollection(
+      final id = await db.collectionsDao.createItem(CollectionModel(
         name: 'Test 123',
-      );
+      ).toModel());
 
       final items = await db.collectionsDao.getAll();
 
       expect(id.isNotEmpty, true);
       expect(items.length, 1);
 
-      await db.collectionsDao.updateCollection(
+      await db.collectionsDao.updateItem(CollectionModel(
         id: id,
         name: 'Test 1234',
-      );
+      ).toModel());
 
-      final item = await db.collectionsDao.getCollectionById(id);
+      final item = await db.collectionsDao.get(id);
 
       expect(item?.name, 'Test 1234');
 
-      await db.collectionsDao.deleteCollection(id: id);
+      await db.collectionsDao.deleteItem(id);
     });
 
     test('delete', () async {
-      final id = await db.collectionsDao.createCollection(
+      final id = await db.collectionsDao.createItem(CollectionModel(
         name: 'Test 123',
-      );
+      ).toModel());
 
       final items = await db.collectionsDao.getAll();
 
       expect(id.isNotEmpty, true);
       expect(items.length, 1);
 
-      await db.collectionsDao.deleteCollection(id: id);
+      await db.collectionsDao.deleteItem(id);
 
       final items2 = await db.collectionsDao.getAll();
 
@@ -75,117 +76,122 @@ void main() {
     });
 
     test('create', () async {
-      final collectionId = await db.collectionsDao.createCollection(
+      final collectionId = await db.collectionsDao.createItem(CollectionModel(
         name: 'Test 123',
-      );
+      ).toModel());
       final collection = await db //
           .collectionsDao
-          .getCollectionById(collectionId);
+          .get(collectionId);
 
-      final id = await db.recordsDao.createRecord(
-        collection: collection!,
-        id: null,
+      final id = await db.recordsDao.createItem(RecordModel(
+        collectionId: collection!.id,
+        collectionName: collection.name,
         data: {
           'name': 'Test 456',
         },
-      );
+      ).toModel());
 
       expect(id.isNotEmpty, true);
 
-      final item = await db.recordsDao.getRecord(
-        collectionId: collectionId,
-        id: id,
+      final item = await db.recordsDao.get(
+        id,
+        collection: collectionId,
       );
 
       expect(item?.data['name'], 'Test 456');
 
-      final items = await db.recordsDao.getAll(collectionId: collectionId);
+      final items = await db.recordsDao.getAll(collection: collectionId);
 
       expect(items.length, 1);
 
-      await db.recordsDao.deleteRecord(id: id, collectionId: collectionId);
-      await db.collectionsDao.deleteCollection(id: collectionId);
+      await db.recordsDao.deleteItem(id, collection: collectionId);
+      await db.collectionsDao.deleteItem(collectionId);
     });
 
     test('update', () async {
-      final collectionId = await db.collectionsDao.createCollection(
+      final collectionId = await db.collectionsDao.createItem(CollectionModel(
         name: 'Test 123',
-      );
+      ).toModel());
       final collection = await db //
           .collectionsDao
-          .getCollectionById(collectionId);
+          .get(collectionId);
 
-      final id = await db.recordsDao.createRecord(
-        collection: collection!,
-        id: null,
-        data: {
-          'name': 'Test 456',
-        },
+      final id = await db.recordsDao.createItem(
+        RecordModel(
+          collectionId: collection!.id,
+          collectionName: collection.name,
+          data: {
+            'name': 'Test 456',
+          },
+        ).toModel(),
       );
 
       expect(id.isNotEmpty, true);
 
-      final item = await db.recordsDao.getRecord(
-        collectionId: collectionId,
-        id: id,
+      final item = await db.recordsDao.get(
+        id,
+        collection: collectionId,
       );
 
       expect(item?.data['name'], 'Test 456');
 
-      await db.recordsDao.updateRecord(
+      await db.recordsDao.updateItem(RecordModel(
         id: id,
-        collection: collection,
+        collectionId: collection.id,
+        collectionName: collection.name,
         data: {
           'name': 'Test 789',
         },
-      );
+      ).toModel());
 
-      final item2 = await db.recordsDao.getRecord(
-        collectionId: collectionId,
-        id: id,
+      final item2 = await db.recordsDao.get(
+        id,
+        collection: collectionId,
       );
 
       expect(item2?.data['name'], 'Test 789');
 
-      await db.recordsDao.deleteRecord(id: id, collectionId: collectionId);
-      await db.collectionsDao.deleteCollection(id: collectionId);
+      await db.recordsDao.deleteItem(id, collection: collectionId);
+      await db.collectionsDao.deleteItem(collectionId);
     });
 
     test('delete', () async {
-      final collectionId = await db.collectionsDao.createCollection(
+      final collectionId = await db.collectionsDao.createItem(CollectionModel(
         name: 'Test 123',
-      );
+      ).toModel());
       final collection = await db //
           .collectionsDao
-          .getCollectionById(collectionId);
+          .get(collectionId);
 
-      final id = await db.recordsDao.createRecord(
-        collection: collection!,
-        id: null,
-        data: {
-          'name': 'Test 456',
-        },
+      final id = await db.recordsDao.createItem(
+        RecordModel(
+          collectionId: collection!.id,
+          collectionName: collection.name,
+          data: {
+            'name': 'Test 456',
+          },
+        ).toModel(),
       );
 
       expect(id.isNotEmpty, true);
 
-      final item = await db.recordsDao.getRecord(
-        collectionId: collectionId,
-        id: id,
+      final item = await db.recordsDao.get(
+        id,
+        collection: collectionId,
       );
 
       expect(item?.data['name'], 'Test 456');
 
-      await db.recordsDao.deleteRecord(id: id, collectionId: collectionId);
+      await db.recordsDao.deleteItem(id, collection: collectionId);
 
-      final item2 = await db.recordsDao.getRecord(
-        collectionId: collectionId,
-        id: id,
+      final item2 = await db.recordsDao.get(
+        id,
+        collection: collectionId,
       );
 
       expect(item2, null);
 
-      await db.collectionsDao.deleteCollection(id: collectionId);
+      await db.collectionsDao.deleteItem(collectionId);
     });
   });
 }

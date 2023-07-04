@@ -3,10 +3,8 @@ import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pocketbase/pocketbase.dart';
 
-import 'package:pocketbase_drift/src/pocketbase/pocketbase.dart';
-import 'package:pocketbase_drift/src/pocketbase/services/record.dart';
+import 'package:pocketbase_drift/pocketbase_drift.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -29,7 +27,7 @@ void main() {
       password,
     );
     collection = await client.collections.getOne('l1qxa33evkxxte0');
-    await client.db.collectionsDao.addAll([collection]);
+    await client.db.collectionsDao.addAll([collection.toModel()]);
     col = client.$collection(collection);
 
     // // Add records
@@ -45,7 +43,11 @@ void main() {
   tearDownAll(() async {
     final local = await col.getFullList();
     for (final item in local) {
-      await col.delete(item.id);
+      await col.delete(
+        item.id,
+        fetchPolicy: FetchPolicy.networkOnly,
+        // TODO: Fails on anything else
+      );
     }
   });
 
@@ -63,9 +65,9 @@ void main() {
     final remote = await col.getFullList();
 
     final first = remote.first;
-    final result = await client.db.recordsDao.getRecord(
-      collectionId: collection.id,
-      id: first.id,
+    final result = await client.db.recordsDao.get(
+      first.id,
+      collection: collection.id,
     );
 
     expect(first.id, result?.id);
@@ -80,14 +82,6 @@ void main() {
 
     final remote = await col.getFullList();
 
-    final local = await client.db.recordsDao.getAll(
-      collectionId: collection.id,
-    );
-
-    print('records: ${records.length}');
-    print('remote: ${remote.length}');
-    print('local: ${local.length}');
-
     expect(
       remote,
       isNotEmpty,
@@ -101,7 +95,7 @@ void main() {
 
     // Server and cache should update
     final newItems = await client.db.recordsDao.getAll(
-      collectionId: collection.id,
+      collection: collection.id,
     );
     expect(
       newItems.length,
@@ -125,7 +119,7 @@ void main() {
       }
 
       final local = await client.db.recordsDao.getAll(
-        collectionId: collection.id,
+        collection: collection.id,
       );
 
       expect(local.length >= 1000, true);
@@ -237,7 +231,7 @@ void main() {
         final item = await col.create(
           body: {
             'name': 'test',
-            'id': client.idGenerator(),
+            'id': client.db.generateId(),
           },
           fetchPolicy: FetchPolicy.cacheOnly,
         );

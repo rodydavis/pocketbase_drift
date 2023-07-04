@@ -7,6 +7,7 @@ import 'package:pocketbase/pocketbase.dart';
 
 import '../../database/database.dart';
 import '../pocketbase.dart';
+import 'base.dart';
 
 typedef IdGenerator = String Function();
 
@@ -19,13 +20,15 @@ class $RecordService extends RecordService {
 
   final CollectionModel collection;
 
+  late final dao = client.db.recordsDao;
+
   Stream<RetryProgressEvent?> retryLocal({
     Map<String, dynamic> query = const {},
     Map<String, String> headers = const {},
   }) async* {
-    final deleted = await client.db.recordsDao.getPendingDeletes();
-    final fresh = await client.db.recordsDao.getPendingWrites();
-    final pending = await client.db.recordsDao.getPending();
+    final deleted = await dao.getPendingDeletes();
+    final fresh = await dao.getPendingWrites();
+    final pending = await dao.getPending();
     yield RetryProgressEvent(
       message: 'Found ${pending.length} pending records',
       total: pending.length,
@@ -80,14 +83,14 @@ class $RecordService extends RecordService {
       );
       await item;
     }
-    await client.db.recordsDao.removeSyncedDeletedRecords();
+    await dao.removeSyncedDeletedRecords();
     yield null;
   }
 
   Future<void> setLocal(List<Map<String, dynamic>> list) async {
     final items = list.map((e) {
       return RecordModel(
-        id: e['id'] ?? client.idGenerator(),
+        id: e['id'] ?? client.db.generateId(),
         data: e,
         collectionId: collection.id,
         collectionName: collection.name,
@@ -95,7 +98,7 @@ class $RecordService extends RecordService {
         updated: e['updated'] ?? DateTime.now().toIso8601String(),
       );
     }).toList();
-    await client.db.recordsDao.addAll(collection.toModel(), items);
+    await dao.addAll(items.map((e) => e.toModel()).toList());
   }
 
   Future<List<RecordModel>> search(String query) {
@@ -105,26 +108,20 @@ class $RecordService extends RecordService {
   Future<void> onEvent(RecordSubscriptionEvent e) async {
     if (e.record != null) {
       if (e.action == 'create') {
-        await client.db.recordsDao.createRecord(
-          collection: collection.toModel(),
-          id: e.record!.id,
-          data: e.record!.data,
+        await dao.createItem(
+          e.record!.toModel(),
           deleted: false,
           synced: true,
         );
       } else if (e.action == 'update') {
-        await client.db.recordsDao.updateRecord(
-          collection: collection.toModel(),
-          id: e.record!.id,
-          data: e.record!.data,
+        await dao.updateItem(
+          e.record!.toModel(),
           deleted: false,
           synced: true,
         );
       } else if (e.action == 'delete') {
-        await client.db.recordsDao.updateRecord(
-          collection: collection.toModel(),
-          id: e.record!.id,
-          data: e.record!.data,
+        await dao.updateItem(
+          e.record!.toModel(),
           deleted: true,
           synced: true,
         );
@@ -154,10 +151,14 @@ class $RecordService extends RecordService {
         await cancel?.call();
       },
     );
-    controller.addStream(client.db.recordsDao.watchRecord(
-      collectionId: collection.id,
-      id: id,
-    ));
+    controller.addStream(client //
+        .db
+        .recordsDao
+        .watch(
+          id,
+          collection: collection.id,
+        )
+        .map((e) => e?.toModel()));
     return controller;
   }
 
@@ -183,11 +184,13 @@ class $RecordService extends RecordService {
         await cancel?.call();
       },
     );
-    controller.addStream(client.db.recordsDao.watchAll(
-      collectionId: collection.id,
-      deleted: deleted,
-      synced: synced,
-    ));
+    controller.addStream(dao
+        .watchAll(
+          collection: collection.id,
+          deleted: deleted,
+          synced: synced,
+        )
+        .map((e) => e.map((r) => r.toModel()).toList()));
     return controller;
   }
 
@@ -227,23 +230,20 @@ class $RecordService extends RecordService {
 
     if (fetchPolicy == FetchPolicy.cacheAndNetwork) {
       if (items.isNotEmpty) {
-        await client.db.recordsDao.addAll(
-          collection.toModel(),
-          items,
-          synced: synced,
-          deleted: deleted,
-        );
+        await dao.addAll(items.map((e) => e.toModel()).toList());
       }
     }
 
     if (fetchPolicy == FetchPolicy.cacheAndNetwork ||
         fetchPolicy == FetchPolicy.cacheOnly) {
       if (items.isEmpty) {
-        items = await client.db.recordsDao.getAll(
-          collectionId: collection.id,
+        items = (await dao.getAll(
+          collection: collection.id,
           deleted: deleted,
           synced: synced,
-        );
+        ))
+            .map((e) => e.toModel())
+            .toList();
       }
     }
 
@@ -289,29 +289,29 @@ class $RecordService extends RecordService {
 
     if (fetchPolicy == FetchPolicy.cacheAndNetwork) {
       if (result.items.isNotEmpty) {
-        await client.db.recordsDao.addAll(collection.toModel(), result.items);
+        await dao.addAll(result.items.map((e) => e.toModel()).toList());
       }
     }
 
     if (fetchPolicy == FetchPolicy.cacheAndNetwork ||
         fetchPolicy == FetchPolicy.cacheOnly) {
       if (result.items.isEmpty) {
-        final items = await client.db.recordsDao.getAll(
-          collectionId: collection.id,
+        final items = await dao.getAll(
+          collection: collection.id,
           deleted: deleted,
           synced: synced,
           page: page,
           perPage: perPage,
         );
-        final count = await client.db.recordsDao.getRecordCount(
-          collectionId: collection.id,
+        final count = await dao.getCount(
+          collection: collection.id,
           deleted: deleted,
           synced: synced,
         );
         result = ResultList(
           page: page,
           perPage: perPage,
-          items: items,
+          items: items.map((e) => e.toModel()).toList(),
           totalItems: count,
           totalPages: (count / perPage).floor(),
         );
@@ -352,13 +352,13 @@ class $RecordService extends RecordService {
 
     if (fetchPolicy == FetchPolicy.cacheAndNetwork ||
         fetchPolicy == FetchPolicy.cacheOnly) {
-      final model = await client.db.recordsDao.getRecord(
-        collectionId: collection.id,
-        id: id,
+      final model = await dao.get(
+        id,
+        collection: collection.id,
         deleted: false,
       );
       if (model != null) {
-        record = model;
+        record = model.toModel();
       }
     }
 
@@ -379,21 +379,19 @@ class $RecordService extends RecordService {
     Map<String, dynamic> query = const {},
     Map<String, String> headers = const {},
   }) async {
+    Record? record = await dao.get(
+      id,
+      collection: collection.id,
+    );
     if (fetchPolicy == FetchPolicy.cacheAndNetwork) {
-      await client.db.recordsDao.deleteRecord(
-        id: id,
-        collectionId: collection.id,
+      await dao.deleteItem(
+        id,
+        collection: collection.id,
       );
     }
-    RecordModel? record = await client.db.recordsDao.getRecord(
-      collectionId: collection.id,
-      id: id,
-    );
     if (fetchPolicy == FetchPolicy.cacheOnly && record != null) {
-      await client.db.recordsDao.updateRecord(
-        collection: collection.toModel(),
-        id: record.id,
-        data: record.data,
+      await dao.updateItem(
+        record,
         deleted: true,
         synced: false,
       );
@@ -429,10 +427,11 @@ class $RecordService extends RecordService {
     String? fields,
     RecordModel? Function(RecordModel current, RecordModel remote)? merge,
   }) async {
-    RecordModel? record = await client.db.recordsDao.getRecord(
-      collectionId: collection.id,
-      id: id,
-    );
+    RecordModel? record = (await dao.get(
+      id,
+      collection: collection.id,
+    ))
+        ?.toModel();
     bool saved = false;
     if (record == null && fetchPolicy == FetchPolicy.cacheAndNetwork) {
       record = await super.getOne(
@@ -486,10 +485,8 @@ class $RecordService extends RecordService {
         );
       }
       record.data.addAll(body);
-      await client.db.recordsDao.updateRecord(
-        collection: collection.toModel(),
-        id: record.id,
-        data: record.data,
+      await dao.updateItem(
+        record.toModel(),
         synced: saved,
       );
     }
@@ -532,17 +529,23 @@ class $RecordService extends RecordService {
 
     if (fetchPolicy == FetchPolicy.cacheAndNetwork ||
         fetchPolicy == FetchPolicy.cacheOnly) {
-      final result = await client.db.recordsDao.createRecord(
-        collection: collection.toModel(),
-        data: body,
+      final result = await dao.createItem(
+        RecordModel(
+          id: record?.id ?? '',
+          data: body,
+          created: DateTime.now().toIso8601String(),
+          updated: DateTime.now().toIso8601String(),
+          collectionId: collection.id,
+          collectionName: collection.name,
+        ).toModel(),
         synced: saved,
         deleted: false,
-        id: record?.id,
       );
-      record = await client.db.recordsDao.getRecord(
-        collectionId: collection.id,
-        id: result,
-      );
+      record = (await dao.get(
+        result,
+        collection: collection.id,
+      ))
+          ?.toModel();
     }
 
     return record!;
@@ -559,12 +562,6 @@ class $RecordService extends RecordService {
       collectionName: collection.name,
     );
   }
-}
-
-enum FetchPolicy {
-  cacheOnly,
-  networkOnly,
-  cacheAndNetwork,
 }
 
 extension RecordServiceUtils on $RecordService {

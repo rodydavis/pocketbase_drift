@@ -75,7 +75,8 @@ class _ExampleState extends State<Example> {
       password,
     );
     collections = await client.collections.getFullList();
-    await client.db.collectionsDao.addAll(collections);
+    await client.db.collectionsDao
+        .addAll(collections.map((e) => e.toModel()).toList());
     if (collections.isNotEmpty) {
       await select(collections.first.id);
     }

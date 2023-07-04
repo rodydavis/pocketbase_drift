@@ -4,27 +4,19 @@ import 'package:drift/drift.dart';
 import 'package:pocketbase/pocketbase.dart';
 import 'package:shortid/shortid.dart';
 
-@DataClassName('Record')
-class Records extends Table {
-  TextColumn get id => text().clientDefault(newId)();
+@DataClassName('Record', extending: ServiceRecord)
+class Records extends Table with ServiceRecords {
   TextColumn get data => text().map(const JsonMapper())();
   TextColumn get collectionId => text().references(Collections, #id)();
   TextColumn get collectionName => text().references(Collections, #name)();
-  BoolColumn get synced => boolean().nullable()();
-  BoolColumn get deleted => boolean().nullable()();
-  DateTimeColumn get created => dateTime()();
-  DateTimeColumn get updated => dateTime()();
 
   @override
   Set<Column<Object>>? get primaryKey => {id, collectionId};
 }
 
-@DataClassName('Collection')
-class Collections extends Table {
-  TextColumn get id => text().clientDefault(newId)();
+@DataClassName('Collection', extending: ServiceRecord)
+class Collections extends Table with ServiceRecords {
   TextColumn get type => text().withDefault(const Constant('base'))();
-  DateTimeColumn get created => dateTime()();
-  DateTimeColumn get updated => dateTime()();
   TextColumn get name => text()();
   BoolColumn get system => boolean().withDefault(const Constant(false))();
   TextColumn get listRule => text().nullable()();
@@ -38,6 +30,23 @@ class Collections extends Table {
 
   @override
   Set<Column<Object>>? get primaryKey => {id};
+}
+
+abstract class ServiceRecord extends DataClass implements Jsonable {
+  const ServiceRecord();
+  String get id;
+  DateTime get created;
+  DateTime get updated;
+  bool? get synced;
+  bool? get deleted;
+}
+
+mixin ServiceRecords on Table {
+  TextColumn get id => text().clientDefault(newId)();
+  DateTimeColumn get created => dateTime()();
+  DateTimeColumn get updated => dateTime()();
+  BoolColumn get synced => boolean().nullable()();
+  BoolColumn get deleted => boolean().nullable()();
 }
 
 mixin AutoIncrementingPrimaryKey on Table {

@@ -1,10 +1,10 @@
 import 'package:drift/drift.dart';
 import 'package:http/http.dart';
 import 'package:pocketbase/pocketbase.dart';
-import 'package:shortid/shortid.dart';
 
 import '../network/http.dart';
 import '../database/database.dart';
+import 'services/collection.dart';
 import 'services/record.dart';
 
 class $PocketBase extends PocketBase {
@@ -19,13 +19,6 @@ class $PocketBase extends PocketBase {
 
   final DataBase db;
   bool logging = false;
-
-  late IdGenerator idGenerator = () {
-    const chars =
-        '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
-    shortid.characters(chars);
-    return shortid.generate().padLeft(15, '0');
-  };
 
   final _recordServices = <String, $RecordService>{};
 
@@ -43,6 +36,9 @@ class $PocketBase extends PocketBase {
   Future<List<RecordModel>> search(String query) {
     return db.search(query);
   }
+
+  @override
+  $CollectionService get collections => $CollectionService(this);
 
   // TODO: getFileUrl get local url?
 
