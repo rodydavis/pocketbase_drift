@@ -146,7 +146,7 @@ class DataViewProvider<T> extends DataTableSource {
   }
 
   void sort() {
-    items = onSort(items, columnIndex, sortAscending);
+    _items = onSort(items, columnIndex, sortAscending);
     notifyListeners();
   }
 

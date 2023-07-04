@@ -4,26 +4,26 @@ import '../tables.dart';
 CREATE VIRTUAL TABLE text_entries USING fts5 (
     data,
     content=records,
-    content_rowid=id
+    content_rowid=rowid
 );
 
 -- Triggers to keep entries and fts5 index in sync.
 CREATE TRIGGER records_insert AFTER INSERT ON records BEGIN
-  INSERT INTO text_entries(rowid, data) VALUES (new.id, new.data);
+  INSERT INTO text_entries(rowid, data) VALUES (new.rowid, new.data);
 END;
 
 CREATE TRIGGER records_delete AFTER DELETE ON records BEGIN
-  INSERT INTO text_entries(text_entries, rowid, data) VALUES ('delete', old.id, old.data);
+  INSERT INTO text_entries(text_entries, rowid, data) VALUES ('delete', old.rowid, old.data);
 END;
 
 CREATE TRIGGER records_update AFTER UPDATE ON records BEGIN
-  INSERT INTO text_entries(text_entries, rowid, data) VALUES ('delete', new.id, new.data);
-  INSERT INTO text_entries(rowid, data) VALUES (new.id, new.data);
+  INSERT INTO text_entries(text_entries, rowid, data) VALUES ('delete', new.rowid, new.data);
+  INSERT INTO text_entries(rowid, data) VALUES (new.rowid, new.data);
 END;
 
 -- Full text search query.
 _search: 
     SELECT r.** FROM text_entries
-    INNER JOIN records r ON r.id = text_entries.rowid
+    INNER JOIN records r ON r.rowid = text_entries.rowid
     WHERE text_entries MATCH :query
     ORDER BY rank;

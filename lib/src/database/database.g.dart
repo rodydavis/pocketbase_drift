@@ -1110,16 +1110,239 @@ class RecordsCompanion extends UpdateCompanion<Record> {
   }
 }
 
+class TextEntries extends Table
+    with
+        TableInfo<TextEntries, TextEntrie>,
+        VirtualTableInfo<TextEntries, TextEntrie> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  TextEntries(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _dataMeta = const VerificationMeta('data');
+  late final GeneratedColumn<String> data = GeneratedColumn<String>(
+      'data', aliasedName, false,
+      type: DriftSqlType.string,
+      requiredDuringInsert: true,
+      $customConstraints: '');
+  @override
+  List<GeneratedColumn> get $columns => [data];
+  @override
+  String get aliasedName => _alias ?? 'text_entries';
+  @override
+  String get actualTableName => 'text_entries';
+  @override
+  VerificationContext validateIntegrity(Insertable<TextEntrie> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('data')) {
+      context.handle(
+          _dataMeta, this.data.isAcceptableOrUnknown(data['data']!, _dataMeta));
+    } else if (isInserting) {
+      context.missing(_dataMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => const {};
+  @override
+  TextEntrie map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return TextEntrie(
+      data: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}data'])!,
+    );
+  }
+
+  @override
+  TextEntries createAlias(String alias) {
+    return TextEntries(attachedDatabase, alias);
+  }
+
+  @override
+  bool get dontWriteConstraints => true;
+  @override
+  String get moduleAndArgs =>
+      'fts5(data, content=records, content_rowid=rowid)';
+}
+
+class TextEntrie extends DataClass implements Insertable<TextEntrie> {
+  final String data;
+  const TextEntrie({required this.data});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['data'] = Variable<String>(data);
+    return map;
+  }
+
+  TextEntriesCompanion toCompanion(bool nullToAbsent) {
+    return TextEntriesCompanion(
+      data: Value(data),
+    );
+  }
+
+  factory TextEntrie.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return TextEntrie(
+      data: serializer.fromJson<String>(json['data']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'data': serializer.toJson<String>(data),
+    };
+  }
+
+  TextEntrie copyWith({String? data}) => TextEntrie(
+        data: data ?? this.data,
+      );
+  @override
+  String toString() {
+    return (StringBuffer('TextEntrie(')
+          ..write('data: $data')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => data.hashCode;
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is TextEntrie && other.data == this.data);
+}
+
+class TextEntriesCompanion extends UpdateCompanion<TextEntrie> {
+  final Value<String> data;
+  final Value<int> rowid;
+  const TextEntriesCompanion({
+    this.data = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  TextEntriesCompanion.insert({
+    required String data,
+    this.rowid = const Value.absent(),
+  }) : data = Value(data);
+  static Insertable<TextEntrie> custom({
+    Expression<String>? data,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (data != null) 'data': data,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  TextEntriesCompanion copyWith({Value<String>? data, Value<int>? rowid}) {
+    return TextEntriesCompanion(
+      data: data ?? this.data,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (data.present) {
+      map['data'] = Variable<String>(data.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('TextEntriesCompanion(')
+          ..write('data: $data, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$DataBase extends GeneratedDatabase {
   _$DataBase(QueryExecutor e) : super(e);
   _$DataBase.connect(DatabaseConnection c) : super.connect(c);
   late final $CollectionsTable collections = $CollectionsTable(this);
   late final $RecordsTable records = $RecordsTable(this);
+  late final TextEntries textEntries = TextEntries(this);
+  late final Trigger recordsInsert = Trigger(
+      'CREATE TRIGGER records_insert AFTER INSERT ON records BEGIN INSERT INTO text_entries ("rowid", data) VALUES (new."rowid", new.data);END',
+      'records_insert');
+  late final Trigger recordsDelete = Trigger(
+      'CREATE TRIGGER records_delete AFTER DELETE ON records BEGIN INSERT INTO text_entries (text_entries, "rowid", data) VALUES (\'delete\', old."rowid", old.data);END',
+      'records_delete');
+  late final Trigger recordsUpdate = Trigger(
+      'CREATE TRIGGER records_update AFTER UPDATE ON records BEGIN INSERT INTO text_entries (text_entries, "rowid", data) VALUES (\'delete\', new."rowid", new.data);INSERT INTO text_entries ("rowid", data) VALUES (new."rowid", new.data);END',
+      'records_update');
   late final RecordsDao recordsDao = RecordsDao(this as DataBase);
   late final CollectionsDao collectionsDao = CollectionsDao(this as DataBase);
+  Selectable<SearchResult> _search(String query) {
+    return customSelect(
+        'SELECT"r"."id" AS "nested_0.id", "r"."data" AS "nested_0.data", "r"."collectionId" AS "nested_0.collectionId", "r"."collectionName" AS "nested_0.collectionName", "r"."synced" AS "nested_0.synced", "r"."deleted" AS "nested_0.deleted", "r"."created" AS "nested_0.created", "r"."updated" AS "nested_0.updated" FROM text_entries INNER JOIN records AS r ON r."rowid" = text_entries."rowid" WHERE text_entries MATCH ?1 ORDER BY rank',
+        variables: [
+          Variable<String>(query)
+        ],
+        readsFrom: {
+          textEntries,
+          records,
+        }).asyncMap((QueryRow row) async {
+      return SearchResult(
+        r: await records.mapFromRow(row, tablePrefix: 'nested_0'),
+      );
+    });
+  }
+
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
   @override
-  List<DatabaseSchemaEntity> get allSchemaEntities => [collections, records];
+  List<DatabaseSchemaEntity> get allSchemaEntities => [
+        collections,
+        records,
+        textEntries,
+        recordsInsert,
+        recordsDelete,
+        recordsUpdate
+      ];
+  @override
+  StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules(
+        [
+          WritePropagation(
+            on: TableUpdateQuery.onTableName('Records',
+                limitUpdateKind: UpdateKind.insert),
+            result: [
+              TableUpdate('text_entries', kind: UpdateKind.insert),
+            ],
+          ),
+          WritePropagation(
+            on: TableUpdateQuery.onTableName('Records',
+                limitUpdateKind: UpdateKind.delete),
+            result: [
+              TableUpdate('text_entries', kind: UpdateKind.insert),
+            ],
+          ),
+          WritePropagation(
+            on: TableUpdateQuery.onTableName('Records',
+                limitUpdateKind: UpdateKind.update),
+            result: [
+              TableUpdate('text_entries', kind: UpdateKind.insert),
+            ],
+          ),
+        ],
+      );
+}
+
+class SearchResult {
+  final Record r;
+  SearchResult({
+    required this.r,
+  });
 }
