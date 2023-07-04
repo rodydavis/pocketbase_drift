@@ -1,0 +1,25 @@
+import '../tables.dart';
+
+_allCollections:
+    SELECT * FROM collections;
+
+_getCollection:
+    SELECT * FROM collections
+    WHERE id = :id;
+
+_getCollectionByName:
+    SELECT * FROM collections
+    WHERE name = :name;
+
+_deleteCollection:
+    DELETE FROM collections
+    WHERE id = :id;
+
+_deleteRecordsByCollection:
+    DELETE FROM records
+    WHERE collectionId = :id;
+
+_getCollectionsPaginated:
+    SELECT * FROM collections
+    LIMIT :limit
+    OFFSET :offset;

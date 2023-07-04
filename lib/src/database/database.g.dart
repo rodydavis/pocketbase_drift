@@ -3,6 +3,676 @@
 part of 'database.dart';
 
 // ignore_for_file: type=lint
+class $CollectionsTable extends Collections
+    with TableInfo<$CollectionsTable, Collection> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $CollectionsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+      'id', aliasedName, false,
+      type: DriftSqlType.string,
+      requiredDuringInsert: false,
+      clientDefault: newId);
+  static const VerificationMeta _typeMeta = const VerificationMeta('type');
+  @override
+  late final GeneratedColumn<String> type = GeneratedColumn<String>(
+      'type', aliasedName, false,
+      type: DriftSqlType.string,
+      requiredDuringInsert: false,
+      defaultValue: const Constant('base'));
+  static const VerificationMeta _createdMeta =
+      const VerificationMeta('created');
+  @override
+  late final GeneratedColumn<DateTime> created = GeneratedColumn<DateTime>(
+      'created', aliasedName, false,
+      type: DriftSqlType.dateTime, requiredDuringInsert: true);
+  static const VerificationMeta _updatedMeta =
+      const VerificationMeta('updated');
+  @override
+  late final GeneratedColumn<DateTime> updated = GeneratedColumn<DateTime>(
+      'updated', aliasedName, false,
+      type: DriftSqlType.dateTime, requiredDuringInsert: true);
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+      'name', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _systemMeta = const VerificationMeta('system');
+  @override
+  late final GeneratedColumn<bool> system =
+      GeneratedColumn<bool>('system', aliasedName, false,
+          type: DriftSqlType.bool,
+          requiredDuringInsert: false,
+          defaultConstraints: GeneratedColumn.constraintsDependsOnDialect({
+            SqlDialect.sqlite: 'CHECK ("system" IN (0, 1))',
+            SqlDialect.mysql: '',
+            SqlDialect.postgres: '',
+          }),
+          defaultValue: const Constant(false));
+  static const VerificationMeta _listRuleMeta =
+      const VerificationMeta('listRule');
+  @override
+  late final GeneratedColumn<String> listRule = GeneratedColumn<String>(
+      'listRule', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _viewRuleMeta =
+      const VerificationMeta('viewRule');
+  @override
+  late final GeneratedColumn<String> viewRule = GeneratedColumn<String>(
+      'viewRule', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _createRuleMeta =
+      const VerificationMeta('createRule');
+  @override
+  late final GeneratedColumn<String> createRule = GeneratedColumn<String>(
+      'createRule', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _updateRuleMeta =
+      const VerificationMeta('updateRule');
+  @override
+  late final GeneratedColumn<String> updateRule = GeneratedColumn<String>(
+      'updateRule', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _deleteRuleMeta =
+      const VerificationMeta('deleteRule');
+  @override
+  late final GeneratedColumn<String> deleteRule = GeneratedColumn<String>(
+      'deleteRule', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _schemaMeta = const VerificationMeta('schema');
+  @override
+  late final GeneratedColumnWithTypeConverter<List<SchemaField>, String>
+      schema = GeneratedColumn<String>('schema', aliasedName, false,
+              type: DriftSqlType.string, requiredDuringInsert: true)
+          .withConverter<List<SchemaField>>($CollectionsTable.$converterschema);
+  static const VerificationMeta _indexesMeta =
+      const VerificationMeta('indexes');
+  @override
+  late final GeneratedColumnWithTypeConverter<List<String>, String> indexes =
+      GeneratedColumn<String>('indexes', aliasedName, false,
+              type: DriftSqlType.string, requiredDuringInsert: true)
+          .withConverter<List<String>>($CollectionsTable.$converterindexes);
+  static const VerificationMeta _optionsMeta =
+      const VerificationMeta('options');
+  @override
+  late final GeneratedColumnWithTypeConverter<Map<String, dynamic>, String>
+      options = GeneratedColumn<String>('options', aliasedName, false,
+              type: DriftSqlType.string, requiredDuringInsert: true)
+          .withConverter<Map<String, dynamic>>(
+              $CollectionsTable.$converteroptions);
+  @override
+  List<GeneratedColumn> get $columns => [
+        id,
+        type,
+        created,
+        updated,
+        name,
+        system,
+        listRule,
+        viewRule,
+        createRule,
+        updateRule,
+        deleteRule,
+        schema,
+        indexes,
+        options
+      ];
+  @override
+  String get aliasedName => _alias ?? 'Collections';
+  @override
+  String get actualTableName => 'Collections';
+  @override
+  VerificationContext validateIntegrity(Insertable<Collection> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('type')) {
+      context.handle(
+          _typeMeta, type.isAcceptableOrUnknown(data['type']!, _typeMeta));
+    }
+    if (data.containsKey('created')) {
+      context.handle(_createdMeta,
+          created.isAcceptableOrUnknown(data['created']!, _createdMeta));
+    } else if (isInserting) {
+      context.missing(_createdMeta);
+    }
+    if (data.containsKey('updated')) {
+      context.handle(_updatedMeta,
+          updated.isAcceptableOrUnknown(data['updated']!, _updatedMeta));
+    } else if (isInserting) {
+      context.missing(_updatedMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+          _nameMeta, name.isAcceptableOrUnknown(data['name']!, _nameMeta));
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('system')) {
+      context.handle(_systemMeta,
+          system.isAcceptableOrUnknown(data['system']!, _systemMeta));
+    }
+    if (data.containsKey('listRule')) {
+      context.handle(_listRuleMeta,
+          listRule.isAcceptableOrUnknown(data['listRule']!, _listRuleMeta));
+    }
+    if (data.containsKey('viewRule')) {
+      context.handle(_viewRuleMeta,
+          viewRule.isAcceptableOrUnknown(data['viewRule']!, _viewRuleMeta));
+    }
+    if (data.containsKey('createRule')) {
+      context.handle(
+          _createRuleMeta,
+          createRule.isAcceptableOrUnknown(
+              data['createRule']!, _createRuleMeta));
+    }
+    if (data.containsKey('updateRule')) {
+      context.handle(
+          _updateRuleMeta,
+          updateRule.isAcceptableOrUnknown(
+              data['updateRule']!, _updateRuleMeta));
+    }
+    if (data.containsKey('deleteRule')) {
+      context.handle(
+          _deleteRuleMeta,
+          deleteRule.isAcceptableOrUnknown(
+              data['deleteRule']!, _deleteRuleMeta));
+    }
+    context.handle(_schemaMeta, const VerificationResult.success());
+    context.handle(_indexesMeta, const VerificationResult.success());
+    context.handle(_optionsMeta, const VerificationResult.success());
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  Collection map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return Collection(
+      id: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}id'])!,
+      type: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}type'])!,
+      created: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}created'])!,
+      updated: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}updated'])!,
+      name: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}name'])!,
+      system: attachedDatabase.typeMapping
+          .read(DriftSqlType.bool, data['${effectivePrefix}system'])!,
+      listRule: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}listRule']),
+      viewRule: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}viewRule']),
+      createRule: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}createRule']),
+      updateRule: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}updateRule']),
+      deleteRule: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}deleteRule']),
+      schema: $CollectionsTable.$converterschema.fromSql(attachedDatabase
+          .typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}schema'])!),
+      indexes: $CollectionsTable.$converterindexes.fromSql(attachedDatabase
+          .typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}indexes'])!),
+      options: $CollectionsTable.$converteroptions.fromSql(attachedDatabase
+          .typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}options'])!),
+    );
+  }
+
+  @override
+  $CollectionsTable createAlias(String alias) {
+    return $CollectionsTable(attachedDatabase, alias);
+  }
+
+  static TypeConverter<List<SchemaField>, String> $converterschema =
+      const SchemaFieldListMapper();
+  static TypeConverter<List<String>, String> $converterindexes =
+      const StringListMapper();
+  static TypeConverter<Map<String, dynamic>, String> $converteroptions =
+      const JsonMapper();
+}
+
+class Collection extends DataClass implements Insertable<Collection> {
+  final String id;
+  final String type;
+  final DateTime created;
+  final DateTime updated;
+  final String name;
+  final bool system;
+  final String? listRule;
+  final String? viewRule;
+  final String? createRule;
+  final String? updateRule;
+  final String? deleteRule;
+  final List<SchemaField> schema;
+  final List<String> indexes;
+  final Map<String, dynamic> options;
+  const Collection(
+      {required this.id,
+      required this.type,
+      required this.created,
+      required this.updated,
+      required this.name,
+      required this.system,
+      this.listRule,
+      this.viewRule,
+      this.createRule,
+      this.updateRule,
+      this.deleteRule,
+      required this.schema,
+      required this.indexes,
+      required this.options});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['type'] = Variable<String>(type);
+    map['created'] = Variable<DateTime>(created);
+    map['updated'] = Variable<DateTime>(updated);
+    map['name'] = Variable<String>(name);
+    map['system'] = Variable<bool>(system);
+    if (!nullToAbsent || listRule != null) {
+      map['listRule'] = Variable<String>(listRule);
+    }
+    if (!nullToAbsent || viewRule != null) {
+      map['viewRule'] = Variable<String>(viewRule);
+    }
+    if (!nullToAbsent || createRule != null) {
+      map['createRule'] = Variable<String>(createRule);
+    }
+    if (!nullToAbsent || updateRule != null) {
+      map['updateRule'] = Variable<String>(updateRule);
+    }
+    if (!nullToAbsent || deleteRule != null) {
+      map['deleteRule'] = Variable<String>(deleteRule);
+    }
+    {
+      final converter = $CollectionsTable.$converterschema;
+      map['schema'] = Variable<String>(converter.toSql(schema));
+    }
+    {
+      final converter = $CollectionsTable.$converterindexes;
+      map['indexes'] = Variable<String>(converter.toSql(indexes));
+    }
+    {
+      final converter = $CollectionsTable.$converteroptions;
+      map['options'] = Variable<String>(converter.toSql(options));
+    }
+    return map;
+  }
+
+  CollectionsCompanion toCompanion(bool nullToAbsent) {
+    return CollectionsCompanion(
+      id: Value(id),
+      type: Value(type),
+      created: Value(created),
+      updated: Value(updated),
+      name: Value(name),
+      system: Value(system),
+      listRule: listRule == null && nullToAbsent
+          ? const Value.absent()
+          : Value(listRule),
+      viewRule: viewRule == null && nullToAbsent
+          ? const Value.absent()
+          : Value(viewRule),
+      createRule: createRule == null && nullToAbsent
+          ? const Value.absent()
+          : Value(createRule),
+      updateRule: updateRule == null && nullToAbsent
+          ? const Value.absent()
+          : Value(updateRule),
+      deleteRule: deleteRule == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deleteRule),
+      schema: Value(schema),
+      indexes: Value(indexes),
+      options: Value(options),
+    );
+  }
+
+  factory Collection.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return Collection(
+      id: serializer.fromJson<String>(json['id']),
+      type: serializer.fromJson<String>(json['type']),
+      created: serializer.fromJson<DateTime>(json['created']),
+      updated: serializer.fromJson<DateTime>(json['updated']),
+      name: serializer.fromJson<String>(json['name']),
+      system: serializer.fromJson<bool>(json['system']),
+      listRule: serializer.fromJson<String?>(json['listRule']),
+      viewRule: serializer.fromJson<String?>(json['viewRule']),
+      createRule: serializer.fromJson<String?>(json['createRule']),
+      updateRule: serializer.fromJson<String?>(json['updateRule']),
+      deleteRule: serializer.fromJson<String?>(json['deleteRule']),
+      schema: serializer.fromJson<List<SchemaField>>(json['schema']),
+      indexes: serializer.fromJson<List<String>>(json['indexes']),
+      options: serializer.fromJson<Map<String, dynamic>>(json['options']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'type': serializer.toJson<String>(type),
+      'created': serializer.toJson<DateTime>(created),
+      'updated': serializer.toJson<DateTime>(updated),
+      'name': serializer.toJson<String>(name),
+      'system': serializer.toJson<bool>(system),
+      'listRule': serializer.toJson<String?>(listRule),
+      'viewRule': serializer.toJson<String?>(viewRule),
+      'createRule': serializer.toJson<String?>(createRule),
+      'updateRule': serializer.toJson<String?>(updateRule),
+      'deleteRule': serializer.toJson<String?>(deleteRule),
+      'schema': serializer.toJson<List<SchemaField>>(schema),
+      'indexes': serializer.toJson<List<String>>(indexes),
+      'options': serializer.toJson<Map<String, dynamic>>(options),
+    };
+  }
+
+  Collection copyWith(
+          {String? id,
+          String? type,
+          DateTime? created,
+          DateTime? updated,
+          String? name,
+          bool? system,
+          Value<String?> listRule = const Value.absent(),
+          Value<String?> viewRule = const Value.absent(),
+          Value<String?> createRule = const Value.absent(),
+          Value<String?> updateRule = const Value.absent(),
+          Value<String?> deleteRule = const Value.absent(),
+          List<SchemaField>? schema,
+          List<String>? indexes,
+          Map<String, dynamic>? options}) =>
+      Collection(
+        id: id ?? this.id,
+        type: type ?? this.type,
+        created: created ?? this.created,
+        updated: updated ?? this.updated,
+        name: name ?? this.name,
+        system: system ?? this.system,
+        listRule: listRule.present ? listRule.value : this.listRule,
+        viewRule: viewRule.present ? viewRule.value : this.viewRule,
+        createRule: createRule.present ? createRule.value : this.createRule,
+        updateRule: updateRule.present ? updateRule.value : this.updateRule,
+        deleteRule: deleteRule.present ? deleteRule.value : this.deleteRule,
+        schema: schema ?? this.schema,
+        indexes: indexes ?? this.indexes,
+        options: options ?? this.options,
+      );
+  @override
+  String toString() {
+    return (StringBuffer('Collection(')
+          ..write('id: $id, ')
+          ..write('type: $type, ')
+          ..write('created: $created, ')
+          ..write('updated: $updated, ')
+          ..write('name: $name, ')
+          ..write('system: $system, ')
+          ..write('listRule: $listRule, ')
+          ..write('viewRule: $viewRule, ')
+          ..write('createRule: $createRule, ')
+          ..write('updateRule: $updateRule, ')
+          ..write('deleteRule: $deleteRule, ')
+          ..write('schema: $schema, ')
+          ..write('indexes: $indexes, ')
+          ..write('options: $options')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+      id,
+      type,
+      created,
+      updated,
+      name,
+      system,
+      listRule,
+      viewRule,
+      createRule,
+      updateRule,
+      deleteRule,
+      schema,
+      indexes,
+      options);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is Collection &&
+          other.id == this.id &&
+          other.type == this.type &&
+          other.created == this.created &&
+          other.updated == this.updated &&
+          other.name == this.name &&
+          other.system == this.system &&
+          other.listRule == this.listRule &&
+          other.viewRule == this.viewRule &&
+          other.createRule == this.createRule &&
+          other.updateRule == this.updateRule &&
+          other.deleteRule == this.deleteRule &&
+          other.schema == this.schema &&
+          other.indexes == this.indexes &&
+          other.options == this.options);
+}
+
+class CollectionsCompanion extends UpdateCompanion<Collection> {
+  final Value<String> id;
+  final Value<String> type;
+  final Value<DateTime> created;
+  final Value<DateTime> updated;
+  final Value<String> name;
+  final Value<bool> system;
+  final Value<String?> listRule;
+  final Value<String?> viewRule;
+  final Value<String?> createRule;
+  final Value<String?> updateRule;
+  final Value<String?> deleteRule;
+  final Value<List<SchemaField>> schema;
+  final Value<List<String>> indexes;
+  final Value<Map<String, dynamic>> options;
+  final Value<int> rowid;
+  const CollectionsCompanion({
+    this.id = const Value.absent(),
+    this.type = const Value.absent(),
+    this.created = const Value.absent(),
+    this.updated = const Value.absent(),
+    this.name = const Value.absent(),
+    this.system = const Value.absent(),
+    this.listRule = const Value.absent(),
+    this.viewRule = const Value.absent(),
+    this.createRule = const Value.absent(),
+    this.updateRule = const Value.absent(),
+    this.deleteRule = const Value.absent(),
+    this.schema = const Value.absent(),
+    this.indexes = const Value.absent(),
+    this.options = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  CollectionsCompanion.insert({
+    this.id = const Value.absent(),
+    this.type = const Value.absent(),
+    required DateTime created,
+    required DateTime updated,
+    required String name,
+    this.system = const Value.absent(),
+    this.listRule = const Value.absent(),
+    this.viewRule = const Value.absent(),
+    this.createRule = const Value.absent(),
+    this.updateRule = const Value.absent(),
+    this.deleteRule = const Value.absent(),
+    required List<SchemaField> schema,
+    required List<String> indexes,
+    required Map<String, dynamic> options,
+    this.rowid = const Value.absent(),
+  })  : created = Value(created),
+        updated = Value(updated),
+        name = Value(name),
+        schema = Value(schema),
+        indexes = Value(indexes),
+        options = Value(options);
+  static Insertable<Collection> custom({
+    Expression<String>? id,
+    Expression<String>? type,
+    Expression<DateTime>? created,
+    Expression<DateTime>? updated,
+    Expression<String>? name,
+    Expression<bool>? system,
+    Expression<String>? listRule,
+    Expression<String>? viewRule,
+    Expression<String>? createRule,
+    Expression<String>? updateRule,
+    Expression<String>? deleteRule,
+    Expression<String>? schema,
+    Expression<String>? indexes,
+    Expression<String>? options,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (type != null) 'type': type,
+      if (created != null) 'created': created,
+      if (updated != null) 'updated': updated,
+      if (name != null) 'name': name,
+      if (system != null) 'system': system,
+      if (listRule != null) 'listRule': listRule,
+      if (viewRule != null) 'viewRule': viewRule,
+      if (createRule != null) 'createRule': createRule,
+      if (updateRule != null) 'updateRule': updateRule,
+      if (deleteRule != null) 'deleteRule': deleteRule,
+      if (schema != null) 'schema': schema,
+      if (indexes != null) 'indexes': indexes,
+      if (options != null) 'options': options,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  CollectionsCompanion copyWith(
+      {Value<String>? id,
+      Value<String>? type,
+      Value<DateTime>? created,
+      Value<DateTime>? updated,
+      Value<String>? name,
+      Value<bool>? system,
+      Value<String?>? listRule,
+      Value<String?>? viewRule,
+      Value<String?>? createRule,
+      Value<String?>? updateRule,
+      Value<String?>? deleteRule,
+      Value<List<SchemaField>>? schema,
+      Value<List<String>>? indexes,
+      Value<Map<String, dynamic>>? options,
+      Value<int>? rowid}) {
+    return CollectionsCompanion(
+      id: id ?? this.id,
+      type: type ?? this.type,
+      created: created ?? this.created,
+      updated: updated ?? this.updated,
+      name: name ?? this.name,
+      system: system ?? this.system,
+      listRule: listRule ?? this.listRule,
+      viewRule: viewRule ?? this.viewRule,
+      createRule: createRule ?? this.createRule,
+      updateRule: updateRule ?? this.updateRule,
+      deleteRule: deleteRule ?? this.deleteRule,
+      schema: schema ?? this.schema,
+      indexes: indexes ?? this.indexes,
+      options: options ?? this.options,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (type.present) {
+      map['type'] = Variable<String>(type.value);
+    }
+    if (created.present) {
+      map['created'] = Variable<DateTime>(created.value);
+    }
+    if (updated.present) {
+      map['updated'] = Variable<DateTime>(updated.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (system.present) {
+      map['system'] = Variable<bool>(system.value);
+    }
+    if (listRule.present) {
+      map['listRule'] = Variable<String>(listRule.value);
+    }
+    if (viewRule.present) {
+      map['viewRule'] = Variable<String>(viewRule.value);
+    }
+    if (createRule.present) {
+      map['createRule'] = Variable<String>(createRule.value);
+    }
+    if (updateRule.present) {
+      map['updateRule'] = Variable<String>(updateRule.value);
+    }
+    if (deleteRule.present) {
+      map['deleteRule'] = Variable<String>(deleteRule.value);
+    }
+    if (schema.present) {
+      final converter = $CollectionsTable.$converterschema;
+      map['schema'] = Variable<String>(converter.toSql(schema.value));
+    }
+    if (indexes.present) {
+      final converter = $CollectionsTable.$converterindexes;
+      map['indexes'] = Variable<String>(converter.toSql(indexes.value));
+    }
+    if (options.present) {
+      final converter = $CollectionsTable.$converteroptions;
+      map['options'] = Variable<String>(converter.toSql(options.value));
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CollectionsCompanion(')
+          ..write('id: $id, ')
+          ..write('type: $type, ')
+          ..write('created: $created, ')
+          ..write('updated: $updated, ')
+          ..write('name: $name, ')
+          ..write('system: $system, ')
+          ..write('listRule: $listRule, ')
+          ..write('viewRule: $viewRule, ')
+          ..write('createRule: $createRule, ')
+          ..write('updateRule: $updateRule, ')
+          ..write('deleteRule: $deleteRule, ')
+          ..write('schema: $schema, ')
+          ..write('indexes: $indexes, ')
+          ..write('options: $options, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $RecordsTable extends Records with TableInfo<$RecordsTable, Record> {
   @override
   final GeneratedDatabase attachedDatabase;
@@ -10,36 +680,35 @@ class $RecordsTable extends Records with TableInfo<$RecordsTable, Record> {
   $RecordsTable(this.attachedDatabase, [this._alias]);
   static const VerificationMeta _idMeta = const VerificationMeta('id');
   @override
-  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
       'id', aliasedName, false,
-      hasAutoIncrement: true,
-      type: DriftSqlType.int,
+      type: DriftSqlType.string,
       requiredDuringInsert: false,
-      defaultConstraints:
-          GeneratedColumn.constraintIsAlways('PRIMARY KEY AUTOINCREMENT'));
-  static const VerificationMeta _rowIdMeta = const VerificationMeta('rowId');
-  @override
-  late final GeneratedColumn<String> rowId = GeneratedColumn<String>(
-      'row_id', aliasedName, false,
-      type: DriftSqlType.string, requiredDuringInsert: true);
-  static const VerificationMeta _collectionIdMeta =
-      const VerificationMeta('collectionId');
-  @override
-  late final GeneratedColumn<String> collectionId = GeneratedColumn<String>(
-      'collection_id', aliasedName, false,
-      type: DriftSqlType.string, requiredDuringInsert: true);
-  static const VerificationMeta _collectionNameMeta =
-      const VerificationMeta('collectionName');
-  @override
-  late final GeneratedColumn<String> collectionName = GeneratedColumn<String>(
-      'collection_name', aliasedName, false,
-      type: DriftSqlType.string, requiredDuringInsert: true);
+      clientDefault: newId);
   static const VerificationMeta _dataMeta = const VerificationMeta('data');
   @override
   late final GeneratedColumnWithTypeConverter<Map<String, dynamic>, String>
       data = GeneratedColumn<String>('data', aliasedName, false,
               type: DriftSqlType.string, requiredDuringInsert: true)
           .withConverter<Map<String, dynamic>>($RecordsTable.$converterdata);
+  static const VerificationMeta _collectionIdMeta =
+      const VerificationMeta('collectionId');
+  @override
+  late final GeneratedColumn<String> collectionId = GeneratedColumn<String>(
+      'collectionId', aliasedName, false,
+      type: DriftSqlType.string,
+      requiredDuringInsert: true,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('REFERENCES Collections (id)'));
+  static const VerificationMeta _collectionNameMeta =
+      const VerificationMeta('collectionName');
+  @override
+  late final GeneratedColumn<String> collectionName = GeneratedColumn<String>(
+      'collectionName', aliasedName, false,
+      type: DriftSqlType.string,
+      requiredDuringInsert: true,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('REFERENCES Collections (name)'));
   static const VerificationMeta _syncedMeta = const VerificationMeta('synced');
   @override
   late final GeneratedColumn<bool> synced =
@@ -78,19 +747,18 @@ class $RecordsTable extends Records with TableInfo<$RecordsTable, Record> {
   @override
   List<GeneratedColumn> get $columns => [
         id,
-        rowId,
+        data,
         collectionId,
         collectionName,
-        data,
         synced,
         deleted,
         created,
         updated
       ];
   @override
-  String get aliasedName => _alias ?? 'records';
+  String get aliasedName => _alias ?? 'Records';
   @override
-  String get actualTableName => 'records';
+  String get actualTableName => 'Records';
   @override
   VerificationContext validateIntegrity(Insertable<Record> instance,
       {bool isInserting = false}) {
@@ -99,29 +767,23 @@ class $RecordsTable extends Records with TableInfo<$RecordsTable, Record> {
     if (data.containsKey('id')) {
       context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
     }
-    if (data.containsKey('row_id')) {
-      context.handle(
-          _rowIdMeta, rowId.isAcceptableOrUnknown(data['row_id']!, _rowIdMeta));
-    } else if (isInserting) {
-      context.missing(_rowIdMeta);
-    }
-    if (data.containsKey('collection_id')) {
+    context.handle(_dataMeta, const VerificationResult.success());
+    if (data.containsKey('collectionId')) {
       context.handle(
           _collectionIdMeta,
           collectionId.isAcceptableOrUnknown(
-              data['collection_id']!, _collectionIdMeta));
+              data['collectionId']!, _collectionIdMeta));
     } else if (isInserting) {
       context.missing(_collectionIdMeta);
     }
-    if (data.containsKey('collection_name')) {
+    if (data.containsKey('collectionName')) {
       context.handle(
           _collectionNameMeta,
           collectionName.isAcceptableOrUnknown(
-              data['collection_name']!, _collectionNameMeta));
+              data['collectionName']!, _collectionNameMeta));
     } else if (isInserting) {
       context.missing(_collectionNameMeta);
     }
-    context.handle(_dataMeta, const VerificationResult.success());
     if (data.containsKey('synced')) {
       context.handle(_syncedMeta,
           synced.isAcceptableOrUnknown(data['synced']!, _syncedMeta));
@@ -146,25 +808,19 @@ class $RecordsTable extends Records with TableInfo<$RecordsTable, Record> {
   }
 
   @override
-  Set<GeneratedColumn> get $primaryKey => {id};
-  @override
-  List<Set<GeneratedColumn>> get uniqueKeys => [
-        {collectionId, rowId},
-      ];
+  Set<GeneratedColumn> get $primaryKey => {id, collectionId};
   @override
   Record map(Map<String, dynamic> data, {String? tablePrefix}) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
     return Record(
       id: attachedDatabase.typeMapping
-          .read(DriftSqlType.int, data['${effectivePrefix}id'])!,
-      rowId: attachedDatabase.typeMapping
-          .read(DriftSqlType.string, data['${effectivePrefix}row_id'])!,
-      collectionId: attachedDatabase.typeMapping
-          .read(DriftSqlType.string, data['${effectivePrefix}collection_id'])!,
-      collectionName: attachedDatabase.typeMapping.read(
-          DriftSqlType.string, data['${effectivePrefix}collection_name'])!,
+          .read(DriftSqlType.string, data['${effectivePrefix}id'])!,
       data: $RecordsTable.$converterdata.fromSql(attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}data'])!),
+      collectionId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}collectionId'])!,
+      collectionName: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}collectionName'])!,
       synced: attachedDatabase.typeMapping
           .read(DriftSqlType.bool, data['${effectivePrefix}synced']),
       deleted: attachedDatabase.typeMapping
@@ -186,21 +842,19 @@ class $RecordsTable extends Records with TableInfo<$RecordsTable, Record> {
 }
 
 class Record extends DataClass implements Insertable<Record> {
-  final int id;
-  final String rowId;
+  final String id;
+  final Map<String, dynamic> data;
   final String collectionId;
   final String collectionName;
-  final Map<String, dynamic> data;
   final bool? synced;
   final bool? deleted;
   final DateTime created;
   final DateTime updated;
   const Record(
       {required this.id,
-      required this.rowId,
+      required this.data,
       required this.collectionId,
       required this.collectionName,
-      required this.data,
       this.synced,
       this.deleted,
       required this.created,
@@ -208,14 +862,13 @@ class Record extends DataClass implements Insertable<Record> {
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
-    map['id'] = Variable<int>(id);
-    map['row_id'] = Variable<String>(rowId);
-    map['collection_id'] = Variable<String>(collectionId);
-    map['collection_name'] = Variable<String>(collectionName);
+    map['id'] = Variable<String>(id);
     {
       final converter = $RecordsTable.$converterdata;
       map['data'] = Variable<String>(converter.toSql(data));
     }
+    map['collectionId'] = Variable<String>(collectionId);
+    map['collectionName'] = Variable<String>(collectionName);
     if (!nullToAbsent || synced != null) {
       map['synced'] = Variable<bool>(synced);
     }
@@ -230,10 +883,9 @@ class Record extends DataClass implements Insertable<Record> {
   RecordsCompanion toCompanion(bool nullToAbsent) {
     return RecordsCompanion(
       id: Value(id),
-      rowId: Value(rowId),
+      data: Value(data),
       collectionId: Value(collectionId),
       collectionName: Value(collectionName),
-      data: Value(data),
       synced:
           synced == null && nullToAbsent ? const Value.absent() : Value(synced),
       deleted: deleted == null && nullToAbsent
@@ -248,11 +900,10 @@ class Record extends DataClass implements Insertable<Record> {
       {ValueSerializer? serializer}) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return Record(
-      id: serializer.fromJson<int>(json['id']),
-      rowId: serializer.fromJson<String>(json['rowId']),
+      id: serializer.fromJson<String>(json['id']),
+      data: serializer.fromJson<Map<String, dynamic>>(json['data']),
       collectionId: serializer.fromJson<String>(json['collectionId']),
       collectionName: serializer.fromJson<String>(json['collectionName']),
-      data: serializer.fromJson<Map<String, dynamic>>(json['data']),
       synced: serializer.fromJson<bool?>(json['synced']),
       deleted: serializer.fromJson<bool?>(json['deleted']),
       created: serializer.fromJson<DateTime>(json['created']),
@@ -263,11 +914,10 @@ class Record extends DataClass implements Insertable<Record> {
   Map<String, dynamic> toJson({ValueSerializer? serializer}) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
-      'id': serializer.toJson<int>(id),
-      'rowId': serializer.toJson<String>(rowId),
+      'id': serializer.toJson<String>(id),
+      'data': serializer.toJson<Map<String, dynamic>>(data),
       'collectionId': serializer.toJson<String>(collectionId),
       'collectionName': serializer.toJson<String>(collectionName),
-      'data': serializer.toJson<Map<String, dynamic>>(data),
       'synced': serializer.toJson<bool?>(synced),
       'deleted': serializer.toJson<bool?>(deleted),
       'created': serializer.toJson<DateTime>(created),
@@ -276,21 +926,19 @@ class Record extends DataClass implements Insertable<Record> {
   }
 
   Record copyWith(
-          {int? id,
-          String? rowId,
+          {String? id,
+          Map<String, dynamic>? data,
           String? collectionId,
           String? collectionName,
-          Map<String, dynamic>? data,
           Value<bool?> synced = const Value.absent(),
           Value<bool?> deleted = const Value.absent(),
           DateTime? created,
           DateTime? updated}) =>
       Record(
         id: id ?? this.id,
-        rowId: rowId ?? this.rowId,
+        data: data ?? this.data,
         collectionId: collectionId ?? this.collectionId,
         collectionName: collectionName ?? this.collectionName,
-        data: data ?? this.data,
         synced: synced.present ? synced.value : this.synced,
         deleted: deleted.present ? deleted.value : this.deleted,
         created: created ?? this.created,
@@ -300,10 +948,9 @@ class Record extends DataClass implements Insertable<Record> {
   String toString() {
     return (StringBuffer('Record(')
           ..write('id: $id, ')
-          ..write('rowId: $rowId, ')
+          ..write('data: $data, ')
           ..write('collectionId: $collectionId, ')
           ..write('collectionName: $collectionName, ')
-          ..write('data: $data, ')
           ..write('synced: $synced, ')
           ..write('deleted: $deleted, ')
           ..write('created: $created, ')
@@ -313,17 +960,16 @@ class Record extends DataClass implements Insertable<Record> {
   }
 
   @override
-  int get hashCode => Object.hash(id, rowId, collectionId, collectionName, data,
+  int get hashCode => Object.hash(id, data, collectionId, collectionName,
       synced, deleted, created, updated);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is Record &&
           other.id == this.id &&
-          other.rowId == this.rowId &&
+          other.data == this.data &&
           other.collectionId == this.collectionId &&
           other.collectionName == this.collectionName &&
-          other.data == this.data &&
           other.synced == this.synced &&
           other.deleted == this.deleted &&
           other.created == this.created &&
@@ -331,86 +977,85 @@ class Record extends DataClass implements Insertable<Record> {
 }
 
 class RecordsCompanion extends UpdateCompanion<Record> {
-  final Value<int> id;
-  final Value<String> rowId;
+  final Value<String> id;
+  final Value<Map<String, dynamic>> data;
   final Value<String> collectionId;
   final Value<String> collectionName;
-  final Value<Map<String, dynamic>> data;
   final Value<bool?> synced;
   final Value<bool?> deleted;
   final Value<DateTime> created;
   final Value<DateTime> updated;
+  final Value<int> rowid;
   const RecordsCompanion({
     this.id = const Value.absent(),
-    this.rowId = const Value.absent(),
+    this.data = const Value.absent(),
     this.collectionId = const Value.absent(),
     this.collectionName = const Value.absent(),
-    this.data = const Value.absent(),
     this.synced = const Value.absent(),
     this.deleted = const Value.absent(),
     this.created = const Value.absent(),
     this.updated = const Value.absent(),
+    this.rowid = const Value.absent(),
   });
   RecordsCompanion.insert({
     this.id = const Value.absent(),
-    required String rowId,
+    required Map<String, dynamic> data,
     required String collectionId,
     required String collectionName,
-    required Map<String, dynamic> data,
     this.synced = const Value.absent(),
     this.deleted = const Value.absent(),
     required DateTime created,
     required DateTime updated,
-  })  : rowId = Value(rowId),
+    this.rowid = const Value.absent(),
+  })  : data = Value(data),
         collectionId = Value(collectionId),
         collectionName = Value(collectionName),
-        data = Value(data),
         created = Value(created),
         updated = Value(updated);
   static Insertable<Record> custom({
-    Expression<int>? id,
-    Expression<String>? rowId,
+    Expression<String>? id,
+    Expression<String>? data,
     Expression<String>? collectionId,
     Expression<String>? collectionName,
-    Expression<String>? data,
     Expression<bool>? synced,
     Expression<bool>? deleted,
     Expression<DateTime>? created,
     Expression<DateTime>? updated,
+    Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
-      if (rowId != null) 'row_id': rowId,
-      if (collectionId != null) 'collection_id': collectionId,
-      if (collectionName != null) 'collection_name': collectionName,
       if (data != null) 'data': data,
+      if (collectionId != null) 'collectionId': collectionId,
+      if (collectionName != null) 'collectionName': collectionName,
       if (synced != null) 'synced': synced,
       if (deleted != null) 'deleted': deleted,
       if (created != null) 'created': created,
       if (updated != null) 'updated': updated,
+      if (rowid != null) 'rowid': rowid,
     });
   }
 
   RecordsCompanion copyWith(
-      {Value<int>? id,
-      Value<String>? rowId,
+      {Value<String>? id,
+      Value<Map<String, dynamic>>? data,
       Value<String>? collectionId,
       Value<String>? collectionName,
-      Value<Map<String, dynamic>>? data,
       Value<bool?>? synced,
       Value<bool?>? deleted,
       Value<DateTime>? created,
-      Value<DateTime>? updated}) {
+      Value<DateTime>? updated,
+      Value<int>? rowid}) {
     return RecordsCompanion(
       id: id ?? this.id,
-      rowId: rowId ?? this.rowId,
+      data: data ?? this.data,
       collectionId: collectionId ?? this.collectionId,
       collectionName: collectionName ?? this.collectionName,
-      data: data ?? this.data,
       synced: synced ?? this.synced,
       deleted: deleted ?? this.deleted,
       created: created ?? this.created,
       updated: updated ?? this.updated,
+      rowid: rowid ?? this.rowid,
     );
   }
 
@@ -418,20 +1063,17 @@ class RecordsCompanion extends UpdateCompanion<Record> {
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     if (id.present) {
-      map['id'] = Variable<int>(id.value);
-    }
-    if (rowId.present) {
-      map['row_id'] = Variable<String>(rowId.value);
-    }
-    if (collectionId.present) {
-      map['collection_id'] = Variable<String>(collectionId.value);
-    }
-    if (collectionName.present) {
-      map['collection_name'] = Variable<String>(collectionName.value);
+      map['id'] = Variable<String>(id.value);
     }
     if (data.present) {
       final converter = $RecordsTable.$converterdata;
       map['data'] = Variable<String>(converter.toSql(data.value));
+    }
+    if (collectionId.present) {
+      map['collectionId'] = Variable<String>(collectionId.value);
+    }
+    if (collectionName.present) {
+      map['collectionName'] = Variable<String>(collectionName.value);
     }
     if (synced.present) {
       map['synced'] = Variable<bool>(synced.value);
@@ -445,166 +1087,6 @@ class RecordsCompanion extends UpdateCompanion<Record> {
     if (updated.present) {
       map['updated'] = Variable<DateTime>(updated.value);
     }
-    return map;
-  }
-
-  @override
-  String toString() {
-    return (StringBuffer('RecordsCompanion(')
-          ..write('id: $id, ')
-          ..write('rowId: $rowId, ')
-          ..write('collectionId: $collectionId, ')
-          ..write('collectionName: $collectionName, ')
-          ..write('data: $data, ')
-          ..write('synced: $synced, ')
-          ..write('deleted: $deleted, ')
-          ..write('created: $created, ')
-          ..write('updated: $updated')
-          ..write(')'))
-        .toString();
-  }
-}
-
-class TextEntries extends Table
-    with
-        TableInfo<TextEntries, TextEntrie>,
-        VirtualTableInfo<TextEntries, TextEntrie> {
-  @override
-  final GeneratedDatabase attachedDatabase;
-  final String? _alias;
-  TextEntries(this.attachedDatabase, [this._alias]);
-  static const VerificationMeta _dataMeta = const VerificationMeta('data');
-  late final GeneratedColumn<String> data = GeneratedColumn<String>(
-      'data', aliasedName, false,
-      type: DriftSqlType.string,
-      requiredDuringInsert: true,
-      $customConstraints: '');
-  @override
-  List<GeneratedColumn> get $columns => [data];
-  @override
-  String get aliasedName => _alias ?? 'text_entries';
-  @override
-  String get actualTableName => 'text_entries';
-  @override
-  VerificationContext validateIntegrity(Insertable<TextEntrie> instance,
-      {bool isInserting = false}) {
-    final context = VerificationContext();
-    final data = instance.toColumns(true);
-    if (data.containsKey('data')) {
-      context.handle(
-          _dataMeta, this.data.isAcceptableOrUnknown(data['data']!, _dataMeta));
-    } else if (isInserting) {
-      context.missing(_dataMeta);
-    }
-    return context;
-  }
-
-  @override
-  Set<GeneratedColumn> get $primaryKey => const {};
-  @override
-  TextEntrie map(Map<String, dynamic> data, {String? tablePrefix}) {
-    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
-    return TextEntrie(
-      data: attachedDatabase.typeMapping
-          .read(DriftSqlType.string, data['${effectivePrefix}data'])!,
-    );
-  }
-
-  @override
-  TextEntries createAlias(String alias) {
-    return TextEntries(attachedDatabase, alias);
-  }
-
-  @override
-  bool get dontWriteConstraints => true;
-  @override
-  String get moduleAndArgs => 'fts5(data, content=records, content_rowid=id)';
-}
-
-class TextEntrie extends DataClass implements Insertable<TextEntrie> {
-  final String data;
-  const TextEntrie({required this.data});
-  @override
-  Map<String, Expression> toColumns(bool nullToAbsent) {
-    final map = <String, Expression>{};
-    map['data'] = Variable<String>(data);
-    return map;
-  }
-
-  TextEntriesCompanion toCompanion(bool nullToAbsent) {
-    return TextEntriesCompanion(
-      data: Value(data),
-    );
-  }
-
-  factory TextEntrie.fromJson(Map<String, dynamic> json,
-      {ValueSerializer? serializer}) {
-    serializer ??= driftRuntimeOptions.defaultSerializer;
-    return TextEntrie(
-      data: serializer.fromJson<String>(json['data']),
-    );
-  }
-  @override
-  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
-    serializer ??= driftRuntimeOptions.defaultSerializer;
-    return <String, dynamic>{
-      'data': serializer.toJson<String>(data),
-    };
-  }
-
-  TextEntrie copyWith({String? data}) => TextEntrie(
-        data: data ?? this.data,
-      );
-  @override
-  String toString() {
-    return (StringBuffer('TextEntrie(')
-          ..write('data: $data')
-          ..write(')'))
-        .toString();
-  }
-
-  @override
-  int get hashCode => data.hashCode;
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      (other is TextEntrie && other.data == this.data);
-}
-
-class TextEntriesCompanion extends UpdateCompanion<TextEntrie> {
-  final Value<String> data;
-  final Value<int> rowid;
-  const TextEntriesCompanion({
-    this.data = const Value.absent(),
-    this.rowid = const Value.absent(),
-  });
-  TextEntriesCompanion.insert({
-    required String data,
-    this.rowid = const Value.absent(),
-  }) : data = Value(data);
-  static Insertable<TextEntrie> custom({
-    Expression<String>? data,
-    Expression<int>? rowid,
-  }) {
-    return RawValuesInsertable({
-      if (data != null) 'data': data,
-      if (rowid != null) 'rowid': rowid,
-    });
-  }
-
-  TextEntriesCompanion copyWith({Value<String>? data, Value<int>? rowid}) {
-    return TextEntriesCompanion(
-      data: data ?? this.data,
-      rowid: rowid ?? this.rowid,
-    );
-  }
-
-  @override
-  Map<String, Expression> toColumns(bool nullToAbsent) {
-    final map = <String, Expression>{};
-    if (data.present) {
-      map['data'] = Variable<String>(data.value);
-    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -613,8 +1095,15 @@ class TextEntriesCompanion extends UpdateCompanion<TextEntrie> {
 
   @override
   String toString() {
-    return (StringBuffer('TextEntriesCompanion(')
+    return (StringBuffer('RecordsCompanion(')
+          ..write('id: $id, ')
           ..write('data: $data, ')
+          ..write('collectionId: $collectionId, ')
+          ..write('collectionName: $collectionName, ')
+          ..write('synced: $synced, ')
+          ..write('deleted: $deleted, ')
+          ..write('created: $created, ')
+          ..write('updated: $updated, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -624,70 +1113,13 @@ class TextEntriesCompanion extends UpdateCompanion<TextEntrie> {
 abstract class _$DataBase extends GeneratedDatabase {
   _$DataBase(QueryExecutor e) : super(e);
   _$DataBase.connect(DatabaseConnection c) : super.connect(c);
+  late final $CollectionsTable collections = $CollectionsTable(this);
   late final $RecordsTable records = $RecordsTable(this);
-  late final TextEntries textEntries = TextEntries(this);
-  late final Trigger recordsInsert = Trigger(
-      'CREATE TRIGGER records_insert AFTER INSERT ON records BEGIN INSERT INTO text_entries ("rowid", data) VALUES (new.id, new.data);END',
-      'records_insert');
-  late final Trigger recordsDelete = Trigger(
-      'CREATE TRIGGER records_delete AFTER DELETE ON records BEGIN INSERT INTO text_entries (text_entries, "rowid", data) VALUES (\'delete\', old.id, old.data);END',
-      'records_delete');
-  late final Trigger recordsUpdate = Trigger(
-      'CREATE TRIGGER records_update AFTER UPDATE ON records BEGIN INSERT INTO text_entries (text_entries, "rowid", data) VALUES (\'delete\', new.id, new.data);INSERT INTO text_entries ("rowid", data) VALUES (new.id, new.data);END',
-      'records_update');
-  Selectable<SearchResult> _search(String query) {
-    return customSelect(
-        'SELECT"r"."id" AS "nested_0.id", "r"."row_id" AS "nested_0.row_id", "r"."collection_id" AS "nested_0.collection_id", "r"."collection_name" AS "nested_0.collection_name", "r"."data" AS "nested_0.data", "r"."synced" AS "nested_0.synced", "r"."deleted" AS "nested_0.deleted", "r"."created" AS "nested_0.created", "r"."updated" AS "nested_0.updated" FROM text_entries INNER JOIN records AS r ON r.id = text_entries."rowid" WHERE text_entries MATCH ?1 ORDER BY rank',
-        variables: [
-          Variable<String>(query)
-        ],
-        readsFrom: {
-          textEntries,
-          records,
-        }).asyncMap((QueryRow row) async {
-      return SearchResult(
-        r: await records.mapFromRow(row, tablePrefix: 'nested_0'),
-      );
-    });
-  }
-
+  late final RecordsDao recordsDao = RecordsDao(this as DataBase);
+  late final CollectionsDao collectionsDao = CollectionsDao(this as DataBase);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
   @override
-  List<DatabaseSchemaEntity> get allSchemaEntities =>
-      [records, textEntries, recordsInsert, recordsDelete, recordsUpdate];
-  @override
-  StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules(
-        [
-          WritePropagation(
-            on: TableUpdateQuery.onTableName('records',
-                limitUpdateKind: UpdateKind.insert),
-            result: [
-              TableUpdate('text_entries', kind: UpdateKind.insert),
-            ],
-          ),
-          WritePropagation(
-            on: TableUpdateQuery.onTableName('records',
-                limitUpdateKind: UpdateKind.delete),
-            result: [
-              TableUpdate('text_entries', kind: UpdateKind.insert),
-            ],
-          ),
-          WritePropagation(
-            on: TableUpdateQuery.onTableName('records',
-                limitUpdateKind: UpdateKind.update),
-            result: [
-              TableUpdate('text_entries', kind: UpdateKind.insert),
-            ],
-          ),
-        ],
-      );
-}
-
-class SearchResult {
-  final Record r;
-  SearchResult({
-    required this.r,
-  });
+  List<DatabaseSchemaEntity> get allSchemaEntities => [collections, records];
 }

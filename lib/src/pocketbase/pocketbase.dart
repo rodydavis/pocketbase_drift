@@ -41,7 +41,7 @@ class $PocketBase extends PocketBase {
   }
 
   Future<List<RecordModel>> search(String query) {
-    return db.searchAll(query);
+    return db.search(query);
   }
 
   // TODO: getFileUrl get local url?

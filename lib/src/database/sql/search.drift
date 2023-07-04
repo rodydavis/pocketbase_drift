@@ -1,5 +1,4 @@
-
-import 'tables.dart';
+import '../tables.dart';
 
 -- Create a text index of entries, see https://www.sqlite.org/fts5.html#external_content_tables
 CREATE VIRTUAL TABLE text_entries USING fts5 (
@@ -23,7 +22,8 @@ CREATE TRIGGER records_update AFTER UPDATE ON records BEGIN
 END;
 
 -- Full text search query.
-_search: SELECT r.** FROM text_entries
+_search: 
+    SELECT r.** FROM text_entries
     INNER JOIN records r ON r.id = text_entries.rowid
     WHERE text_entries MATCH :query
     ORDER BY rank;

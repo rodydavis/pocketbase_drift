@@ -9,7 +9,6 @@ import 'package:path/path.dart' as p;
 
 DatabaseConnection connect(
   String dbName, {
-  bool useWebWorker = false,
   bool logStatements = false,
 }) {
   return DatabaseConnection.delayed(Future.sync(() async {

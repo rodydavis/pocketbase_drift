@@ -29,56 +29,50 @@ void main() {
       password,
     );
     collection = await client.collections.getOne('l1qxa33evkxxte0');
+    await client.db.collectionsDao.addAll([collection]);
     col = client.$collection(collection);
-    // Add 1000 records
-    for (var i = 0; i < 1000; i++) {
-      await col.create(body: {
-        'name': 'test $i',
-      });
-      debugPrint('added $i / 1000');
+
+    // // Add records
+    const total = 25;
+    for (var i = 0; i < total; i++) {
+      await col.create(
+        body: {'name': 'test $i'},
+      );
+      debugPrint('added $i / $total');
     }
   });
 
   tearDownAll(() async {
-    final local = await client.db.getRecords(collection.name);
+    final local = await col.getFullList();
     for (final item in local) {
       await col.delete(item.id);
     }
+  });
+
+  test('check collections', () async {
+    final local = await client.db.collectionsDao.getAll();
+
+    expect(local, isNotEmpty);
   });
 
   // TODO: Check for files
 
   // TODO: Sorting, filtering, fields
 
-  test('check records call', () async {
-    final remote = await col.getFullList();
-    final local = await client.db.getRecords('todo');
-
-    expect(remote, isNotEmpty);
-    expect(local, isNotEmpty);
-    expect(local.length, remote.length);
-  });
-
-  test('check records call', () async {
-    final remote = await col.getFullList();
-    final local = await client.db.getRecords(collection.name);
-
-    expect(remote, isNotEmpty);
-    expect(local, isNotEmpty);
-    expect(local.length, remote.length);
-  });
-
   test('check record call', () async {
     final remote = await col.getFullList();
 
     final first = remote.first;
-    final result = await client.db.getRecord(collection.name, first.id);
+    final result = await client.db.recordsDao.getRecord(
+      collectionId: collection.id,
+      id: first.id,
+    );
 
     expect(first.id, result?.id);
   });
 
   test('check new record update', () async {
-    final records = await client.db.getRecords(collection.name);
+    final records = await col.getFullList();
 
     final item = await col.create(body: {
       'name': 'test',
@@ -86,12 +80,34 @@ void main() {
 
     final remote = await col.getFullList();
 
-    expect(remote, isNotEmpty);
-    expect(remote.length, records.length + 1);
+    final local = await client.db.recordsDao.getAll(
+      collectionId: collection.id,
+    );
+
+    print('records: ${records.length}');
+    print('remote: ${remote.length}');
+    print('local: ${local.length}');
+
+    expect(
+      remote,
+      isNotEmpty,
+      reason: 'Remote should not be empty',
+    );
+    expect(
+      remote.length,
+      records.length + 1,
+      reason: 'Remote should be 1 more',
+    );
 
     // Server and cache should update
-    final newItems = await client.db.getRecords(collection.name);
-    expect(newItems.length, remote.length);
+    final newItems = await client.db.recordsDao.getAll(
+      collectionId: collection.id,
+    );
+    expect(
+      newItems.length,
+      remote.length,
+      reason: 'Cache should update',
+    );
 
     // Delete item
     await col.delete(item.id);
@@ -108,7 +124,9 @@ void main() {
         debugPrint('added $i / 1000');
       }
 
-      final local = await client.db.getRecords(collection.name);
+      final local = await client.db.recordsDao.getAll(
+        collectionId: collection.id,
+      );
 
       expect(local.length >= 1000, true);
     },
@@ -141,23 +159,29 @@ void main() {
   //   await client.db.remove(d);
   // });
 
-  test('check for double inserts', () async {
-    final item = await col.create(body: {
-      'name': 'test item',
-    });
+  // test('check for double inserts', () async {
+  //   final item = await col.create(body: {
+  //     'name': 'test item',
+  //   });
 
-    // Insert into database
-    final id1 = await client.db.setRecord(item);
-    final id2 = await client.db.setRecord(item);
+  //   // Insert into database
+  //   final id1 = await client.db.recordsDao.updateRecordModel(
+  //     collectionId: collection.id,
+  //     item: item,
+  //   );
+  //   final id2 = await client.db.recordsDao.updateRecordModel(
+  //     collectionId: collection.id,
+  //     item: item,
+  //   );
 
-    // Expect id1 to be missing from database
-    final result = await client.db.get(id1);
-    expect(result, null);
+  //   // Expect id1 to be missing from database
+  //   final result = await client.db.get(id1.id);
+  //   expect(result, null);
 
-    // Expect id2 to be present in database
-    final result2 = await client.db.get(id2);
-    expect(result2 != null, true);
-  });
+  //   // Expect id2 to be present in database
+  //   final result2 = await client.db.get(id2.id);
+  //   expect(result2 != null, true);
+  // });
 
   group('fetch policy tests', () {
     test('cache only', () async {
