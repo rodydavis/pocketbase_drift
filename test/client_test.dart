@@ -27,7 +27,9 @@ void main() {
       password,
     );
     collection = await client.collections.getOne('l1qxa33evkxxte0');
-    await client.db.collectionsDao.addAll([collection.toModel()]);
+
+    await client.db.collectionsDao.createItem(collection.toModel());
+
     col = client.$collection(collection);
 
     // // Add records
@@ -45,7 +47,7 @@ void main() {
     for (final item in local) {
       await col.delete(
         item.id,
-        fetchPolicy: FetchPolicy.networkOnly,
+        // fetchPolicy: FetchPolicy.networkOnly,
         // TODO: Fails on anything else
       );
     }

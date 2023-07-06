@@ -16,16 +16,23 @@ class CollectionsDao extends ServiceRecordsDao<$CollectionsTable, Collection>
   $CollectionsTable get table => collections;
 
   @override
-  Insertable<Collection> toCompanion(
-    Collection data, {
-    bool? synced,
-    bool? deleted,
-  }) {
+  Insertable<Collection> toCompanion(Collection data) {
     return data.toCompanion(true).copyWith(
-          synced: synced == null ? const Value.absent() : Value(synced),
-          deleted: deleted == null ? const Value.absent() : Value(deleted),
           id: data.id.isEmpty ? const Value.absent() : Value(data.id),
         );
+  }
+
+  @override
+  Future<void> updateItem(Collection data) async {
+    final companion = toCompanion(data);
+    final existing = await (select(table)
+          ..where((tbl) => tbl.id.equals(data.id)))
+        .getSingleOrNull();
+    if (existing == null) {
+      await into(table).insert(companion);
+    } else {
+      await update(table).replace(companion);
+    }
   }
 }
 

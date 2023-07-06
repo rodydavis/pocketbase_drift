@@ -28,29 +28,6 @@ class $CollectionsTable extends Collections
   late final GeneratedColumn<DateTime> updated = GeneratedColumn<DateTime>(
       'updated', aliasedName, false,
       type: DriftSqlType.dateTime, requiredDuringInsert: true);
-  static const VerificationMeta _syncedMeta = const VerificationMeta('synced');
-  @override
-  late final GeneratedColumn<bool> synced =
-      GeneratedColumn<bool>('synced', aliasedName, true,
-          type: DriftSqlType.bool,
-          requiredDuringInsert: false,
-          defaultConstraints: GeneratedColumn.constraintsDependsOnDialect({
-            SqlDialect.sqlite: 'CHECK ("synced" IN (0, 1))',
-            SqlDialect.mysql: '',
-            SqlDialect.postgres: '',
-          }));
-  static const VerificationMeta _deletedMeta =
-      const VerificationMeta('deleted');
-  @override
-  late final GeneratedColumn<bool> deleted =
-      GeneratedColumn<bool>('deleted', aliasedName, true,
-          type: DriftSqlType.bool,
-          requiredDuringInsert: false,
-          defaultConstraints: GeneratedColumn.constraintsDependsOnDialect({
-            SqlDialect.sqlite: 'CHECK ("deleted" IN (0, 1))',
-            SqlDialect.mysql: '',
-            SqlDialect.postgres: '',
-          }));
   static const VerificationMeta _typeMeta = const VerificationMeta('type');
   @override
   late final GeneratedColumn<String> type = GeneratedColumn<String>(
@@ -131,8 +108,6 @@ class $CollectionsTable extends Collections
         id,
         created,
         updated,
-        synced,
-        deleted,
         type,
         name,
         system,
@@ -168,14 +143,6 @@ class $CollectionsTable extends Collections
           updated.isAcceptableOrUnknown(data['updated']!, _updatedMeta));
     } else if (isInserting) {
       context.missing(_updatedMeta);
-    }
-    if (data.containsKey('synced')) {
-      context.handle(_syncedMeta,
-          synced.isAcceptableOrUnknown(data['synced']!, _syncedMeta));
-    }
-    if (data.containsKey('deleted')) {
-      context.handle(_deletedMeta,
-          deleted.isAcceptableOrUnknown(data['deleted']!, _deletedMeta));
     }
     if (data.containsKey('type')) {
       context.handle(
@@ -235,10 +202,6 @@ class $CollectionsTable extends Collections
           .read(DriftSqlType.dateTime, data['${effectivePrefix}created'])!,
       updated: attachedDatabase.typeMapping
           .read(DriftSqlType.dateTime, data['${effectivePrefix}updated'])!,
-      synced: attachedDatabase.typeMapping
-          .read(DriftSqlType.bool, data['${effectivePrefix}synced']),
-      deleted: attachedDatabase.typeMapping
-          .read(DriftSqlType.bool, data['${effectivePrefix}deleted']),
       type: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}type'])!,
       name: attachedDatabase.typeMapping
@@ -284,8 +247,6 @@ class Collection extends ServiceRecord implements Insertable<Collection> {
   final String id;
   final DateTime created;
   final DateTime updated;
-  final bool? synced;
-  final bool? deleted;
   final String type;
   final String name;
   final bool system;
@@ -301,8 +262,6 @@ class Collection extends ServiceRecord implements Insertable<Collection> {
       {required this.id,
       required this.created,
       required this.updated,
-      this.synced,
-      this.deleted,
       required this.type,
       required this.name,
       required this.system,
@@ -320,12 +279,6 @@ class Collection extends ServiceRecord implements Insertable<Collection> {
     map['id'] = Variable<String>(id);
     map['created'] = Variable<DateTime>(created);
     map['updated'] = Variable<DateTime>(updated);
-    if (!nullToAbsent || synced != null) {
-      map['synced'] = Variable<bool>(synced);
-    }
-    if (!nullToAbsent || deleted != null) {
-      map['deleted'] = Variable<bool>(deleted);
-    }
     map['type'] = Variable<String>(type);
     map['name'] = Variable<String>(name);
     map['system'] = Variable<bool>(system);
@@ -364,11 +317,6 @@ class Collection extends ServiceRecord implements Insertable<Collection> {
       id: Value(id),
       created: Value(created),
       updated: Value(updated),
-      synced:
-          synced == null && nullToAbsent ? const Value.absent() : Value(synced),
-      deleted: deleted == null && nullToAbsent
-          ? const Value.absent()
-          : Value(deleted),
       type: Value(type),
       name: Value(name),
       system: Value(system),
@@ -400,8 +348,6 @@ class Collection extends ServiceRecord implements Insertable<Collection> {
       id: serializer.fromJson<String>(json['id']),
       created: serializer.fromJson<DateTime>(json['created']),
       updated: serializer.fromJson<DateTime>(json['updated']),
-      synced: serializer.fromJson<bool?>(json['synced']),
-      deleted: serializer.fromJson<bool?>(json['deleted']),
       type: serializer.fromJson<String>(json['type']),
       name: serializer.fromJson<String>(json['name']),
       system: serializer.fromJson<bool>(json['system']),
@@ -422,8 +368,6 @@ class Collection extends ServiceRecord implements Insertable<Collection> {
       'id': serializer.toJson<String>(id),
       'created': serializer.toJson<DateTime>(created),
       'updated': serializer.toJson<DateTime>(updated),
-      'synced': serializer.toJson<bool?>(synced),
-      'deleted': serializer.toJson<bool?>(deleted),
       'type': serializer.toJson<String>(type),
       'name': serializer.toJson<String>(name),
       'system': serializer.toJson<bool>(system),
@@ -442,8 +386,6 @@ class Collection extends ServiceRecord implements Insertable<Collection> {
           {String? id,
           DateTime? created,
           DateTime? updated,
-          Value<bool?> synced = const Value.absent(),
-          Value<bool?> deleted = const Value.absent(),
           String? type,
           String? name,
           bool? system,
@@ -459,8 +401,6 @@ class Collection extends ServiceRecord implements Insertable<Collection> {
         id: id ?? this.id,
         created: created ?? this.created,
         updated: updated ?? this.updated,
-        synced: synced.present ? synced.value : this.synced,
-        deleted: deleted.present ? deleted.value : this.deleted,
         type: type ?? this.type,
         name: name ?? this.name,
         system: system ?? this.system,
@@ -479,8 +419,6 @@ class Collection extends ServiceRecord implements Insertable<Collection> {
           ..write('id: $id, ')
           ..write('created: $created, ')
           ..write('updated: $updated, ')
-          ..write('synced: $synced, ')
-          ..write('deleted: $deleted, ')
           ..write('type: $type, ')
           ..write('name: $name, ')
           ..write('system: $system, ')
@@ -501,8 +439,6 @@ class Collection extends ServiceRecord implements Insertable<Collection> {
       id,
       created,
       updated,
-      synced,
-      deleted,
       type,
       name,
       system,
@@ -521,8 +457,6 @@ class Collection extends ServiceRecord implements Insertable<Collection> {
           other.id == this.id &&
           other.created == this.created &&
           other.updated == this.updated &&
-          other.synced == this.synced &&
-          other.deleted == this.deleted &&
           other.type == this.type &&
           other.name == this.name &&
           other.system == this.system &&
@@ -540,8 +474,6 @@ class CollectionsCompanion extends UpdateCompanion<Collection> {
   final Value<String> id;
   final Value<DateTime> created;
   final Value<DateTime> updated;
-  final Value<bool?> synced;
-  final Value<bool?> deleted;
   final Value<String> type;
   final Value<String> name;
   final Value<bool> system;
@@ -558,8 +490,6 @@ class CollectionsCompanion extends UpdateCompanion<Collection> {
     this.id = const Value.absent(),
     this.created = const Value.absent(),
     this.updated = const Value.absent(),
-    this.synced = const Value.absent(),
-    this.deleted = const Value.absent(),
     this.type = const Value.absent(),
     this.name = const Value.absent(),
     this.system = const Value.absent(),
@@ -577,8 +507,6 @@ class CollectionsCompanion extends UpdateCompanion<Collection> {
     this.id = const Value.absent(),
     required DateTime created,
     required DateTime updated,
-    this.synced = const Value.absent(),
-    this.deleted = const Value.absent(),
     this.type = const Value.absent(),
     required String name,
     this.system = const Value.absent(),
@@ -601,8 +529,6 @@ class CollectionsCompanion extends UpdateCompanion<Collection> {
     Expression<String>? id,
     Expression<DateTime>? created,
     Expression<DateTime>? updated,
-    Expression<bool>? synced,
-    Expression<bool>? deleted,
     Expression<String>? type,
     Expression<String>? name,
     Expression<bool>? system,
@@ -620,8 +546,6 @@ class CollectionsCompanion extends UpdateCompanion<Collection> {
       if (id != null) 'id': id,
       if (created != null) 'created': created,
       if (updated != null) 'updated': updated,
-      if (synced != null) 'synced': synced,
-      if (deleted != null) 'deleted': deleted,
       if (type != null) 'type': type,
       if (name != null) 'name': name,
       if (system != null) 'system': system,
@@ -641,8 +565,6 @@ class CollectionsCompanion extends UpdateCompanion<Collection> {
       {Value<String>? id,
       Value<DateTime>? created,
       Value<DateTime>? updated,
-      Value<bool?>? synced,
-      Value<bool?>? deleted,
       Value<String>? type,
       Value<String>? name,
       Value<bool>? system,
@@ -659,8 +581,6 @@ class CollectionsCompanion extends UpdateCompanion<Collection> {
       id: id ?? this.id,
       created: created ?? this.created,
       updated: updated ?? this.updated,
-      synced: synced ?? this.synced,
-      deleted: deleted ?? this.deleted,
       type: type ?? this.type,
       name: name ?? this.name,
       system: system ?? this.system,
@@ -687,12 +607,6 @@ class CollectionsCompanion extends UpdateCompanion<Collection> {
     }
     if (updated.present) {
       map['updated'] = Variable<DateTime>(updated.value);
-    }
-    if (synced.present) {
-      map['synced'] = Variable<bool>(synced.value);
-    }
-    if (deleted.present) {
-      map['deleted'] = Variable<bool>(deleted.value);
     }
     if (type.present) {
       map['type'] = Variable<String>(type.value);
@@ -742,8 +656,6 @@ class CollectionsCompanion extends UpdateCompanion<Collection> {
           ..write('id: $id, ')
           ..write('created: $created, ')
           ..write('updated: $updated, ')
-          ..write('synced: $synced, ')
-          ..write('deleted: $deleted, ')
           ..write('type: $type, ')
           ..write('name: $name, ')
           ..write('system: $system, ')
@@ -785,29 +697,6 @@ class $RecordsTable extends Records with TableInfo<$RecordsTable, Record> {
   late final GeneratedColumn<DateTime> updated = GeneratedColumn<DateTime>(
       'updated', aliasedName, false,
       type: DriftSqlType.dateTime, requiredDuringInsert: true);
-  static const VerificationMeta _syncedMeta = const VerificationMeta('synced');
-  @override
-  late final GeneratedColumn<bool> synced =
-      GeneratedColumn<bool>('synced', aliasedName, true,
-          type: DriftSqlType.bool,
-          requiredDuringInsert: false,
-          defaultConstraints: GeneratedColumn.constraintsDependsOnDialect({
-            SqlDialect.sqlite: 'CHECK ("synced" IN (0, 1))',
-            SqlDialect.mysql: '',
-            SqlDialect.postgres: '',
-          }));
-  static const VerificationMeta _deletedMeta =
-      const VerificationMeta('deleted');
-  @override
-  late final GeneratedColumn<bool> deleted =
-      GeneratedColumn<bool>('deleted', aliasedName, true,
-          type: DriftSqlType.bool,
-          requiredDuringInsert: false,
-          defaultConstraints: GeneratedColumn.constraintsDependsOnDialect({
-            SqlDialect.sqlite: 'CHECK ("deleted" IN (0, 1))',
-            SqlDialect.mysql: '',
-            SqlDialect.postgres: '',
-          }));
   static const VerificationMeta _dataMeta = const VerificationMeta('data');
   @override
   late final GeneratedColumnWithTypeConverter<Map<String, dynamic>, String>
@@ -833,16 +722,8 @@ class $RecordsTable extends Records with TableInfo<$RecordsTable, Record> {
       defaultConstraints:
           GeneratedColumn.constraintIsAlways('REFERENCES Collections (name)'));
   @override
-  List<GeneratedColumn> get $columns => [
-        id,
-        created,
-        updated,
-        synced,
-        deleted,
-        data,
-        collectionId,
-        collectionName
-      ];
+  List<GeneratedColumn> get $columns =>
+      [id, created, updated, data, collectionId, collectionName];
   @override
   String get aliasedName => _alias ?? 'Records';
   @override
@@ -866,14 +747,6 @@ class $RecordsTable extends Records with TableInfo<$RecordsTable, Record> {
           updated.isAcceptableOrUnknown(data['updated']!, _updatedMeta));
     } else if (isInserting) {
       context.missing(_updatedMeta);
-    }
-    if (data.containsKey('synced')) {
-      context.handle(_syncedMeta,
-          synced.isAcceptableOrUnknown(data['synced']!, _syncedMeta));
-    }
-    if (data.containsKey('deleted')) {
-      context.handle(_deletedMeta,
-          deleted.isAcceptableOrUnknown(data['deleted']!, _deletedMeta));
     }
     context.handle(_dataMeta, const VerificationResult.success());
     if (data.containsKey('collectionId')) {
@@ -907,10 +780,6 @@ class $RecordsTable extends Records with TableInfo<$RecordsTable, Record> {
           .read(DriftSqlType.dateTime, data['${effectivePrefix}created'])!,
       updated: attachedDatabase.typeMapping
           .read(DriftSqlType.dateTime, data['${effectivePrefix}updated'])!,
-      synced: attachedDatabase.typeMapping
-          .read(DriftSqlType.bool, data['${effectivePrefix}synced']),
-      deleted: attachedDatabase.typeMapping
-          .read(DriftSqlType.bool, data['${effectivePrefix}deleted']),
       data: $RecordsTable.$converterdata.fromSql(attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}data'])!),
       collectionId: attachedDatabase.typeMapping
@@ -933,8 +802,6 @@ class Record extends ServiceRecord implements Insertable<Record> {
   final String id;
   final DateTime created;
   final DateTime updated;
-  final bool? synced;
-  final bool? deleted;
   final Map<String, dynamic> data;
   final String collectionId;
   final String collectionName;
@@ -942,8 +809,6 @@ class Record extends ServiceRecord implements Insertable<Record> {
       {required this.id,
       required this.created,
       required this.updated,
-      this.synced,
-      this.deleted,
       required this.data,
       required this.collectionId,
       required this.collectionName});
@@ -953,12 +818,6 @@ class Record extends ServiceRecord implements Insertable<Record> {
     map['id'] = Variable<String>(id);
     map['created'] = Variable<DateTime>(created);
     map['updated'] = Variable<DateTime>(updated);
-    if (!nullToAbsent || synced != null) {
-      map['synced'] = Variable<bool>(synced);
-    }
-    if (!nullToAbsent || deleted != null) {
-      map['deleted'] = Variable<bool>(deleted);
-    }
     {
       final converter = $RecordsTable.$converterdata;
       map['data'] = Variable<String>(converter.toSql(data));
@@ -973,11 +832,6 @@ class Record extends ServiceRecord implements Insertable<Record> {
       id: Value(id),
       created: Value(created),
       updated: Value(updated),
-      synced:
-          synced == null && nullToAbsent ? const Value.absent() : Value(synced),
-      deleted: deleted == null && nullToAbsent
-          ? const Value.absent()
-          : Value(deleted),
       data: Value(data),
       collectionId: Value(collectionId),
       collectionName: Value(collectionName),
@@ -991,8 +845,6 @@ class Record extends ServiceRecord implements Insertable<Record> {
       id: serializer.fromJson<String>(json['id']),
       created: serializer.fromJson<DateTime>(json['created']),
       updated: serializer.fromJson<DateTime>(json['updated']),
-      synced: serializer.fromJson<bool?>(json['synced']),
-      deleted: serializer.fromJson<bool?>(json['deleted']),
       data: serializer.fromJson<Map<String, dynamic>>(json['data']),
       collectionId: serializer.fromJson<String>(json['collectionId']),
       collectionName: serializer.fromJson<String>(json['collectionName']),
@@ -1005,8 +857,6 @@ class Record extends ServiceRecord implements Insertable<Record> {
       'id': serializer.toJson<String>(id),
       'created': serializer.toJson<DateTime>(created),
       'updated': serializer.toJson<DateTime>(updated),
-      'synced': serializer.toJson<bool?>(synced),
-      'deleted': serializer.toJson<bool?>(deleted),
       'data': serializer.toJson<Map<String, dynamic>>(data),
       'collectionId': serializer.toJson<String>(collectionId),
       'collectionName': serializer.toJson<String>(collectionName),
@@ -1017,8 +867,6 @@ class Record extends ServiceRecord implements Insertable<Record> {
           {String? id,
           DateTime? created,
           DateTime? updated,
-          Value<bool?> synced = const Value.absent(),
-          Value<bool?> deleted = const Value.absent(),
           Map<String, dynamic>? data,
           String? collectionId,
           String? collectionName}) =>
@@ -1026,8 +874,6 @@ class Record extends ServiceRecord implements Insertable<Record> {
         id: id ?? this.id,
         created: created ?? this.created,
         updated: updated ?? this.updated,
-        synced: synced.present ? synced.value : this.synced,
-        deleted: deleted.present ? deleted.value : this.deleted,
         data: data ?? this.data,
         collectionId: collectionId ?? this.collectionId,
         collectionName: collectionName ?? this.collectionName,
@@ -1038,8 +884,6 @@ class Record extends ServiceRecord implements Insertable<Record> {
           ..write('id: $id, ')
           ..write('created: $created, ')
           ..write('updated: $updated, ')
-          ..write('synced: $synced, ')
-          ..write('deleted: $deleted, ')
           ..write('data: $data, ')
           ..write('collectionId: $collectionId, ')
           ..write('collectionName: $collectionName')
@@ -1048,8 +892,8 @@ class Record extends ServiceRecord implements Insertable<Record> {
   }
 
   @override
-  int get hashCode => Object.hash(id, created, updated, synced, deleted, data,
-      collectionId, collectionName);
+  int get hashCode =>
+      Object.hash(id, created, updated, data, collectionId, collectionName);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -1057,8 +901,6 @@ class Record extends ServiceRecord implements Insertable<Record> {
           other.id == this.id &&
           other.created == this.created &&
           other.updated == this.updated &&
-          other.synced == this.synced &&
-          other.deleted == this.deleted &&
           other.data == this.data &&
           other.collectionId == this.collectionId &&
           other.collectionName == this.collectionName);
@@ -1068,8 +910,6 @@ class RecordsCompanion extends UpdateCompanion<Record> {
   final Value<String> id;
   final Value<DateTime> created;
   final Value<DateTime> updated;
-  final Value<bool?> synced;
-  final Value<bool?> deleted;
   final Value<Map<String, dynamic>> data;
   final Value<String> collectionId;
   final Value<String> collectionName;
@@ -1078,8 +918,6 @@ class RecordsCompanion extends UpdateCompanion<Record> {
     this.id = const Value.absent(),
     this.created = const Value.absent(),
     this.updated = const Value.absent(),
-    this.synced = const Value.absent(),
-    this.deleted = const Value.absent(),
     this.data = const Value.absent(),
     this.collectionId = const Value.absent(),
     this.collectionName = const Value.absent(),
@@ -1089,8 +927,6 @@ class RecordsCompanion extends UpdateCompanion<Record> {
     this.id = const Value.absent(),
     required DateTime created,
     required DateTime updated,
-    this.synced = const Value.absent(),
-    this.deleted = const Value.absent(),
     required Map<String, dynamic> data,
     required String collectionId,
     required String collectionName,
@@ -1104,8 +940,6 @@ class RecordsCompanion extends UpdateCompanion<Record> {
     Expression<String>? id,
     Expression<DateTime>? created,
     Expression<DateTime>? updated,
-    Expression<bool>? synced,
-    Expression<bool>? deleted,
     Expression<String>? data,
     Expression<String>? collectionId,
     Expression<String>? collectionName,
@@ -1115,8 +949,6 @@ class RecordsCompanion extends UpdateCompanion<Record> {
       if (id != null) 'id': id,
       if (created != null) 'created': created,
       if (updated != null) 'updated': updated,
-      if (synced != null) 'synced': synced,
-      if (deleted != null) 'deleted': deleted,
       if (data != null) 'data': data,
       if (collectionId != null) 'collectionId': collectionId,
       if (collectionName != null) 'collectionName': collectionName,
@@ -1128,8 +960,6 @@ class RecordsCompanion extends UpdateCompanion<Record> {
       {Value<String>? id,
       Value<DateTime>? created,
       Value<DateTime>? updated,
-      Value<bool?>? synced,
-      Value<bool?>? deleted,
       Value<Map<String, dynamic>>? data,
       Value<String>? collectionId,
       Value<String>? collectionName,
@@ -1138,8 +968,6 @@ class RecordsCompanion extends UpdateCompanion<Record> {
       id: id ?? this.id,
       created: created ?? this.created,
       updated: updated ?? this.updated,
-      synced: synced ?? this.synced,
-      deleted: deleted ?? this.deleted,
       data: data ?? this.data,
       collectionId: collectionId ?? this.collectionId,
       collectionName: collectionName ?? this.collectionName,
@@ -1158,12 +986,6 @@ class RecordsCompanion extends UpdateCompanion<Record> {
     }
     if (updated.present) {
       map['updated'] = Variable<DateTime>(updated.value);
-    }
-    if (synced.present) {
-      map['synced'] = Variable<bool>(synced.value);
-    }
-    if (deleted.present) {
-      map['deleted'] = Variable<bool>(deleted.value);
     }
     if (data.present) {
       final converter = $RecordsTable.$converterdata;
@@ -1187,8 +1009,6 @@ class RecordsCompanion extends UpdateCompanion<Record> {
           ..write('id: $id, ')
           ..write('created: $created, ')
           ..write('updated: $updated, ')
-          ..write('synced: $synced, ')
-          ..write('deleted: $deleted, ')
           ..write('data: $data, ')
           ..write('collectionId: $collectionId, ')
           ..write('collectionName: $collectionName, ')
@@ -1374,7 +1194,7 @@ abstract class _$DataBase extends GeneratedDatabase {
   late final CollectionsDao collectionsDao = CollectionsDao(this as DataBase);
   Selectable<SearchResult> _search(String query) {
     return customSelect(
-        'SELECT"r"."id" AS "nested_0.id", "r"."created" AS "nested_0.created", "r"."updated" AS "nested_0.updated", "r"."synced" AS "nested_0.synced", "r"."deleted" AS "nested_0.deleted", "r"."data" AS "nested_0.data", "r"."collectionId" AS "nested_0.collectionId", "r"."collectionName" AS "nested_0.collectionName" FROM text_entries INNER JOIN records AS r ON r."rowid" = text_entries."rowid" WHERE text_entries MATCH ?1 ORDER BY rank',
+        'SELECT"r"."id" AS "nested_0.id", "r"."created" AS "nested_0.created", "r"."updated" AS "nested_0.updated", "r"."data" AS "nested_0.data", "r"."collectionId" AS "nested_0.collectionId", "r"."collectionName" AS "nested_0.collectionName" FROM text_entries INNER JOIN records AS r ON r."rowid" = text_entries."rowid" WHERE text_entries MATCH ?1 ORDER BY rank',
         variables: [
           Variable<String>(query)
         ],

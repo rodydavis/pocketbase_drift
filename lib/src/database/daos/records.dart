@@ -18,27 +18,48 @@ class RecordsDao extends ServiceRecordsDao<$RecordsTable, Record>
   @override
   $RecordsTable get table => records;
 
-  Future<void> removeSyncedDeletedRecords() => _removeSyncedDeletedRecords();
+  Future<void> removeSyncedDeletedRecords({String? collection}) async {
+    final deletes = await getPendingDeletes();
+    for (final item in deletes) {
+      await deleteItem(item.id, collection: collection);
+    }
+  }
 
-  Future<List<Record>> getPendingWrites() => _getPendingWritesRecords().get();
+  Future<List<Record>> getPendingWrites({String? collection}) async {
+    final records = await getAll(collection: collection);
+    return records.where((e) {
+      final deleted = e.data['deleted'] == false;
+      final synced = e.data['synced'] == false;
+      return deleted && synced;
+    }).toList();
+  }
 
-  Future<List<Record>> getPendingDeletes() => _getPendingDeletesRecords().get();
+  Future<List<Record>> getPendingDeletes({String? collection}) async {
+    final records = await getAll(collection: collection);
+    return records.where((e) {
+      final deleted = e.data['deleted'] == true;
+      final synced = e.data['synced'] == false;
+      return deleted && synced;
+    }).toList();
+  }
 
-  Future<List<Record>> getPending() => _getPendingRecords().get();
+  Future<List<Record>> getPending({String? collection}) async {
+    final records = await getAll(collection: collection);
+    return records.where((e) {
+      final synced = e.data['synced'] == false;
+      return synced;
+    }).toList();
+  }
 
   @override
   SimpleSelectStatement<$RecordsTable, Record> target({
     String? id,
-    bool? deleted,
-    bool? synced,
     int? page,
     int? perPage,
     String? collection,
   }) {
     var query = super.target(
       id: id,
-      deleted: deleted,
-      synced: synced,
       page: page,
       perPage: perPage,
     );
@@ -50,15 +71,11 @@ class RecordsDao extends ServiceRecordsDao<$RecordsTable, Record>
 
   @override
   Future<List<Record>> getAll({
-    bool? deleted,
-    bool? synced,
     int? page,
     int? perPage,
     String? collection,
   }) {
     return target(
-      deleted: deleted,
-      synced: synced,
       page: page,
       perPage: perPage,
       collection: collection,
@@ -67,15 +84,11 @@ class RecordsDao extends ServiceRecordsDao<$RecordsTable, Record>
 
   @override
   Stream<List<Record>> watchAll({
-    bool? deleted,
-    bool? synced,
     int? page,
     int? perPage,
     String? collection,
   }) {
     return target(
-      deleted: deleted,
-      synced: synced,
       page: page,
       perPage: perPage,
       collection: collection,
@@ -85,14 +98,10 @@ class RecordsDao extends ServiceRecordsDao<$RecordsTable, Record>
   @override
   Future<Record?> get(
     String id, {
-    bool? deleted,
-    bool? synced,
     String? collection,
   }) {
     return target(
       id: id,
-      deleted: deleted,
-      synced: synced,
       collection: collection,
     ).getSingleOrNull();
   }
@@ -100,14 +109,10 @@ class RecordsDao extends ServiceRecordsDao<$RecordsTable, Record>
   @override
   Stream<Record?> watch(
     String id, {
-    bool? deleted,
-    bool? synced,
     String? collection,
   }) {
     return target(
       id: id,
-      deleted: deleted,
-      synced: synced,
       collection: collection,
     ).watchSingleOrNull();
   }
@@ -119,30 +124,21 @@ class RecordsDao extends ServiceRecordsDao<$RecordsTable, Record>
     bool? deleted,
   }) {
     return data.toCompanion(true).copyWith(
-          synced: synced == null ? const Value.absent() : Value(synced),
-          deleted: deleted == null ? const Value.absent() : Value(deleted),
           id: data.id.isEmpty ? const Value.absent() : Value(data.id),
         );
   }
 
   @override
   Future<int> getCount({
-    bool? deleted,
-    bool? synced,
     String? collection,
   }) async {
     if (collection != null) {
       final items = await getAll(
-        deleted: deleted,
-        synced: synced,
         collection: collection,
       );
       return items.length;
     }
-    return super.getCount(
-      deleted: deleted,
-      synced: synced,
-    );
+    return super.getCount();
   }
 
   @override
@@ -158,6 +154,20 @@ class RecordsDao extends ServiceRecordsDao<$RecordsTable, Record>
       return;
     }
     return super.deleteItem(id);
+  }
+
+  @override
+  Future<void> updateItem(Record data) async {
+    final companion = toCompanion(data);
+    final existing = await (select(table)
+          ..where((tbl) => tbl.id.equals(data.id))
+          ..where((tbl) => tbl.collectionId.equals(data.collectionId)))
+        .getSingleOrNull();
+    if (existing == null) {
+      await into(table).insert(companion);
+    } else {
+      await update(table).replace(companion);
+    }
   }
 }
 
@@ -175,14 +185,12 @@ extension RecordUtils on Record {
 }
 
 extension RecordModelUtils on RecordModel {
-  Record toModel({bool? synced, bool? deleted}) => Record(
+  Record toModel() => Record(
         id: id,
         collectionId: collectionId,
         collectionName: collectionName,
         data: data,
         created: DateTime.tryParse(created) ?? DateTime.now(),
         updated: DateTime.tryParse(updated) ?? DateTime.now(),
-        synced: synced,
-        deleted: deleted,
       );
 }

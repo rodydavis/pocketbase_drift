@@ -88,6 +88,8 @@ void main() {
         collectionName: collection.name,
         data: {
           'name': 'Test 456',
+          'deleted': false,
+          'synced': false,
         },
       ).toModel());
 
@@ -122,6 +124,8 @@ void main() {
           collectionName: collection.name,
           data: {
             'name': 'Test 456',
+            'deleted': false,
+            'synced': false,
           },
         ).toModel(),
       );
@@ -141,6 +145,8 @@ void main() {
         collectionName: collection.name,
         data: {
           'name': 'Test 789',
+          'deleted': false,
+          'synced': false,
         },
       ).toModel());
 
@@ -169,6 +175,8 @@ void main() {
           collectionName: collection.name,
           data: {
             'name': 'Test 456',
+            'deleted': false,
+            'synced': false,
           },
         ).toModel(),
       );

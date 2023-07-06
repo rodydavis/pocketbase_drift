@@ -4,6 +4,25 @@ import 'package:drift/drift.dart';
 import 'package:pocketbase/pocketbase.dart';
 import 'package:shortid/shortid.dart';
 
+// @DataClassName('BlobFile')
+// class BlobFiles extends Table with AutoIncrementingPrimaryKey {
+//   TextColumn get name => text()();
+//   BlobColumn get file => blob()();
+//   DateTimeColumn get created => dateTime()();
+//   DateTimeColumn get updated => dateTime()();
+// }
+
+// @DataClassName('Mutation')
+// class Mutations extends Table with AutoIncrementingPrimaryKey {
+//   TextColumn get path => text()();
+//   TextColumn get method => text()();
+//   TextColumn get body => text().map(const JsonMapper())();
+//   TextColumn get query => text().map(const JsonMapper())();
+//   TextColumn get headers => text().map(const JsonMapper())();
+//   TextColumn get files => text().map(const StringListMapper())();
+//   DateTimeColumn get created => dateTime()();
+// }
+
 @DataClassName('Record', extending: ServiceRecord)
 class Records extends Table with ServiceRecords {
   TextColumn get data => text().map(const JsonMapper())();
@@ -37,20 +56,19 @@ abstract class ServiceRecord extends DataClass implements Jsonable {
   String get id;
   DateTime get created;
   DateTime get updated;
-  bool? get synced;
-  bool? get deleted;
 }
 
 mixin ServiceRecords on Table {
   TextColumn get id => text().clientDefault(newId)();
   DateTimeColumn get created => dateTime()();
   DateTimeColumn get updated => dateTime()();
-  BoolColumn get synced => boolean().nullable()();
-  BoolColumn get deleted => boolean().nullable()();
 }
 
 mixin AutoIncrementingPrimaryKey on Table {
   IntColumn get id => integer().autoIncrement()();
+
+  @override
+  Set<Column<Object>>? get primaryKey => {id};
 }
 
 class JsonMapper extends TypeConverter<Map<String, dynamic>, String> {

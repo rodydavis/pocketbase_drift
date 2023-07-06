@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/retry.dart';
 
@@ -11,7 +12,7 @@ class PocketBaseHttpClient extends http.BaseClient {
     if (offline) {
       throw Exception('No internet connection');
     }
-    // TODO: Optimistic updates?
+    debugPrint('request: ${request.method} ${request.url}');
     return _client.send(request);
   }
 }

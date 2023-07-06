@@ -18,7 +18,10 @@ class $CollectionService extends $BaseService<CollectionModel>
     Map<String, dynamic> body = const {},
     Map<String, dynamic> query = const {},
     Map<String, String> headers = const {},
-  }) {
+  }) async {
+    for (final item in collections) {
+      await client.db.collectionsDao.createItem(item.toModel());
+    }
     return _base.import(
       collections,
       deleteMissing: deleteMissing,
@@ -67,7 +70,9 @@ class $CollectionService extends $BaseService<CollectionModel>
 
     if (fetchPolicy == FetchPolicy.cacheAndNetwork) {
       if (items.isNotEmpty) {
-        await dao.addAll(items.map((e) => e.toModel()).toList());
+        for (final item in items) {
+          await dao.updateItem(item.toModel());
+        }
       }
     }
 
@@ -118,7 +123,9 @@ class $CollectionService extends $BaseService<CollectionModel>
 
     if (fetchPolicy == FetchPolicy.cacheAndNetwork) {
       if (result.items.isNotEmpty) {
-        await dao.addAll(result.items.map((e) => e.toModel()).toList());
+        for (final item in result.items) {
+          await dao.updateItem(item.toModel());
+        }
       }
     }
 
@@ -141,5 +148,51 @@ class $CollectionService extends $BaseService<CollectionModel>
     }
 
     return result;
+  }
+
+  @override
+  Future<CollectionModel> getOne(
+    String id, {
+    String? expand,
+    String? fields,
+    Map<String, dynamic> query = const {},
+    Map<String, String> headers = const {},
+    FetchPolicy fetchPolicy = FetchPolicy.cacheAndNetwork,
+  }) async {
+    CollectionModel? record;
+    if (fetchPolicy == FetchPolicy.cacheAndNetwork ||
+        fetchPolicy == FetchPolicy.networkOnly) {
+      try {
+        record = await super.getOne(
+          id,
+          expand: expand,
+          query: query,
+          headers: headers,
+          fields: fields,
+        );
+      } catch (e) {
+        if (fetchPolicy == FetchPolicy.networkOnly) {
+          throw Exception(
+            'Failed to get collection $id $e',
+          );
+        }
+      }
+    }
+
+    if (fetchPolicy == FetchPolicy.cacheAndNetwork ||
+        fetchPolicy == FetchPolicy.cacheOnly) {
+      final model = await dao.get(id);
+      if (model != null) {
+        record = model.toModel();
+      }
+    }
+
+    if (record == null) {
+      throw Exception(
+        'Collection $id does not exist',
+      );
+    }
+
+    return record;
   }
 }
