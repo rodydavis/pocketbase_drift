@@ -40,9 +40,11 @@ class Example extends StatefulWidget {
 class _ExampleState extends State<Example> {
   double? progress;
   bool loaded = false;
-  final client = $PocketBase(
+
+  late final client = $PocketBase(
     url,
     connection: memoryDatabase(),
+    httpClientFactory: () => PocketBaseHttpClient(),
   );
   List<CollectionModel> collections = [];
   $RecordService? collection;
@@ -134,6 +136,26 @@ class _ExampleState extends State<Example> {
       appBar: AppBar(
         title: title,
         actions: [
+          DropdownButton(
+            value: PocketBaseHttpClient.offline,
+            items: const [
+              DropdownMenuItem(
+                value: true,
+                child: Text('Offline'),
+              ),
+              DropdownMenuItem(
+                value: false,
+                child: Text('Online'),
+              ),
+            ],
+            onChanged: (value) async {
+              PocketBaseHttpClient.offline = value!;
+              if (mounted) {
+                setState(() {});
+              }
+            },
+          ),
+          const SizedBox(width: 8),
           DropdownButton(
             value: col?.id,
             items: collections

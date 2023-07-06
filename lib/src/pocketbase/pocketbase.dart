@@ -2,7 +2,6 @@ import 'package:drift/drift.dart';
 import 'package:http/http.dart';
 import 'package:pocketbase/pocketbase.dart';
 
-import '../network/http.dart';
 import '../database/database.dart';
 import 'services/collection.dart';
 import 'services/record.dart';
@@ -15,7 +14,7 @@ class $PocketBase extends PocketBase {
     super.authStore,
     Client Function()? httpClientFactory,
   })  : db = DataBase(connection),
-        super(httpClientFactory: httpClientFactory ?? createHttpClient);
+        super(httpClientFactory: httpClientFactory);
 
   final DataBase db;
   bool logging = false;

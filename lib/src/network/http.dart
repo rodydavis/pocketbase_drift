@@ -16,7 +16,3 @@ class PocketBaseHttpClient extends http.BaseClient {
     return _client.send(request);
   }
 }
-
-http.Client createHttpClient() {
-  return PocketBaseHttpClient();
-}

@@ -27,41 +27,36 @@ class $RecordService extends RecordService {
     Map<String, String> headers = const {},
   }) async* {
     final deleted = await dao.getPendingDeletes();
-    final pending = await dao.getPending();
+    final pending = await dao.getPendingWrites();
     yield RetryProgressEvent(
       message: 'Found ${pending.length} pending records',
       total: pending.length,
       current: 0,
     );
     final futures = <Future>[];
+    for (final item in deleted) {
+      futures.add(Future(() async {
+        try {
+          await delete(
+            item.id,
+            query: query,
+            headers: headers,
+            body: item.data,
+          );
+        } catch (e) {
+          if (client.logging) debugPrint('retryLocal: ${item.id} $e');
+        }
+      }));
+    }
     for (final item in pending) {
       futures.add(Future(() async {
         try {
-          final isDeleted = deleted.indexWhere((e) => e.id == item.id) != -1;
-          if (isDeleted) {
-            await delete(
-              item.id,
-              query: query,
-              headers: headers,
-              body: item.data,
-            );
-          } else {
-            await update(
-              item.id,
-              query: query,
-              headers: headers,
-              body: item.data,
-              merge: (current, remote) {
-                final remoteDate = DateTime.parse(remote.updated);
-                final currentDate = DateTime.parse(current.updated);
-                if (remoteDate.isAfter(currentDate)) {
-                  return remote;
-                } else {
-                  return current;
-                }
-              },
-            );
-          }
+          await update(
+            item.id,
+            query: query,
+            headers: headers,
+            body: item.data,
+          );
         } catch (e) {
           if (client.logging) debugPrint('retryLocal: ${item.id} $e');
         }
@@ -411,50 +406,60 @@ class $RecordService extends RecordService {
     Map<String, String> headers = const {},
     String? expand,
     String? fields,
-    RecordModel? Function(RecordModel current, RecordModel remote)? merge,
   }) async {
-    RecordModel? record = (await dao.get(
-      id,
-      collection: collection.id,
-    ))
-        ?.toModel();
+    RecordModel? record;
     bool saved = false;
-    if (record == null && fetchPolicy == FetchPolicy.cacheAndNetwork) {
-      record = await super.getOne(
-        id,
-        expand: expand,
-        query: query,
-        headers: headers,
-        fields: fields,
-      );
-    }
+
     if (fetchPolicy == FetchPolicy.cacheAndNetwork ||
         fetchPolicy == FetchPolicy.networkOnly) {
       try {
-        if (merge != null) {
-          final remote = await getOneOrNull(
-            id,
-            expand: expand,
-            query: query,
-            headers: headers,
-            fetchPolicy: FetchPolicy.networkOnly,
-          );
-          if (record != null) {
-            record = merge(record, remote!);
-          } else {
-            record = remote;
-          }
-        }
-        record = await super.update(
-          id,
-          body: body,
+        final matches = await super.getList(
+          filter: "id = '$id'",
+          expand: expand,
           query: query,
           headers: headers,
-          expand: expand,
-          files: files,
           fields: fields,
         );
-        saved = true;
+        if (matches.items.isNotEmpty) {
+          record = matches.items.first;
+        }
+        if (record != null) {
+          final local = await dao.get(
+            id,
+            collection: collection.id,
+          );
+          if (local != null) {
+            final remoteDate = DateTime.parse(record.updated);
+            final currentDate = local.updated;
+            if (remoteDate.isAfter(currentDate)) {
+              // do nothing
+            } else {
+              record = await super.update(
+                id,
+                body: body,
+                query: query,
+                headers: headers,
+                expand: expand,
+                files: files,
+                fields: fields,
+              );
+              saved = true;
+            }
+          }
+        } else {
+          record = await super.create(
+            body: {
+              ...body,
+              'id': id,
+            },
+            query: query,
+            headers: headers,
+            expand: expand,
+            files: files,
+            fields: fields,
+          );
+          saved = true;
+        }
       } catch (e) {
         if (fetchPolicy == FetchPolicy.networkOnly) {
           throw Exception(
@@ -463,6 +468,7 @@ class $RecordService extends RecordService {
         }
       }
     }
+
     if (fetchPolicy == FetchPolicy.cacheAndNetwork ||
         fetchPolicy == FetchPolicy.cacheOnly) {
       if (record == null) {
@@ -475,6 +481,7 @@ class $RecordService extends RecordService {
       record.data['synced'] = saved;
       await dao.updateItem(record.toModel());
     }
+
     return record!;
   }
 
