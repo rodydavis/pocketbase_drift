@@ -25,6 +25,7 @@ import 'package:shortid/shortid.dart';
 
 @DataClassName('Record', extending: ServiceRecord)
 class Records extends Table with ServiceRecords {
+  // TextColumn get metadata => text().map(const JsonMapper())(); //.withDefault(const Constant('{}'))
   TextColumn get data => text().map(const JsonMapper())();
   TextColumn get collectionId => text().references(Collections, #id)();
   TextColumn get collectionName => text().references(Collections, #name)();
