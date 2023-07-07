@@ -16,6 +16,14 @@ class $CollectionsTable extends Collections
       type: DriftSqlType.string,
       requiredDuringInsert: false,
       clientDefault: newId);
+  static const VerificationMeta _metadataMeta =
+      const VerificationMeta('metadata');
+  @override
+  late final GeneratedColumnWithTypeConverter<Map<String, dynamic>, String>
+      metadata = GeneratedColumn<String>('metadata', aliasedName, false,
+              type: DriftSqlType.string, requiredDuringInsert: true)
+          .withConverter<Map<String, dynamic>>(
+              $CollectionsTable.$convertermetadata);
   static const VerificationMeta _createdMeta =
       const VerificationMeta('created');
   @override
@@ -106,6 +114,7 @@ class $CollectionsTable extends Collections
   @override
   List<GeneratedColumn> get $columns => [
         id,
+        metadata,
         created,
         updated,
         type,
@@ -132,6 +141,7 @@ class $CollectionsTable extends Collections
     if (data.containsKey('id')) {
       context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
     }
+    context.handle(_metadataMeta, const VerificationResult.success());
     if (data.containsKey('created')) {
       context.handle(_createdMeta,
           created.isAcceptableOrUnknown(data['created']!, _createdMeta));
@@ -198,6 +208,9 @@ class $CollectionsTable extends Collections
     return Collection(
       id: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}id'])!,
+      metadata: $CollectionsTable.$convertermetadata.fromSql(attachedDatabase
+          .typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}metadata'])!),
       created: attachedDatabase.typeMapping
           .read(DriftSqlType.dateTime, data['${effectivePrefix}created'])!,
       updated: attachedDatabase.typeMapping
@@ -235,6 +248,8 @@ class $CollectionsTable extends Collections
     return $CollectionsTable(attachedDatabase, alias);
   }
 
+  static TypeConverter<Map<String, dynamic>, String> $convertermetadata =
+      const JsonMapper();
   static TypeConverter<List<SchemaField>, String> $converterschema =
       const SchemaFieldListMapper();
   static TypeConverter<List<String>, String> $converterindexes =
@@ -245,6 +260,7 @@ class $CollectionsTable extends Collections
 
 class Collection extends ServiceRecord implements Insertable<Collection> {
   final String id;
+  final Map<String, dynamic> metadata;
   final DateTime created;
   final DateTime updated;
   final String type;
@@ -260,6 +276,7 @@ class Collection extends ServiceRecord implements Insertable<Collection> {
   final Map<String, dynamic> options;
   const Collection(
       {required this.id,
+      required this.metadata,
       required this.created,
       required this.updated,
       required this.type,
@@ -277,6 +294,10 @@ class Collection extends ServiceRecord implements Insertable<Collection> {
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['id'] = Variable<String>(id);
+    {
+      final converter = $CollectionsTable.$convertermetadata;
+      map['metadata'] = Variable<String>(converter.toSql(metadata));
+    }
     map['created'] = Variable<DateTime>(created);
     map['updated'] = Variable<DateTime>(updated);
     map['type'] = Variable<String>(type);
@@ -315,6 +336,7 @@ class Collection extends ServiceRecord implements Insertable<Collection> {
   CollectionsCompanion toCompanion(bool nullToAbsent) {
     return CollectionsCompanion(
       id: Value(id),
+      metadata: Value(metadata),
       created: Value(created),
       updated: Value(updated),
       type: Value(type),
@@ -346,6 +368,7 @@ class Collection extends ServiceRecord implements Insertable<Collection> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return Collection(
       id: serializer.fromJson<String>(json['id']),
+      metadata: serializer.fromJson<Map<String, dynamic>>(json['metadata']),
       created: serializer.fromJson<DateTime>(json['created']),
       updated: serializer.fromJson<DateTime>(json['updated']),
       type: serializer.fromJson<String>(json['type']),
@@ -366,6 +389,7 @@ class Collection extends ServiceRecord implements Insertable<Collection> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
       'id': serializer.toJson<String>(id),
+      'metadata': serializer.toJson<Map<String, dynamic>>(metadata),
       'created': serializer.toJson<DateTime>(created),
       'updated': serializer.toJson<DateTime>(updated),
       'type': serializer.toJson<String>(type),
@@ -384,6 +408,7 @@ class Collection extends ServiceRecord implements Insertable<Collection> {
 
   Collection copyWith(
           {String? id,
+          Map<String, dynamic>? metadata,
           DateTime? created,
           DateTime? updated,
           String? type,
@@ -399,6 +424,7 @@ class Collection extends ServiceRecord implements Insertable<Collection> {
           Map<String, dynamic>? options}) =>
       Collection(
         id: id ?? this.id,
+        metadata: metadata ?? this.metadata,
         created: created ?? this.created,
         updated: updated ?? this.updated,
         type: type ?? this.type,
@@ -417,6 +443,7 @@ class Collection extends ServiceRecord implements Insertable<Collection> {
   String toString() {
     return (StringBuffer('Collection(')
           ..write('id: $id, ')
+          ..write('metadata: $metadata, ')
           ..write('created: $created, ')
           ..write('updated: $updated, ')
           ..write('type: $type, ')
@@ -437,6 +464,7 @@ class Collection extends ServiceRecord implements Insertable<Collection> {
   @override
   int get hashCode => Object.hash(
       id,
+      metadata,
       created,
       updated,
       type,
@@ -455,6 +483,7 @@ class Collection extends ServiceRecord implements Insertable<Collection> {
       identical(this, other) ||
       (other is Collection &&
           other.id == this.id &&
+          other.metadata == this.metadata &&
           other.created == this.created &&
           other.updated == this.updated &&
           other.type == this.type &&
@@ -472,6 +501,7 @@ class Collection extends ServiceRecord implements Insertable<Collection> {
 
 class CollectionsCompanion extends UpdateCompanion<Collection> {
   final Value<String> id;
+  final Value<Map<String, dynamic>> metadata;
   final Value<DateTime> created;
   final Value<DateTime> updated;
   final Value<String> type;
@@ -488,6 +518,7 @@ class CollectionsCompanion extends UpdateCompanion<Collection> {
   final Value<int> rowid;
   const CollectionsCompanion({
     this.id = const Value.absent(),
+    this.metadata = const Value.absent(),
     this.created = const Value.absent(),
     this.updated = const Value.absent(),
     this.type = const Value.absent(),
@@ -505,6 +536,7 @@ class CollectionsCompanion extends UpdateCompanion<Collection> {
   });
   CollectionsCompanion.insert({
     this.id = const Value.absent(),
+    required Map<String, dynamic> metadata,
     required DateTime created,
     required DateTime updated,
     this.type = const Value.absent(),
@@ -519,7 +551,8 @@ class CollectionsCompanion extends UpdateCompanion<Collection> {
     required List<String> indexes,
     required Map<String, dynamic> options,
     this.rowid = const Value.absent(),
-  })  : created = Value(created),
+  })  : metadata = Value(metadata),
+        created = Value(created),
         updated = Value(updated),
         name = Value(name),
         schema = Value(schema),
@@ -527,6 +560,7 @@ class CollectionsCompanion extends UpdateCompanion<Collection> {
         options = Value(options);
   static Insertable<Collection> custom({
     Expression<String>? id,
+    Expression<String>? metadata,
     Expression<DateTime>? created,
     Expression<DateTime>? updated,
     Expression<String>? type,
@@ -544,6 +578,7 @@ class CollectionsCompanion extends UpdateCompanion<Collection> {
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
+      if (metadata != null) 'metadata': metadata,
       if (created != null) 'created': created,
       if (updated != null) 'updated': updated,
       if (type != null) 'type': type,
@@ -563,6 +598,7 @@ class CollectionsCompanion extends UpdateCompanion<Collection> {
 
   CollectionsCompanion copyWith(
       {Value<String>? id,
+      Value<Map<String, dynamic>>? metadata,
       Value<DateTime>? created,
       Value<DateTime>? updated,
       Value<String>? type,
@@ -579,6 +615,7 @@ class CollectionsCompanion extends UpdateCompanion<Collection> {
       Value<int>? rowid}) {
     return CollectionsCompanion(
       id: id ?? this.id,
+      metadata: metadata ?? this.metadata,
       created: created ?? this.created,
       updated: updated ?? this.updated,
       type: type ?? this.type,
@@ -601,6 +638,10 @@ class CollectionsCompanion extends UpdateCompanion<Collection> {
     final map = <String, Expression>{};
     if (id.present) {
       map['id'] = Variable<String>(id.value);
+    }
+    if (metadata.present) {
+      final converter = $CollectionsTable.$convertermetadata;
+      map['metadata'] = Variable<String>(converter.toSql(metadata.value));
     }
     if (created.present) {
       map['created'] = Variable<DateTime>(created.value);
@@ -654,6 +695,7 @@ class CollectionsCompanion extends UpdateCompanion<Collection> {
   String toString() {
     return (StringBuffer('CollectionsCompanion(')
           ..write('id: $id, ')
+          ..write('metadata: $metadata, ')
           ..write('created: $created, ')
           ..write('updated: $updated, ')
           ..write('type: $type, ')
@@ -685,6 +727,14 @@ class $RecordsTable extends Records with TableInfo<$RecordsTable, Record> {
       type: DriftSqlType.string,
       requiredDuringInsert: false,
       clientDefault: newId);
+  static const VerificationMeta _metadataMeta =
+      const VerificationMeta('metadata');
+  @override
+  late final GeneratedColumnWithTypeConverter<Map<String, dynamic>, String>
+      metadata = GeneratedColumn<String>('metadata', aliasedName, false,
+              type: DriftSqlType.string, requiredDuringInsert: true)
+          .withConverter<Map<String, dynamic>>(
+              $RecordsTable.$convertermetadata);
   static const VerificationMeta _createdMeta =
       const VerificationMeta('created');
   @override
@@ -723,7 +773,7 @@ class $RecordsTable extends Records with TableInfo<$RecordsTable, Record> {
           GeneratedColumn.constraintIsAlways('REFERENCES Collections (name)'));
   @override
   List<GeneratedColumn> get $columns =>
-      [id, created, updated, data, collectionId, collectionName];
+      [id, metadata, created, updated, data, collectionId, collectionName];
   @override
   String get aliasedName => _alias ?? 'Records';
   @override
@@ -736,6 +786,7 @@ class $RecordsTable extends Records with TableInfo<$RecordsTable, Record> {
     if (data.containsKey('id')) {
       context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
     }
+    context.handle(_metadataMeta, const VerificationResult.success());
     if (data.containsKey('created')) {
       context.handle(_createdMeta,
           created.isAcceptableOrUnknown(data['created']!, _createdMeta));
@@ -776,6 +827,9 @@ class $RecordsTable extends Records with TableInfo<$RecordsTable, Record> {
     return Record(
       id: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}id'])!,
+      metadata: $RecordsTable.$convertermetadata.fromSql(attachedDatabase
+          .typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}metadata'])!),
       created: attachedDatabase.typeMapping
           .read(DriftSqlType.dateTime, data['${effectivePrefix}created'])!,
       updated: attachedDatabase.typeMapping
@@ -794,12 +848,15 @@ class $RecordsTable extends Records with TableInfo<$RecordsTable, Record> {
     return $RecordsTable(attachedDatabase, alias);
   }
 
+  static TypeConverter<Map<String, dynamic>, String> $convertermetadata =
+      const JsonMapper();
   static TypeConverter<Map<String, dynamic>, String> $converterdata =
       const JsonMapper();
 }
 
 class Record extends ServiceRecord implements Insertable<Record> {
   final String id;
+  final Map<String, dynamic> metadata;
   final DateTime created;
   final DateTime updated;
   final Map<String, dynamic> data;
@@ -807,6 +864,7 @@ class Record extends ServiceRecord implements Insertable<Record> {
   final String collectionName;
   const Record(
       {required this.id,
+      required this.metadata,
       required this.created,
       required this.updated,
       required this.data,
@@ -816,6 +874,10 @@ class Record extends ServiceRecord implements Insertable<Record> {
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['id'] = Variable<String>(id);
+    {
+      final converter = $RecordsTable.$convertermetadata;
+      map['metadata'] = Variable<String>(converter.toSql(metadata));
+    }
     map['created'] = Variable<DateTime>(created);
     map['updated'] = Variable<DateTime>(updated);
     {
@@ -830,6 +892,7 @@ class Record extends ServiceRecord implements Insertable<Record> {
   RecordsCompanion toCompanion(bool nullToAbsent) {
     return RecordsCompanion(
       id: Value(id),
+      metadata: Value(metadata),
       created: Value(created),
       updated: Value(updated),
       data: Value(data),
@@ -843,6 +906,7 @@ class Record extends ServiceRecord implements Insertable<Record> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return Record(
       id: serializer.fromJson<String>(json['id']),
+      metadata: serializer.fromJson<Map<String, dynamic>>(json['metadata']),
       created: serializer.fromJson<DateTime>(json['created']),
       updated: serializer.fromJson<DateTime>(json['updated']),
       data: serializer.fromJson<Map<String, dynamic>>(json['data']),
@@ -855,6 +919,7 @@ class Record extends ServiceRecord implements Insertable<Record> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
       'id': serializer.toJson<String>(id),
+      'metadata': serializer.toJson<Map<String, dynamic>>(metadata),
       'created': serializer.toJson<DateTime>(created),
       'updated': serializer.toJson<DateTime>(updated),
       'data': serializer.toJson<Map<String, dynamic>>(data),
@@ -865,6 +930,7 @@ class Record extends ServiceRecord implements Insertable<Record> {
 
   Record copyWith(
           {String? id,
+          Map<String, dynamic>? metadata,
           DateTime? created,
           DateTime? updated,
           Map<String, dynamic>? data,
@@ -872,6 +938,7 @@ class Record extends ServiceRecord implements Insertable<Record> {
           String? collectionName}) =>
       Record(
         id: id ?? this.id,
+        metadata: metadata ?? this.metadata,
         created: created ?? this.created,
         updated: updated ?? this.updated,
         data: data ?? this.data,
@@ -882,6 +949,7 @@ class Record extends ServiceRecord implements Insertable<Record> {
   String toString() {
     return (StringBuffer('Record(')
           ..write('id: $id, ')
+          ..write('metadata: $metadata, ')
           ..write('created: $created, ')
           ..write('updated: $updated, ')
           ..write('data: $data, ')
@@ -892,13 +960,14 @@ class Record extends ServiceRecord implements Insertable<Record> {
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, created, updated, data, collectionId, collectionName);
+  int get hashCode => Object.hash(
+      id, metadata, created, updated, data, collectionId, collectionName);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is Record &&
           other.id == this.id &&
+          other.metadata == this.metadata &&
           other.created == this.created &&
           other.updated == this.updated &&
           other.data == this.data &&
@@ -908,6 +977,7 @@ class Record extends ServiceRecord implements Insertable<Record> {
 
 class RecordsCompanion extends UpdateCompanion<Record> {
   final Value<String> id;
+  final Value<Map<String, dynamic>> metadata;
   final Value<DateTime> created;
   final Value<DateTime> updated;
   final Value<Map<String, dynamic>> data;
@@ -916,6 +986,7 @@ class RecordsCompanion extends UpdateCompanion<Record> {
   final Value<int> rowid;
   const RecordsCompanion({
     this.id = const Value.absent(),
+    this.metadata = const Value.absent(),
     this.created = const Value.absent(),
     this.updated = const Value.absent(),
     this.data = const Value.absent(),
@@ -925,19 +996,22 @@ class RecordsCompanion extends UpdateCompanion<Record> {
   });
   RecordsCompanion.insert({
     this.id = const Value.absent(),
+    required Map<String, dynamic> metadata,
     required DateTime created,
     required DateTime updated,
     required Map<String, dynamic> data,
     required String collectionId,
     required String collectionName,
     this.rowid = const Value.absent(),
-  })  : created = Value(created),
+  })  : metadata = Value(metadata),
+        created = Value(created),
         updated = Value(updated),
         data = Value(data),
         collectionId = Value(collectionId),
         collectionName = Value(collectionName);
   static Insertable<Record> custom({
     Expression<String>? id,
+    Expression<String>? metadata,
     Expression<DateTime>? created,
     Expression<DateTime>? updated,
     Expression<String>? data,
@@ -947,6 +1021,7 @@ class RecordsCompanion extends UpdateCompanion<Record> {
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
+      if (metadata != null) 'metadata': metadata,
       if (created != null) 'created': created,
       if (updated != null) 'updated': updated,
       if (data != null) 'data': data,
@@ -958,6 +1033,7 @@ class RecordsCompanion extends UpdateCompanion<Record> {
 
   RecordsCompanion copyWith(
       {Value<String>? id,
+      Value<Map<String, dynamic>>? metadata,
       Value<DateTime>? created,
       Value<DateTime>? updated,
       Value<Map<String, dynamic>>? data,
@@ -966,6 +1042,7 @@ class RecordsCompanion extends UpdateCompanion<Record> {
       Value<int>? rowid}) {
     return RecordsCompanion(
       id: id ?? this.id,
+      metadata: metadata ?? this.metadata,
       created: created ?? this.created,
       updated: updated ?? this.updated,
       data: data ?? this.data,
@@ -980,6 +1057,10 @@ class RecordsCompanion extends UpdateCompanion<Record> {
     final map = <String, Expression>{};
     if (id.present) {
       map['id'] = Variable<String>(id.value);
+    }
+    if (metadata.present) {
+      final converter = $RecordsTable.$convertermetadata;
+      map['metadata'] = Variable<String>(converter.toSql(metadata.value));
     }
     if (created.present) {
       map['created'] = Variable<DateTime>(created.value);
@@ -1007,6 +1088,7 @@ class RecordsCompanion extends UpdateCompanion<Record> {
   String toString() {
     return (StringBuffer('RecordsCompanion(')
           ..write('id: $id, ')
+          ..write('metadata: $metadata, ')
           ..write('created: $created, ')
           ..write('updated: $updated, ')
           ..write('data: $data, ')
@@ -1194,7 +1276,7 @@ abstract class _$DataBase extends GeneratedDatabase {
   late final CollectionsDao collectionsDao = CollectionsDao(this as DataBase);
   Selectable<SearchResult> _search(String query) {
     return customSelect(
-        'SELECT"r"."id" AS "nested_0.id", "r"."created" AS "nested_0.created", "r"."updated" AS "nested_0.updated", "r"."data" AS "nested_0.data", "r"."collectionId" AS "nested_0.collectionId", "r"."collectionName" AS "nested_0.collectionName" FROM text_entries INNER JOIN records AS r ON r."rowid" = text_entries."rowid" WHERE text_entries MATCH ?1 ORDER BY rank',
+        'SELECT"r"."id" AS "nested_0.id", "r"."metadata" AS "nested_0.metadata", "r"."created" AS "nested_0.created", "r"."updated" AS "nested_0.updated", "r"."data" AS "nested_0.data", "r"."collectionId" AS "nested_0.collectionId", "r"."collectionName" AS "nested_0.collectionName" FROM text_entries INNER JOIN records AS r ON r."rowid" = text_entries."rowid" WHERE text_entries MATCH ?1 ORDER BY rank',
         variables: [
           Variable<String>(query)
         ],

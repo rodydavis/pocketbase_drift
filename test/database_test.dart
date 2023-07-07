@@ -18,7 +18,10 @@ void main() {
     test('create', () async {
       final id = await db.collectionsDao.createItem(CollectionModel(
         name: 'Test 123',
-      ).toModel());
+      ).toModel(
+        deleted: false,
+        synced: null,
+      ));
 
       final items = await db.collectionsDao.getAll();
 
@@ -31,7 +34,10 @@ void main() {
     test('update', () async {
       final id = await db.collectionsDao.createItem(CollectionModel(
         name: 'Test 123',
-      ).toModel());
+      ).toModel(
+        deleted: false,
+        synced: null,
+      ));
 
       final items = await db.collectionsDao.getAll();
 
@@ -41,7 +47,10 @@ void main() {
       await db.collectionsDao.updateItem(CollectionModel(
         id: id,
         name: 'Test 1234',
-      ).toModel());
+      ).toModel(
+        deleted: false,
+        synced: null,
+      ));
 
       final item = await db.collectionsDao.get(id);
 
@@ -53,7 +62,10 @@ void main() {
     test('delete', () async {
       final id = await db.collectionsDao.createItem(CollectionModel(
         name: 'Test 123',
-      ).toModel());
+      ).toModel(
+        deleted: false,
+        synced: null,
+      ));
 
       final items = await db.collectionsDao.getAll();
 
@@ -78,7 +90,10 @@ void main() {
     test('create', () async {
       final collectionId = await db.collectionsDao.createItem(CollectionModel(
         name: 'Test 123',
-      ).toModel());
+      ).toModel(
+        deleted: false,
+        synced: null,
+      ));
       final collection = await db //
           .collectionsDao
           .get(collectionId);
@@ -88,10 +103,11 @@ void main() {
         collectionName: collection.name,
         data: {
           'name': 'Test 456',
-          'deleted': false,
-          'synced': false,
         },
-      ).toModel());
+      ).toModel(
+        deleted: false,
+        synced: false,
+      ));
 
       expect(id.isNotEmpty, true);
 
@@ -113,7 +129,10 @@ void main() {
     test('update', () async {
       final collectionId = await db.collectionsDao.createItem(CollectionModel(
         name: 'Test 123',
-      ).toModel());
+      ).toModel(
+        deleted: false,
+        synced: null,
+      ));
       final collection = await db //
           .collectionsDao
           .get(collectionId);
@@ -124,10 +143,11 @@ void main() {
           collectionName: collection.name,
           data: {
             'name': 'Test 456',
-            'deleted': false,
-            'synced': false,
           },
-        ).toModel(),
+        ).toModel(
+          deleted: false,
+          synced: false,
+        ),
       );
 
       expect(id.isNotEmpty, true);
@@ -145,10 +165,11 @@ void main() {
         collectionName: collection.name,
         data: {
           'name': 'Test 789',
-          'deleted': false,
-          'synced': false,
         },
-      ).toModel());
+      ).toModel(
+        deleted: false,
+        synced: false,
+      ));
 
       final item2 = await db.recordsDao.get(
         id,
@@ -164,7 +185,10 @@ void main() {
     test('delete', () async {
       final collectionId = await db.collectionsDao.createItem(CollectionModel(
         name: 'Test 123',
-      ).toModel());
+      ).toModel(
+        deleted: false,
+        synced: null,
+      ));
       final collection = await db //
           .collectionsDao
           .get(collectionId);
@@ -175,10 +199,11 @@ void main() {
           collectionName: collection.name,
           data: {
             'name': 'Test 456',
-            'deleted': false,
-            'synced': false,
           },
-        ).toModel(),
+        ).toModel(
+          deleted: false,
+          synced: false,
+        ),
       );
 
       expect(id.isNotEmpty, true);

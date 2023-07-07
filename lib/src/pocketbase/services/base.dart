@@ -7,6 +7,8 @@ abstract class $BaseService<M extends Jsonable> extends BaseCrudService<M> {
 
   @override
   final $PocketBase client;
+
+  Future<void> setLocal(List<M> items);
 }
 
 enum FetchPolicy {

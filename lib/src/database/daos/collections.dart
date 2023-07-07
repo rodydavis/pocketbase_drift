@@ -58,9 +58,16 @@ extension CollectionUtils on Collection {
 }
 
 extension CollectionModelUtils on CollectionModel {
-  Collection toModel() {
+  Collection toModel({
+    required bool? synced,
+    required bool? deleted,
+  }) {
     return Collection(
       id: id,
+      metadata: {
+        'synced': synced,
+        'deleted': deleted,
+      },
       created: DateTime.tryParse(created) ?? DateTime.now(),
       updated: DateTime.tryParse(updated) ?? DateTime.now(),
       name: name,

@@ -28,7 +28,10 @@ void main() {
     );
     collection = await client.collections.getOne('l1qxa33evkxxte0');
 
-    await client.db.collectionsDao.createItem(collection.toModel());
+    await client.db.collectionsDao.createItem(collection.toModel(
+      deleted: false,
+      synced: null,
+    ));
 
     col = client.$collection(collection);
 
@@ -47,7 +50,7 @@ void main() {
     for (final item in local) {
       await col.delete(
         item.id,
-        // fetchPolicy: FetchPolicy.networkOnly,
+        fetchPolicy: FetchPolicy.networkOnly,
         // TODO: Fails on anything else
       );
     }
@@ -264,7 +267,7 @@ void main() {
 
         await col.update(item.id, body: {'name': 'test2'});
 
-        await col.retryLocal().last;
+        // await col.retryLocal().last;
 
         final remote = await col.getOneOrNull(
           item.id,
@@ -285,6 +288,7 @@ void main() {
           body: {'name': 'test'},
           fetchPolicy: FetchPolicy.cacheAndNetwork,
         );
+        print('item: ${item.id}');
 
         await col.delete(item.id, fetchPolicy: FetchPolicy.cacheOnly);
 

@@ -19,8 +19,20 @@ class $CollectionService extends $BaseService<CollectionModel>
     Map<String, dynamic> query = const {},
     Map<String, String> headers = const {},
   }) async {
+    final existing = await dao.getAll();
     for (final item in collections) {
-      await client.db.collectionsDao.createItem(item.toModel());
+      await dao.createItem(item.toModel(
+        deleted: false,
+        synced: null,
+      ));
+    }
+    if (deleteMissing) {
+      final missing = existing.where((e) {
+        return !collections.any((c) => c.id == e.id);
+      });
+      for (final item in missing) {
+        await dao.deleteItem(item.id);
+      }
     }
     return _base.import(
       collections,
@@ -71,7 +83,10 @@ class $CollectionService extends $BaseService<CollectionModel>
     if (fetchPolicy == FetchPolicy.cacheAndNetwork) {
       if (items.isNotEmpty) {
         for (final item in items) {
-          await dao.updateItem(item.toModel());
+          await dao.updateItem(item.toModel(
+            deleted: false,
+            synced: null,
+          ));
         }
       }
     }
@@ -124,7 +139,10 @@ class $CollectionService extends $BaseService<CollectionModel>
     if (fetchPolicy == FetchPolicy.cacheAndNetwork) {
       if (result.items.isNotEmpty) {
         for (final item in result.items) {
-          await dao.updateItem(item.toModel());
+          await dao.updateItem(item.toModel(
+            deleted: false,
+            synced: null,
+          ));
         }
       }
     }
@@ -194,5 +212,15 @@ class $CollectionService extends $BaseService<CollectionModel>
     }
 
     return record;
+  }
+
+  @override
+  Future<void> setLocal(List<CollectionModel> items) async {
+    for (final item in items) {
+      await client.db.collectionsDao.updateItem(item.toModel(
+        deleted: false,
+        synced: null,
+      ));
+    }
   }
 }

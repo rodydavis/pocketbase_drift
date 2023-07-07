@@ -6,21 +6,37 @@ import 'package:flutter/foundation.dart';
 import 'package:pocketbase/pocketbase.dart';
 
 import '../../database/database.dart';
-import '../pocketbase.dart';
 import 'base.dart';
 
 typedef IdGenerator = String Function();
 
-// TODO: Files to path provider, web?
-class $RecordService extends RecordService {
-  $RecordService(this.client, this.collection) : super(client, collection.id);
-
-  @override
-  final $PocketBase client;
+class $RecordService extends $BaseService<RecordModel>
+    implements RecordService {
+  $RecordService(super.client, this.collection);
 
   final CollectionModel collection;
 
   late final dao = client.db.recordsDao;
+
+  late final _base = RecordService(client, collection.id);
+
+  @override
+  String get baseCrudPath => _base.baseCrudPath;
+
+  @override
+  RecordModel itemFactoryFunc(Map<String, dynamic> json) {
+    return _base.itemFactoryFunc(json);
+  }
+
+  @override
+  Future<void> setLocal(List<RecordModel> items) async {
+    for (final item in items) {
+      await client.db.recordsDao.updateItem(item.toModel(
+        deleted: false,
+        synced: null,
+      ));
+    }
+  }
 
   Stream<RetryProgressEvent?> retryLocal({
     Map<String, dynamic> query = const {},
@@ -74,25 +90,6 @@ class $RecordService extends RecordService {
     yield null;
   }
 
-  Future<void> setLocal(List<Map<String, dynamic>> list) async {
-    final items = list.map((e) {
-      return RecordModel(
-        id: e['id'] ?? client.db.generateId(),
-        data: e,
-        collectionId: collection.id,
-        collectionName: collection.name,
-        created: e['created'] ?? DateTime.now().toIso8601String(),
-        updated: e['updated'] ?? DateTime.now().toIso8601String(),
-      );
-    }).toList();
-
-    for (final item in items) {
-      item.data['deleted'] = false;
-      item.data['synced'] = null;
-      await dao.updateItem(item.toModel());
-    }
-  }
-
   Future<List<RecordModel>> search(String query) {
     return client.db.search(query, collectionId: collection.id);
   }
@@ -100,16 +97,18 @@ class $RecordService extends RecordService {
   Future<void> onEvent(RecordSubscriptionEvent e) async {
     if (e.record != null) {
       if (e.action == 'create') {
-        e.record!.data['deleted'] = false;
-        e.record!.data['synced'] = true;
         await dao.createItem(
-          e.record!.toModel(),
+          e.record!.toModel(
+            deleted: false,
+            synced: true,
+          ),
         );
       } else if (e.action == 'update') {
-        e.record!.data['deleted'] = false;
-        e.record!.data['synced'] = true;
         await dao.updateItem(
-          e.record!.toModel(),
+          e.record!.toModel(
+            deleted: false,
+            synced: true,
+          ),
         );
       } else if (e.action == 'delete') {
         // e.record!.data['deleted'] = true;
@@ -189,7 +188,7 @@ class $RecordService extends RecordService {
     if (fetchPolicy == FetchPolicy.networkOnly ||
         fetchPolicy == FetchPolicy.cacheAndNetwork) {
       try {
-        items = await super.getFullList(
+        items = await _base.getFullList(
           batch: batch,
           expand: expand,
           filter: filter,
@@ -210,9 +209,10 @@ class $RecordService extends RecordService {
     if (fetchPolicy == FetchPolicy.cacheAndNetwork) {
       if (items.isNotEmpty) {
         for (final item in items) {
-          item.data['deleted'] = false;
-          item.data['synced'] = true;
-          await dao.updateItem(item.toModel());
+          await dao.updateItem(item.toModel(
+            deleted: false,
+            synced: true,
+          ));
         }
       }
     }
@@ -246,7 +246,7 @@ class $RecordService extends RecordService {
     if (fetchPolicy == FetchPolicy.networkOnly ||
         fetchPolicy == FetchPolicy.cacheAndNetwork) {
       try {
-        result = await super.getList(
+        result = await _base.getList(
           page: page,
           perPage: perPage,
           expand: expand,
@@ -268,9 +268,10 @@ class $RecordService extends RecordService {
     if (fetchPolicy == FetchPolicy.cacheAndNetwork) {
       if (result.items.isNotEmpty) {
         for (final item in result.items) {
-          item.data['deleted'] = false;
-          item.data['synced'] = true;
-          await dao.updateItem(item.toModel());
+          await dao.updateItem(item.toModel(
+            deleted: false,
+            synced: true,
+          ));
         }
       }
     }
@@ -312,7 +313,7 @@ class $RecordService extends RecordService {
     if (fetchPolicy == FetchPolicy.cacheAndNetwork ||
         fetchPolicy == FetchPolicy.networkOnly) {
       try {
-        record = await super.getOne(
+        record = await _base.getOne(
           id,
           expand: expand,
           query: query,
@@ -336,9 +337,10 @@ class $RecordService extends RecordService {
       );
       if (model != null) {
         record = model.toModel();
-        record.data['deleted'] = false;
-        record.data['synced'] = true;
-        await dao.updateItem(record.toModel());
+        await dao.updateItem(record.toModel(
+          deleted: false,
+          synced: true,
+        ));
       }
     }
 
@@ -363,33 +365,34 @@ class $RecordService extends RecordService {
       id,
       collection: collection.id,
     );
-    if (fetchPolicy == FetchPolicy.cacheAndNetwork) {
-      await dao.deleteItem(
-        id,
-        collection: collection.id,
-      );
-    }
     if (fetchPolicy == FetchPolicy.cacheOnly && record != null) {
-      record.data['deleted'] = true;
-      record.data['synced'] = true;
+      record.metadata['deleted'] = true;
+      record.metadata['synced'] = false;
       await dao.updateItem(record);
     }
     if (fetchPolicy == FetchPolicy.cacheAndNetwork ||
         fetchPolicy == FetchPolicy.networkOnly) {
       try {
-        await super.delete(
+        await _base.delete(
           id,
           body: body,
           query: query,
           headers: headers,
         );
+        if (fetchPolicy == FetchPolicy.cacheAndNetwork) {
+          await dao.deleteItem(
+            id,
+            collection: collection.id,
+          );
+        }
       } catch (e) {
         if (fetchPolicy == FetchPolicy.networkOnly) {
           throw Exception(
             'Failed to delete record $id in collection $collection.name $e',
           );
         } else if (record != null) {
-          record.data['synced'] = false;
+          record.metadata['deleted'] = true;
+          record.metadata['synced'] = false;
           await dao.updateItem(record);
         }
       }
@@ -409,57 +412,24 @@ class $RecordService extends RecordService {
   }) async {
     RecordModel? record;
     bool saved = false;
+    // final local = await dao.get(
+    //   id,
+    //   collection: collection.id,
+    // );
 
     if (fetchPolicy == FetchPolicy.cacheAndNetwork ||
         fetchPolicy == FetchPolicy.networkOnly) {
       try {
-        final matches = await super.getList(
-          filter: "id = '$id'",
-          expand: expand,
+        record = await _base.update(
+          id,
+          body: body,
           query: query,
           headers: headers,
+          expand: expand,
+          files: files,
           fields: fields,
         );
-        if (matches.items.isNotEmpty) {
-          record = matches.items.first;
-        }
-        if (record != null) {
-          final local = await dao.get(
-            id,
-            collection: collection.id,
-          );
-          if (local != null) {
-            final remoteDate = DateTime.parse(record.updated);
-            final currentDate = local.updated;
-            if (remoteDate.isAfter(currentDate)) {
-              // do nothing
-            } else {
-              record = await super.update(
-                id,
-                body: body,
-                query: query,
-                headers: headers,
-                expand: expand,
-                files: files,
-                fields: fields,
-              );
-              saved = true;
-            }
-          }
-        } else {
-          record = await super.create(
-            body: {
-              ...body,
-              'id': id,
-            },
-            query: query,
-            headers: headers,
-            expand: expand,
-            files: files,
-            fields: fields,
-          );
-          saved = true;
-        }
+        saved = true;
       } catch (e) {
         if (fetchPolicy == FetchPolicy.networkOnly) {
           throw Exception(
@@ -477,9 +447,10 @@ class $RecordService extends RecordService {
         );
       }
       record.data.addAll(body);
-      record.data['deleted'] = false;
-      record.data['synced'] = saved;
-      await dao.updateItem(record.toModel());
+      await dao.updateItem(record.toModel(
+        deleted: false,
+        synced: saved,
+      ));
     }
 
     return record!;
@@ -501,7 +472,7 @@ class $RecordService extends RecordService {
     if (fetchPolicy == FetchPolicy.cacheAndNetwork ||
         fetchPolicy == FetchPolicy.networkOnly) {
       try {
-        record = await super.create(
+        record = await _base.create(
           body: body,
           query: query,
           headers: headers,
@@ -521,23 +492,24 @@ class $RecordService extends RecordService {
 
     if (fetchPolicy == FetchPolicy.cacheAndNetwork ||
         fetchPolicy == FetchPolicy.cacheOnly) {
-      final data = {...record?.data ?? body};
-      data['deleted'] = false;
-      data['synced'] = saved;
-      final recordModel = RecordModel(
+      final recordModel = Record(
         id: record?.id ?? '',
-        data: data,
-        created: DateTime.now().toIso8601String(),
-        updated: DateTime.now().toIso8601String(),
+        data: body,
+        created: DateTime.now(),
+        updated: DateTime.now(),
         collectionId: collection.id,
         collectionName: collection.name,
-      ).toModel();
+        metadata: {
+          'deleted': false,
+          'synced': saved,
+        },
+      );
       final result = await dao.createItem(recordModel);
-      record = (await dao.get(
+      final item = await dao.get(
         result,
         collection: collection.id,
-      ))
-          ?.toModel();
+      );
+      record = item?.toModel();
     }
 
     return record!;
@@ -553,6 +525,243 @@ class $RecordService extends RecordService {
       collectionId: collection.id,
       collectionName: collection.name,
     );
+  }
+
+  @override
+  Future<RecordAuth> authRefresh({
+    String? expand,
+    String? fields,
+    Map<String, dynamic> body = const {},
+    Map<String, dynamic> query = const {},
+    Map<String, String> headers = const {},
+  }) {
+    return _base.authRefresh(
+      expand: expand,
+      fields: fields,
+      body: body,
+      query: query,
+      headers: headers,
+    );
+  }
+
+  @override
+  Future<RecordAuth> authWithOAuth2(
+    String providerName,
+    OAuth2UrlCallbackFunc urlCallback, {
+    List<String> scopes = const [],
+    Map<String, dynamic> createData = const {},
+    String? expand,
+    String? fields,
+  }) {
+    return _base.authWithOAuth2(
+      providerName,
+      urlCallback,
+      scopes: scopes,
+      createData: createData,
+      expand: expand,
+      fields: fields,
+    );
+  }
+
+  @override
+  Future<RecordAuth> authWithOAuth2Code(
+    String provider,
+    String code,
+    String codeVerifier,
+    String redirectUrl, {
+    Map<String, dynamic> createData = const {},
+    Map<String, dynamic> body = const {},
+    Map<String, dynamic> query = const {},
+    Map<String, String> headers = const {},
+    String? expand,
+    String? fields,
+  }) {
+    return _base.authWithOAuth2Code(
+      provider,
+      code,
+      codeVerifier,
+      redirectUrl,
+      createData: createData,
+      body: body,
+      query: query,
+      headers: headers,
+      expand: expand,
+      fields: fields,
+    );
+  }
+
+  @override
+  Future<RecordAuth> authWithPassword(
+    String usernameOrEmail,
+    String password, {
+    String? expand,
+    String? fields,
+    Map<String, dynamic> body = const {},
+    Map<String, dynamic> query = const {},
+    Map<String, String> headers = const {},
+  }) {
+    return _base.authWithPassword(
+      usernameOrEmail,
+      password,
+      expand: expand,
+      fields: fields,
+      body: body,
+      query: query,
+      headers: headers,
+    );
+  }
+
+  @override
+  String get baseCollectionPath => _base.baseCollectionPath;
+
+  @override
+  Future<void> confirmEmailChange(
+    String emailChangeToken,
+    String userPassword, {
+    Map<String, dynamic> body = const {},
+    Map<String, dynamic> query = const {},
+    Map<String, String> headers = const {},
+  }) {
+    return _base.confirmEmailChange(
+      emailChangeToken,
+      userPassword,
+      body: body,
+      query: query,
+      headers: headers,
+    );
+  }
+
+  @override
+  Future<void> confirmPasswordReset(
+    String passwordResetToken,
+    String password,
+    String passwordConfirm, {
+    Map<String, dynamic> body = const {},
+    Map<String, dynamic> query = const {},
+    Map<String, String> headers = const {},
+  }) {
+    return _base.confirmPasswordReset(
+      passwordResetToken,
+      password,
+      passwordConfirm,
+      body: body,
+      query: query,
+      headers: headers,
+    );
+  }
+
+  @override
+  Future<void> confirmVerification(
+    String verificationToken, {
+    Map<String, dynamic> body = const {},
+    Map<String, dynamic> query = const {},
+    Map<String, String> headers = const {},
+  }) {
+    return _base.confirmVerification(
+      verificationToken,
+      body: body,
+      query: query,
+      headers: headers,
+    );
+  }
+
+  @override
+  Future<AuthMethodsList> listAuthMethods({
+    Map<String, dynamic> query = const {},
+    Map<String, String> headers = const {},
+  }) {
+    return _base.listAuthMethods(
+      query: query,
+      headers: headers,
+    );
+  }
+
+  @override
+  Future<List<ExternalAuthModel>> listExternalAuths(
+    String recordId, {
+    Map<String, dynamic> query = const {},
+    Map<String, String> headers = const {},
+  }) {
+    return _base.listExternalAuths(
+      recordId,
+      query: query,
+      headers: headers,
+    );
+  }
+
+  @override
+  Future<void> requestEmailChange(
+    String newEmail, {
+    Map<String, dynamic> body = const {},
+    Map<String, dynamic> query = const {},
+    Map<String, String> headers = const {},
+  }) {
+    return _base.requestEmailChange(
+      newEmail,
+      body: body,
+      query: query,
+      headers: headers,
+    );
+  }
+
+  @override
+  Future<void> requestPasswordReset(
+    String email, {
+    Map<String, dynamic> body = const {},
+    Map<String, dynamic> query = const {},
+    Map<String, String> headers = const {},
+  }) {
+    return _base.requestPasswordReset(
+      email,
+      body: body,
+      query: query,
+      headers: headers,
+    );
+  }
+
+  @override
+  Future<void> requestVerification(
+    String email, {
+    Map<String, dynamic> body = const {},
+    Map<String, dynamic> query = const {},
+    Map<String, String> headers = const {},
+  }) {
+    return _base.requestVerification(
+      email,
+      body: body,
+      query: query,
+      headers: headers,
+    );
+  }
+
+  @override
+  Future<UnsubscribeFunc> subscribe(
+    String topic,
+    RecordSubscriptionFunc callback,
+  ) {
+    return _base.subscribe(topic, callback);
+  }
+
+  @override
+  Future<void> unlinkExternalAuth(
+    String recordId,
+    String provider, {
+    Map<String, dynamic> body = const {},
+    Map<String, dynamic> query = const {},
+    Map<String, String> headers = const {},
+  }) {
+    return _base.unlinkExternalAuth(
+      recordId,
+      provider,
+      body: body,
+      query: query,
+      headers: headers,
+    );
+  }
+
+  @override
+  Future<void> unsubscribe([String topic = ""]) {
+    return _base.unsubscribe(topic);
   }
 }
 

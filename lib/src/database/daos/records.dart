@@ -28,8 +28,8 @@ class RecordsDao extends ServiceRecordsDao<$RecordsTable, Record>
   Future<List<Record>> getPendingWrites({String? collection}) async {
     final records = await getAll(collection: collection);
     return records.where((e) {
-      final deleted = e.data['deleted'] == false;
-      final synced = e.data['synced'] == false;
+      final deleted = e.metadata['deleted'] == false;
+      final synced = e.metadata['synced'] == false;
       return deleted && synced;
     }).toList();
   }
@@ -37,8 +37,8 @@ class RecordsDao extends ServiceRecordsDao<$RecordsTable, Record>
   Future<List<Record>> getPendingDeletes({String? collection}) async {
     final records = await getAll(collection: collection);
     return records.where((e) {
-      final deleted = e.data['deleted'] == true;
-      final synced = e.data['synced'] == false;
+      final deleted = e.metadata['deleted'] == true;
+      final synced = e.metadata['synced'] == false;
       return deleted && synced;
     }).toList();
   }
@@ -185,12 +185,20 @@ extension RecordUtils on Record {
 }
 
 extension RecordModelUtils on RecordModel {
-  Record toModel() => Record(
+  Record toModel({
+    required bool? synced,
+    required bool? deleted,
+  }) =>
+      Record(
         id: id,
+        metadata: {
+          'synced': synced,
+          'deleted': deleted,
+        },
+        created: DateTime.tryParse(created) ?? DateTime.now(),
+        updated: DateTime.tryParse(updated) ?? DateTime.now(),
         collectionId: collectionId,
         collectionName: collectionName,
         data: data,
-        created: DateTime.tryParse(created) ?? DateTime.now(),
-        updated: DateTime.tryParse(updated) ?? DateTime.now(),
       );
 }
