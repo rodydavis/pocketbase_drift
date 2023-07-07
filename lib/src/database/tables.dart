@@ -31,6 +31,11 @@ class Records extends Table with ServiceRecords {
 
   @override
   Set<Column<Object>>? get primaryKey => {id, collectionId};
+
+  // @override
+  // List<Set<Column<Object>>>? get uniqueKeys => [
+  //       {id, collectionId},
+  //     ];
 }
 
 @DataClassName('Collection', extending: ServiceRecord)

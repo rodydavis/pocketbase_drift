@@ -54,6 +54,7 @@ void main() {
         // TODO: Fails on anything else
       );
     }
+    // await col.dao.removeAll(collection: collection.id);
   });
 
   test('check collections', () async {

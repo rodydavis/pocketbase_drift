@@ -8,8 +8,6 @@ import 'package:pocketbase/pocketbase.dart';
 import '../../database/database.dart';
 import 'base.dart';
 
-typedef IdGenerator = String Function();
-
 class $RecordService extends $BaseService<RecordModel>
     implements RecordService {
   $RecordService(super.client, this.collection);
@@ -111,11 +109,6 @@ class $RecordService extends $BaseService<RecordModel>
           ),
         );
       } else if (e.action == 'delete') {
-        // e.record!.data['deleted'] = true;
-        // e.record!.data['synced'] = true;
-        // await dao.updateItem(
-        //   e.record!.toModel(),
-        // );
         await dao.deleteItem(
           e.record!.id,
           collection: collection.id,
@@ -153,19 +146,15 @@ class $RecordService extends $BaseService<RecordModel>
     bool? deleted = false,
     bool? synced,
   }) async {
-    final stream = dao
-        .watchAll(
-      collection: collection.id,
-    )
-        .map((e) {
-      final items = e.map((r) => r.toModel()).toList();
+    final stream = dao.watchAll(collection: collection.id).map((e) {
+      var items = e.toList();
       if (deleted != null) {
-        return items.where((e) => e.data['deleted'] == deleted).toList();
+        items = items.where((e) => e.metadata['deleted'] == deleted).toList();
       }
       if (synced != null) {
-        return items.where((e) => e.data['synced'] == synced).toList();
+        items = items.where((e) => e.metadata['synced'] == synced).toList();
       }
-      return items;
+      return items.map((e) => e.toModel()).toList();
     });
     final cancel = await subscribe('*', onEvent);
     await getFullList(fetchPolicy: fetchPolicy);
@@ -208,12 +197,12 @@ class $RecordService extends $BaseService<RecordModel>
 
     if (fetchPolicy == FetchPolicy.cacheAndNetwork) {
       if (items.isNotEmpty) {
-        for (final item in items) {
-          await dao.updateItem(item.toModel(
+        await dao.batchAdd(items.map((e) {
+          return e.toModel(
             deleted: false,
             synced: true,
-          ));
-        }
+          );
+        }).toList());
       }
     }
 
@@ -513,18 +502,6 @@ class $RecordService extends $BaseService<RecordModel>
     }
 
     return record!;
-  }
-
-  RecordModel toRecord(Map<String, dynamic> data) {
-    final id = data['id'].toString();
-    return RecordModel(
-      id: id,
-      data: data,
-      created: DateTime.now().toIso8601String(),
-      updated: DateTime.now().toIso8601String(),
-      collectionId: collection.id,
-      collectionName: collection.name,
-    );
   }
 
   @override

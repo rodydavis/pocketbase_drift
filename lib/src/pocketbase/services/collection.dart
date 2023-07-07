@@ -64,7 +64,7 @@ class $CollectionService extends $BaseService<CollectionModel>
     if (fetchPolicy == FetchPolicy.networkOnly ||
         fetchPolicy == FetchPolicy.cacheAndNetwork) {
       try {
-        items = await super.getFullList(
+        items = await _base.getFullList(
           batch: batch,
           expand: expand,
           filter: filter,
@@ -117,7 +117,7 @@ class $CollectionService extends $BaseService<CollectionModel>
     if (fetchPolicy == FetchPolicy.networkOnly ||
         fetchPolicy == FetchPolicy.cacheAndNetwork) {
       try {
-        result = await super.getList(
+        result = await _base.getList(
           page: page,
           perPage: perPage,
           expand: expand,
@@ -181,7 +181,7 @@ class $CollectionService extends $BaseService<CollectionModel>
     if (fetchPolicy == FetchPolicy.cacheAndNetwork ||
         fetchPolicy == FetchPolicy.networkOnly) {
       try {
-        record = await super.getOne(
+        record = await _base.getOne(
           id,
           expand: expand,
           query: query,

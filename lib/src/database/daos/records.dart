@@ -46,7 +46,7 @@ class RecordsDao extends ServiceRecordsDao<$RecordsTable, Record>
   Future<List<Record>> getPending({String? collection}) async {
     final records = await getAll(collection: collection);
     return records.where((e) {
-      final synced = e.data['synced'] == false;
+      final synced = e.metadata['synced'] == false;
       return synced;
     }).toList();
   }
@@ -158,16 +158,39 @@ class RecordsDao extends ServiceRecordsDao<$RecordsTable, Record>
 
   @override
   Future<void> updateItem(Record data) async {
-    final companion = toCompanion(data);
-    final existing = await (select(table)
-          ..where((tbl) => tbl.id.equals(data.id))
-          ..where((tbl) => tbl.collectionId.equals(data.collectionId)))
-        .getSingleOrNull();
-    if (existing == null) {
-      await into(table).insert(companion);
-    } else {
-      await update(table).replace(companion);
-    }
+    await into(table).insert(
+      data,
+      mode: InsertMode.insertOrReplace,
+    );
+  }
+
+  Future<void> batchAdd(List<Record> items) async {
+    await batch((batch) {
+      for (final item in items) {
+        batch.insert(
+          table,
+          item.toCompanion(true),
+          mode: InsertMode.insertOrReplace,
+        );
+      }
+    });
+  }
+
+  Future<void> batchRemove({
+    String? collection,
+    List<Record>? items,
+  }) async {
+    await batch((batch) {
+      if (items != null) {
+        for (final item in items) {
+          batch.delete(table, item.toCompanion(true));
+        }
+      } else if (collection != null) {
+        batch.deleteWhere(table, (e) => e.collectionId.equals(collection));
+      } else {
+        batch.deleteAll(table);
+      }
+    });
   }
 }
 
