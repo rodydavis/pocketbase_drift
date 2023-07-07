@@ -32,6 +32,7 @@ class $RecordService extends $BaseService<RecordModel>
       await client.db.recordsDao.updateItem(item.toModel(
         deleted: false,
         synced: null,
+        local: true,
       ));
     }
   }
@@ -182,51 +183,29 @@ class $RecordService extends $BaseService<RecordModel>
     Map<String, String> headers = const {},
     FetchPolicy fetchPolicy = FetchPolicy.cacheAndNetwork,
   }) async {
-    List<RecordModel> items = [];
-
-    if (fetchPolicy == FetchPolicy.networkOnly ||
-        fetchPolicy == FetchPolicy.cacheAndNetwork) {
-      try {
-        items = await _base.getFullList(
-          batch: batch,
-          expand: expand,
-          filter: filter,
-          fields: fields,
-          sort: sort,
-          query: query,
-          headers: headers,
-        );
-      } catch (e) {
-        if (fetchPolicy == FetchPolicy.networkOnly) {
-          throw Exception(
-            'Failed to get records in collection $collection.name $e',
-          );
-        }
-      }
-    }
-
-    if (fetchPolicy == FetchPolicy.cacheAndNetwork) {
-      if (items.isNotEmpty) {
-        await dao.batchAdd(items.map((e) {
-          return e.toModel(
+    return fetchPolicy.fetch<List<RecordModel>>(
+      remote: () => _base.getFullList(
+        batch: batch,
+        expand: expand,
+        filter: filter,
+        fields: fields,
+        sort: sort,
+        query: query,
+        headers: headers,
+      ),
+      getLocal: () async {
+        final items = await dao.getAll();
+        return items.map((e) => e.toModel()).toList();
+      },
+      setLocal: (value) async {
+        for (final item in value) {
+          await dao.updateItem(item.toModel(
             deleted: false,
-            synced: true,
-          );
-        }).toList());
-      }
-    }
-
-    if (fetchPolicy == FetchPolicy.cacheAndNetwork ||
-        fetchPolicy == FetchPolicy.cacheOnly) {
-      if (items.isEmpty) {
-        final local = await dao.getAll(
-          collection: collection.id,
-        );
-        items = local.map((e) => e.toModel()).toList();
-      }
-    }
-
-    return items;
+            synced: null,
+          ));
+        }
+      },
+    );
   }
 
   @override
@@ -241,62 +220,40 @@ class $RecordService extends $BaseService<RecordModel>
     Map<String, String> headers = const {},
     FetchPolicy fetchPolicy = FetchPolicy.cacheAndNetwork,
   }) async {
-    ResultList<RecordModel> result = ResultList(items: []);
-    if (fetchPolicy == FetchPolicy.networkOnly ||
-        fetchPolicy == FetchPolicy.cacheAndNetwork) {
-      try {
-        result = await _base.getList(
-          page: page,
-          perPage: perPage,
-          expand: expand,
-          filter: filter,
-          fields: fields,
-          sort: sort,
-          query: query,
-          headers: headers,
-        );
-      } catch (e) {
-        if (fetchPolicy == FetchPolicy.networkOnly) {
-          throw Exception(
-            'Failed to get records in collection $collection.name $e',
-          );
-        }
-      }
-    }
-
-    if (fetchPolicy == FetchPolicy.cacheAndNetwork) {
-      if (result.items.isNotEmpty) {
-        for (final item in result.items) {
-          await dao.updateItem(item.toModel(
-            deleted: false,
-            synced: true,
-          ));
-        }
-      }
-    }
-
-    if (fetchPolicy == FetchPolicy.cacheAndNetwork ||
-        fetchPolicy == FetchPolicy.cacheOnly) {
-      if (result.items.isEmpty) {
+    return fetchPolicy.fetch<ResultList<RecordModel>>(
+      remote: () => _base.getList(
+        page: page,
+        perPage: perPage,
+        expand: expand,
+        filter: filter,
+        fields: fields,
+        sort: sort,
+        query: query,
+        headers: headers,
+      ),
+      getLocal: () async {
         final items = await dao.getAll(
-          collection: collection.id,
           page: page,
           perPage: perPage,
         );
-        final count = await dao.getCount(
-          collection: collection.id,
-        );
-        result = ResultList(
+        final count = await dao.getCount();
+        return ResultList(
           page: page,
           perPage: perPage,
           items: items.map((e) => e.toModel()).toList(),
           totalItems: count,
           totalPages: (count / perPage).floor(),
         );
-      }
-    }
-
-    return result;
+      },
+      setLocal: (value) async {
+        for (final item in value.items) {
+          await dao.updateItem(item.toModel(
+            deleted: false,
+            synced: null,
+          ));
+        }
+      },
+    );
   }
 
   @override

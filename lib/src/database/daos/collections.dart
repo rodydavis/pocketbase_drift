@@ -61,12 +61,16 @@ extension CollectionModelUtils on CollectionModel {
   Collection toModel({
     required bool? synced,
     required bool? deleted,
+    bool? isNew,
+    bool? local,
   }) {
     return Collection(
       id: id,
       metadata: {
         'synced': synced,
         'deleted': deleted,
+        if (isNew != null) 'new': isNew,
+        if (local != null) 'local': local,
       },
       created: DateTime.tryParse(created) ?? DateTime.now(),
       updated: DateTime.tryParse(updated) ?? DateTime.now(),

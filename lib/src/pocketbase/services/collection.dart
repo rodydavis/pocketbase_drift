@@ -58,47 +58,30 @@ class $CollectionService extends $BaseService<CollectionModel>
     Map<String, dynamic> query = const {},
     Map<String, String> headers = const {},
     FetchPolicy fetchPolicy = FetchPolicy.cacheAndNetwork,
-  }) async {
-    List<CollectionModel> items = [];
-
-    if (fetchPolicy == FetchPolicy.networkOnly ||
-        fetchPolicy == FetchPolicy.cacheAndNetwork) {
-      try {
-        items = await _base.getFullList(
-          batch: batch,
-          expand: expand,
-          filter: filter,
-          fields: fields,
-          sort: sort,
-          query: query,
-          headers: headers,
-        );
-      } catch (e) {
-        throw Exception(
-          'Failed to get collections $e',
-        );
-      }
-    }
-
-    if (fetchPolicy == FetchPolicy.cacheAndNetwork) {
-      if (items.isNotEmpty) {
-        for (final item in items) {
+  }) {
+    return fetchPolicy.fetch<List<CollectionModel>>(
+      remote: () => _base.getFullList(
+        batch: batch,
+        expand: expand,
+        filter: filter,
+        fields: fields,
+        sort: sort,
+        query: query,
+        headers: headers,
+      ),
+      getLocal: () async {
+        final items = await dao.getAll();
+        return items.map((e) => e.toModel()).toList();
+      },
+      setLocal: (value) async {
+        for (final item in value) {
           await dao.updateItem(item.toModel(
             deleted: false,
             synced: null,
           ));
         }
-      }
-    }
-
-    if (fetchPolicy == FetchPolicy.cacheAndNetwork ||
-        fetchPolicy == FetchPolicy.cacheOnly) {
-      if (items.isEmpty) {
-        items = (await dao.getAll()).map((e) => e.toModel()).toList();
-      }
-    }
-
-    return items;
+      },
+    );
   }
 
   @override
@@ -112,60 +95,41 @@ class $CollectionService extends $BaseService<CollectionModel>
     Map<String, dynamic> query = const {},
     Map<String, String> headers = const {},
     FetchPolicy fetchPolicy = FetchPolicy.cacheAndNetwork,
-  }) async {
-    ResultList<CollectionModel> result = ResultList(items: []);
-    if (fetchPolicy == FetchPolicy.networkOnly ||
-        fetchPolicy == FetchPolicy.cacheAndNetwork) {
-      try {
-        result = await _base.getList(
-          page: page,
-          perPage: perPage,
-          expand: expand,
-          filter: filter,
-          fields: fields,
-          sort: sort,
-          query: query,
-          headers: headers,
-        );
-      } catch (e) {
-        if (fetchPolicy == FetchPolicy.networkOnly) {
-          throw Exception(
-            'Failed to get collections $e',
-          );
-        }
-      }
-    }
-
-    if (fetchPolicy == FetchPolicy.cacheAndNetwork) {
-      if (result.items.isNotEmpty) {
-        for (final item in result.items) {
-          await dao.updateItem(item.toModel(
-            deleted: false,
-            synced: null,
-          ));
-        }
-      }
-    }
-
-    if (fetchPolicy == FetchPolicy.cacheAndNetwork ||
-        fetchPolicy == FetchPolicy.cacheOnly) {
-      if (result.items.isEmpty) {
+  }) {
+    return fetchPolicy.fetch<ResultList<CollectionModel>>(
+      remote: () => _base.getList(
+        page: page,
+        perPage: perPage,
+        expand: expand,
+        filter: filter,
+        fields: fields,
+        sort: sort,
+        query: query,
+        headers: headers,
+      ),
+      getLocal: () async {
         final items = await dao.getAll(
           page: page,
           perPage: perPage,
         );
         final count = await dao.getCount();
-        result = ResultList(
+        return ResultList(
           page: page,
           perPage: perPage,
           items: items.map((e) => e.toModel()).toList(),
           totalItems: count,
           totalPages: (count / perPage).floor(),
         );
-      }
-    }
-
-    return result;
+      },
+      setLocal: (value) async {
+        for (final item in value.items) {
+          await dao.updateItem(item.toModel(
+            deleted: false,
+            synced: null,
+          ));
+        }
+      },
+    );
   }
 
   @override
@@ -176,42 +140,21 @@ class $CollectionService extends $BaseService<CollectionModel>
     Map<String, dynamic> query = const {},
     Map<String, String> headers = const {},
     FetchPolicy fetchPolicy = FetchPolicy.cacheAndNetwork,
-  }) async {
-    CollectionModel? record;
-    if (fetchPolicy == FetchPolicy.cacheAndNetwork ||
-        fetchPolicy == FetchPolicy.networkOnly) {
-      try {
-        record = await _base.getOne(
-          id,
-          expand: expand,
-          query: query,
-          headers: headers,
-          fields: fields,
-        );
-      } catch (e) {
-        if (fetchPolicy == FetchPolicy.networkOnly) {
-          throw Exception(
-            'Failed to get collection $id $e',
-          );
-        }
-      }
-    }
-
-    if (fetchPolicy == FetchPolicy.cacheAndNetwork ||
-        fetchPolicy == FetchPolicy.cacheOnly) {
-      final model = await dao.get(id);
-      if (model != null) {
-        record = model.toModel();
-      }
-    }
-
-    if (record == null) {
-      throw Exception(
-        'Collection $id does not exist',
-      );
-    }
-
-    return record;
+  }) {
+    return fetchPolicy.fetch<CollectionModel>(
+      remote: () => _base.getOne(
+        id,
+        expand: expand,
+        query: query,
+        headers: headers,
+        fields: fields,
+      ),
+      getLocal: () => dao.get(id).then((value) => value!.toModel()),
+      setLocal: (value) => dao.updateItem(value.toModel(
+        deleted: false,
+        synced: null,
+      )),
+    );
   }
 
   @override
@@ -220,6 +163,7 @@ class $CollectionService extends $BaseService<CollectionModel>
       await client.db.collectionsDao.updateItem(item.toModel(
         deleted: false,
         synced: null,
+        local: true,
       ));
     }
   }

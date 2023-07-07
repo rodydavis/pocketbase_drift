@@ -7,6 +7,7 @@ import 'package:simple_html_css/simple_html_css.dart';
 
 import 'package:pocketbase_drift/pocketbase_drift.dart';
 
+import 'data/todos.json.dart';
 import 'widgets/collection_form.dart';
 import 'widgets/data_view.dart';
 import 'widgets/full_text_search.dart';
@@ -156,6 +157,26 @@ class _ExampleState extends State<Example> {
                     );
                   },
           ),
+          if (collection != null && col!.name == 'todo')
+            IconButton(
+              icon: const Icon(Icons.add_box_outlined),
+              tooltip: 'Add offline only records',
+              onPressed: () async {
+                final items = LOCAL_TODOS
+                    .map((e) => RecordModel(
+                          id: client.db.generateId(),
+                          created: DateTime.now().toIso8601String(),
+                          updated: DateTime.now().toIso8601String(),
+                          data: {
+                            'name': e['title'],
+                          },
+                          collectionId: col!.id,
+                          collectionName: col!.name,
+                        ))
+                    .toList();
+                await collection!.setLocal(items);
+              },
+            ),
           IconButton(
             icon: const Icon(Icons.restore),
             tooltip: 'Show pending changes',

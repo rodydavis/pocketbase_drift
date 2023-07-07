@@ -212,6 +212,7 @@ extension RecordModelUtils on RecordModel {
     required bool? synced,
     required bool? deleted,
     bool? isNew,
+    bool? local,
   }) =>
       Record(
         id: id,
@@ -219,6 +220,7 @@ extension RecordModelUtils on RecordModel {
           'synced': synced,
           'deleted': deleted,
           if (isNew != null) 'new': isNew,
+          if (local != null) 'local': local,
         },
         created: DateTime.tryParse(created) ?? DateTime.now(),
         updated: DateTime.tryParse(updated) ?? DateTime.now(),
