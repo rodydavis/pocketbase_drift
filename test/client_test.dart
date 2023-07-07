@@ -48,13 +48,8 @@ void main() {
   tearDownAll(() async {
     final local = await col.getFullList();
     for (final item in local) {
-      await col.delete(
-        item.id,
-        fetchPolicy: FetchPolicy.networkOnly,
-        // TODO: Fails on anything else
-      );
+      await col.delete(item.id);
     }
-    // await col.dao.removeAll(collection: collection.id);
   });
 
   test('check collections', () async {
