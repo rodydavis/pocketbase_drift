@@ -36,41 +36,51 @@ class $RecordService extends $BaseService<RecordModel>
     }
   }
 
+  Future<List<Record>> getPending() async {
+    final items = await dao.getPending(collection: collection.id);
+    return items;
+  }
+
   Stream<RetryProgressEvent?> retryLocal({
     Map<String, dynamic> query = const {},
     Map<String, String> headers = const {},
   }) async* {
-    final deleted = await dao.getPendingDeletes();
-    final pending = await dao.getPendingWrites();
+    final pending = await dao.getPending();
     yield RetryProgressEvent(
       message: 'Found ${pending.length} pending records',
       total: pending.length,
       current: 0,
     );
     final futures = <Future>[];
-    for (final item in deleted) {
-      futures.add(Future(() async {
-        try {
-          await delete(
-            item.id,
-            query: query,
-            headers: headers,
-            body: item.data,
-          );
-        } catch (e) {
-          if (client.logging) debugPrint('retryLocal: ${item.id} $e');
-        }
-      }));
-    }
     for (final item in pending) {
       futures.add(Future(() async {
         try {
-          await update(
-            item.id,
-            query: query,
-            headers: headers,
-            body: item.data,
-          );
+          if (item.metadata['deleted'] == true) {
+            await delete(
+              item.id,
+              query: query,
+              headers: headers,
+              body: item.data,
+            );
+          } else if (item.metadata['deleted'] == false) {
+            if (item.metadata['new'] == true) {
+              await create(
+                query: query,
+                headers: headers,
+                body: {
+                  ...item.data,
+                  'id': item.id,
+                },
+              );
+            } else {
+              await update(
+                item.id,
+                query: query,
+                headers: headers,
+                body: item.data,
+              );
+            }
+          }
         } catch (e) {
           if (client.logging) debugPrint('retryLocal: ${item.id} $e');
         }
@@ -78,7 +88,7 @@ class $RecordService extends $BaseService<RecordModel>
     }
     for (final item in futures) {
       yield RetryProgressEvent(
-        message: 'Updating record',
+        message: 'Retry record',
         total: pending.length,
         current: futures.indexOf(item) + 1,
       );
@@ -481,24 +491,36 @@ class $RecordService extends $BaseService<RecordModel>
 
     if (fetchPolicy == FetchPolicy.cacheAndNetwork ||
         fetchPolicy == FetchPolicy.cacheOnly) {
-      final recordModel = Record(
-        id: record?.id ?? '',
-        data: body,
-        created: DateTime.now(),
-        updated: DateTime.now(),
-        collectionId: collection.id,
-        collectionName: collection.name,
-        metadata: {
-          'deleted': false,
-          'synced': saved,
-        },
-      );
-      final result = await dao.createItem(recordModel);
-      final item = await dao.get(
-        result,
-        collection: collection.id,
-      );
-      record = item?.toModel();
+      if (record == null) {
+        final id = body['id'] ?? '';
+        final recordModel = Record(
+          id: id,
+          data: body,
+          created: DateTime.now(),
+          updated: DateTime.now(),
+          collectionId: collection.id,
+          collectionName: collection.name,
+          metadata: {
+            'deleted': false,
+            'synced': saved,
+            if (!saved) 'new': true,
+          },
+        );
+        final result = await dao.createItem(
+          recordModel,
+        );
+        final item = await dao.get(
+          result,
+          collection: collection.id,
+        );
+        record = item?.toModel();
+      } else {
+        await dao.updateItem(record.toModel(
+          deleted: false,
+          synced: saved,
+          isNew: !saved ? true : null,
+        ));
+      }
     }
 
     return record!;

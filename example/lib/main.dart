@@ -1,19 +1,29 @@
 // ignore_for_file: public_member_api_docs, sort_constructors_first
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:simple_html_css/simple_html_css.dart';
 
 import 'package:pocketbase_drift/pocketbase_drift.dart';
-import 'package:pocketbase_drift/src/database/connection/native.dart';
 
+import 'widgets/collection_form.dart';
 import 'widgets/data_view.dart';
+import 'widgets/full_text_search.dart';
+import 'widgets/pending_changes.dart';
 
 const username = 'test@admin.com';
 const password = 'Password123';
 const url = 'http://127.0.0.1:3000';
 
+final client = $PocketBase(
+  url,
+  connection: memoryDatabase(),
+  httpClientFactory: () => PocketBaseHttpClient(),
+);
+
 void main() {
+  client.logging = kDebugMode;
   runApp(const MyApp());
 }
 
@@ -38,14 +48,8 @@ class Example extends StatefulWidget {
 }
 
 class _ExampleState extends State<Example> {
-  double? progress;
   bool loaded = false;
 
-  late final client = $PocketBase(
-    url,
-    connection: memoryDatabase(),
-    httpClientFactory: () => PocketBaseHttpClient(),
-  );
   List<CollectionModel> collections = [];
   $RecordService? collection;
   CollectionModel? col;
@@ -136,6 +140,39 @@ class _ExampleState extends State<Example> {
       appBar: AppBar(
         title: title,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.search),
+            tooltip: 'Full text search (local records)',
+            onPressed: collection == null
+                ? null
+                : () async {
+                    final nav = Navigator.of(context);
+                    nav.push(
+                      MaterialPageRoute(
+                        builder: (context) => FullTextSearch(
+                          records: collection!,
+                        ),
+                      ),
+                    );
+                  },
+          ),
+          IconButton(
+            icon: const Icon(Icons.restore),
+            tooltip: 'Show pending changes',
+            onPressed: collection == null
+                ? null
+                : () async {
+                    final nav = Navigator.of(context);
+                    nav.push(
+                      MaterialPageRoute(
+                        builder: (context) => PendingChanges(
+                          records: collection!,
+                        ),
+                      ),
+                    );
+                  },
+          ),
+          const SizedBox(width: 8),
           DropdownButton(
             value: PocketBaseHttpClient.offline,
             items: const [
@@ -176,118 +213,98 @@ class _ExampleState extends State<Example> {
           const SizedBox(width: 8),
         ],
       ),
-      body: Column(
-        children: [
-          if (progress != null) LinearProgressIndicator(value: progress),
-          Expanded(
-            child: DataView<RecordModel>(
-              columns: [
-                const DataColumn(label: Text('ID')),
-                ...fields.map((e) => DataColumn(label: Text(e.name))).toList(),
-                const DataColumn(label: Text('Created')),
-                const DataColumn(label: Text('Updated')),
-              ],
-              onTap: (item) {},
-              match: (query, record) {
-                if (query.trim().isEmpty) return true;
-                final matches = <int>[];
-                for (final field in fields) {
-                  final value = record.toJson()[field.name];
-                  if (value != null) {
-                    final match =
-                        '$value'.toLowerCase().contains(query.toLowerCase());
-                    matches.add(match ? 1 : 0);
-                  }
-                }
-                return matches.any((e) => e == 1);
-              },
-              actions: (selection) => selection.isEmpty
-                  ? [
-                      IconButton(
-                        icon: const Icon(Icons.restore),
-                        tooltip: 'Retry offline items',
-                        onPressed: () async {
-                          collection!.retryLocal().listen((event) {
-                            if (mounted) {
-                              setState(() {
-                                progress = event?.progress;
-                              });
-                            }
-                          });
-                        },
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.refresh),
-                        tooltip: 'Refresh',
-                        onPressed: () async {
-                          final messenger = ScaffoldMessenger.of(context);
-                          await collection!.getFullList();
-                          messenger.showSnackBar(
-                            const SnackBar(
-                              content: Text('Refreshed'),
-                            ),
-                          );
-                        },
-                      ),
-                    ]
-                  : [
-                      IconButton(
-                        icon: const Icon(Icons.delete),
-                        tooltip: 'Delete ${selection.length} rows',
-                        onPressed: () async {
-                          for (final item in selection) {
-                            await collection!.delete(item.id);
-                          }
-                        },
-                      ),
-                    ],
-              onSort: (items, colIndex, asc) {
-                final list = items.toList();
-                list.sort((a, b) {
-                  final aData = a.toJson();
-                  final bData = b.toJson();
-                  final fieldKeys = [
-                    'id',
-                    ...fields.map((e) => e.name).toList(),
-                    'created',
-                    'updated',
-                  ];
-                  final aValue = aData[fieldKeys[colIndex]];
-                  final bValue = bData[fieldKeys[colIndex]];
-                  if (aValue is Comparable && bValue is Comparable) {
-                    if (asc) {
-                      return aValue.compareTo(bValue);
-                    } else {
-                      return bValue.compareTo(aValue);
-                    }
-                  } else {
-                    return 0;
-                  }
-                });
-                return list;
-              },
-              items: records,
-              rowBuilder: (index, record) {
-                return [
-                  DataCell(Text(record.id)),
-                  ...fields.map((e) {
-                    final value = record.toJson()[e.name];
-                    return DataCell(HTML.toRichText(
-                      context,
-                      '${value ?? ''}',
-                      defaultTextStyle:
-                          Theme.of(context).textTheme.bodySmall!.copyWith(
-                                color: Theme.of(context).colorScheme.onSurface,
-                              ),
-                    ));
-                  }).toList(),
-                  DataCell(Text(record.created)),
-                  DataCell(Text(record.updated)),
-                ];
-              },
-            ),
-          ),
+      body: DataView<RecordModel>(
+        columns: [
+          const DataColumn(label: Text('ID')),
+          ...fields.map((e) => DataColumn(label: Text(e.name))).toList(),
+          const DataColumn(label: Text('Created')),
+          const DataColumn(label: Text('Updated')),
         ],
+        onTap: (item) {},
+        match: (query, record) {
+          if (query.trim().isEmpty) return true;
+          final matches = <int>[];
+          for (final field in fields) {
+            final value = record.toJson()[field.name];
+            if (value != null) {
+              final match =
+                  '$value'.toLowerCase().contains(query.toLowerCase());
+              matches.add(match ? 1 : 0);
+            }
+          }
+          return matches.any((e) => e == 1);
+        },
+        actions: (selection) => selection.isEmpty
+            ? [
+                IconButton(
+                  icon: const Icon(Icons.refresh),
+                  tooltip: 'Refresh',
+                  onPressed: () async {
+                    final messenger = ScaffoldMessenger.of(context);
+                    await collection!.getFullList();
+                    messenger.showSnackBar(
+                      const SnackBar(
+                        content: Text('Refreshed'),
+                      ),
+                    );
+                  },
+                ),
+              ]
+            : [
+                IconButton(
+                  icon: const Icon(Icons.delete),
+                  tooltip: 'Delete ${selection.length} rows',
+                  onPressed: () async {
+                    for (final item in selection) {
+                      await collection!.delete(item.id);
+                    }
+                  },
+                ),
+              ],
+        onSort: (items, colIndex, asc) {
+          final list = items.toList();
+          list.sort((a, b) {
+            final aData = a.toJson();
+            final bData = b.toJson();
+            final fieldKeys = [
+              'id',
+              ...fields.map((e) => e.name).toList(),
+              'created',
+              'updated',
+            ];
+            final aValue = aData[fieldKeys[colIndex]];
+            final bValue = bData[fieldKeys[colIndex]];
+            if (aValue is Comparable && bValue is Comparable) {
+              if (asc) {
+                return aValue.compareTo(bValue);
+              } else {
+                return bValue.compareTo(aValue);
+              }
+            } else {
+              return 0;
+            }
+          });
+          return list;
+        },
+        items: records,
+        rowBuilder: (index, record) {
+          return [
+            DataCell(Text(record.id)),
+            ...fields.map((e) {
+              final value = record.toJson()[e.name];
+              return DataCell(HTML.toRichText(
+                context,
+                '${value ?? ''}',
+                defaultTextStyle:
+                    Theme.of(context).textTheme.bodySmall!.copyWith(
+                          color: Theme.of(context).colorScheme.onSurface,
+                        ),
+              ));
+            }).toList(),
+            DataCell(Text(record.created)),
+            DataCell(Text(record.updated)),
+          ];
+        },
       ),
       floatingActionButton: FloatingActionButton(
         child: const Icon(Icons.add),
@@ -308,123 +325,6 @@ class _ExampleState extends State<Example> {
             );
             if (mounted) setState(() {});
           }
-        },
-      ),
-    );
-  }
-}
-
-class CollectionForm extends StatefulWidget {
-  const CollectionForm({
-    Key? key,
-    required this.collection,
-    this.record,
-  }) : super(key: key);
-
-  final CollectionModel collection;
-  final RecordModel? record;
-
-  @override
-  State<CollectionForm> createState() => _CollectionFormState();
-}
-
-class _CollectionFormState extends State<CollectionForm> {
-  final _formKey = GlobalKey<FormState>();
-  late final _data = <String, dynamic>{...widget.record?.data ?? {}};
-
-  void reset() {
-    _formKey.currentState!.reset();
-    _data.clear();
-    _data.addAll(widget.record?.data ?? {});
-    if (mounted) setState(() {});
-  }
-
-  void save(BuildContext context) {
-    if (_formKey.currentState!.validate()) {
-      _formKey.currentState!.save();
-      Navigator.of(context).pop(_data);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.record == null
-            ? 'New ${widget.collection.name}'
-            : 'Edit ${widget.collection.name}'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.restore),
-            onPressed: () => reset(),
-          ),
-          IconButton(
-            icon: const Icon(Icons.save),
-            onPressed: () => save(context),
-          ),
-        ],
-      ),
-      body: Form(
-        key: _formKey,
-        autovalidateMode: AutovalidateMode.always,
-        child: ListView(
-          children: [
-            for (final field in widget.collection.schema)
-              SchemeFieldFormField(
-                field: field,
-                data: _data,
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class SchemeFieldFormField extends StatefulWidget {
-  const SchemeFieldFormField({
-    super.key,
-    required this.field,
-    required this.data,
-  });
-
-  final SchemaField field;
-  final Map<String, dynamic> data;
-
-  @override
-  State<SchemeFieldFormField> createState() => _SchemeFieldFormFieldState();
-}
-
-class _SchemeFieldFormFieldState extends State<SchemeFieldFormField> {
-  static const List<String> strings = ['text', 'editor'];
-
-  @override
-  Widget build(BuildContext context) {
-    return ListTile(
-      title: Text(widget.field.name),
-      subtitle: Builder(
-        builder: (context) {
-          final type = widget.field.type;
-          if (strings.contains(type)) {
-            return TextFormField(
-              initialValue: widget.data[widget.field.name],
-              onChanged: (value) {
-                if (mounted) {
-                  setState(() {
-                    widget.data[widget.field.name] = value;
-                  });
-                }
-              },
-              validator: (val) {
-                if (widget.field.required) {
-                  final valid = val != null && val.trim().isNotEmpty;
-                  return valid ? null : 'Field cannot be empty';
-                }
-                return null;
-              },
-            );
-          }
-          return Text(type);
         },
       ),
     );

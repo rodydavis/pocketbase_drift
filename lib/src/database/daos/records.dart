@@ -211,12 +211,14 @@ extension RecordModelUtils on RecordModel {
   Record toModel({
     required bool? synced,
     required bool? deleted,
+    bool? isNew,
   }) =>
       Record(
         id: id,
         metadata: {
           'synced': synced,
           'deleted': deleted,
+          if (isNew != null) 'new': isNew,
         },
         created: DateTime.tryParse(created) ?? DateTime.now(),
         updated: DateTime.tryParse(updated) ?? DateTime.now(),

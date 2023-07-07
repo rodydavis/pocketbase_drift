@@ -2,6 +2,7 @@ library pocketbase_drift_store;
 
 export 'src/database/database.dart';
 export 'src/database/connection/connection.dart' show connect;
+export 'src/database/connection/native.dart' show memoryDatabase;
 export 'src/network/http.dart';
 export 'src/pocketbase/pocketbase.dart';
 export 'src/pocketbase/services/base.dart';
