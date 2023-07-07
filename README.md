@@ -28,3 +28,12 @@ Replace a pocketbase client with a drift client.
 ## Web
 
 For web, you need to follow the instructions for [Drift](https://drift.simonbinder.eu/web/#drift-wasm) to copy the [sqlite wasm](https://github.com/simolus3/sqlite3.dart/releases) binary into the `web/` directory.
+
+## TODO
+
+- [X] Add support for offline mutations and retry
+- [X] Add tests to cover offline actions
+- [ ] Add support for fields (select)
+- [ ] Add support for sort
+- [ ] Add support validation of create/update for required fields
+- [ ] Add support for files (and local)
