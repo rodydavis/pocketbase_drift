@@ -33,6 +33,10 @@ For web, you need to follow the instructions for [Drift](https://drift.simonbind
 
 - [X] Add support for offline mutations and retry
 - [X] Add tests to cover offline actions
+- [X] Authentication persistence
+- [X] Offline collections
+- [X] Offline records
+- [X] Full text search for all local records
 - [ ] Add support for fields (select)
 - [ ] Add support for sort
 - [ ] Add support validation of create/update for required fields
