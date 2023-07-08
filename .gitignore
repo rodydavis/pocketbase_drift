@@ -30,3 +30,4 @@ migrate_working_dir/
 build/
 test/pocketbase
 db
+.pb/

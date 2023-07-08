@@ -1,25 +1,54 @@
 import 'dart:convert';
 
 import 'package:drift/drift.dart';
+import 'package:pocketbase/pocketbase.dart';
+import 'package:shortid/shortid.dart';
 
-@DataClassName('Record')
-class Records extends Table with AutoIncrementingPrimaryKey {
-  TextColumn get rowId => text()();
-  TextColumn get collectionId => text()();
-  TextColumn get collectionName => text()();
-  TextColumn get data => text().map(const JsonMapper())();
-  BoolColumn get deleted => boolean().nullable()();
-  TextColumn get created => text()();
-  TextColumn get updated => text()();
+// @DataClassName('BlobFile')
+// class BlobFiles extends Table with AutoIncrementingPrimaryKey {
+//   TextColumn get name => text()();
+//   BlobColumn get file => blob()();
+//   DateTimeColumn get created => dateTime()();
+//   DateTimeColumn get updated => dateTime()();
+// }
 
-  @override
-  List<Set<Column<Object>>>? get uniqueKeys => [
-        {collectionId, rowId},
-      ];
+// @DataClassName('Mutation')
+// class Mutations extends Table with AutoIncrementingPrimaryKey {
+//   TextColumn get path => text()();
+//   TextColumn get method => text()();
+//   TextColumn get body => text().map(const JsonMapper())();
+//   TextColumn get query => text().map(const JsonMapper())();
+//   TextColumn get headers => text().map(const JsonMapper())();
+//   TextColumn get files => text().map(const StringListMapper())();
+//   DateTimeColumn get created => dateTime()();
+// }
+
+@DataClassName('AuthToken')
+class AuthTokens extends Table with AutoIncrementingPrimaryKey {
+  TextColumn get token => text()();
+  DateTimeColumn get created => dateTime()();
+}
+
+abstract class ServiceRecord extends DataClass implements Jsonable {
+  const ServiceRecord();
+  String get id;
+  DateTime get created;
+  DateTime get updated;
+}
+
+mixin ServiceRecords on Table {
+  TextColumn get id => text().clientDefault(newId)();
+  TextColumn get metadata => text().map(const JsonMapper())();
+  //.withDefault(const Constant('{}'))
+  DateTimeColumn get created => dateTime()();
+  DateTimeColumn get updated => dateTime()();
 }
 
 mixin AutoIncrementingPrimaryKey on Table {
   IntColumn get id => integer().autoIncrement()();
+
+  @override
+  Set<Column<Object>>? get primaryKey => {id};
 }
 
 class JsonMapper extends TypeConverter<Map<String, dynamic>, String> {
@@ -32,25 +61,31 @@ class JsonMapper extends TypeConverter<Map<String, dynamic>, String> {
   String toSql(Map<String, dynamic> value) => jsonEncode(value);
 }
 
-// abstract class RawJson<T> {
-//   RawJson(this.value);
-//   final T value;
+class StringListMapper extends TypeConverter<List<String>, String> {
+  const StringListMapper();
 
-//   String toJson() => jsonEncode(value);
+  @override
+  List<String> fromSql(String fromDb) => jsonDecode(fromDb).cast<String>();
 
-//   static RawJson fromJson(String source) {
-//     final decoded = json.decode(source);
-//     if (decoded is List<dynamic>) {
-//       return JsonList(decoded);
-//     }
-//     return JsonMap(decoded);
-//   }
-// }
+  @override
+  String toSql(List<String> value) => jsonEncode(value);
+}
 
-// class JsonMap extends RawJson<Map<String, dynamic>> {
-//   JsonMap(super.value);
-// }
+class SchemaFieldListMapper extends TypeConverter<List<SchemaField>, String> {
+  const SchemaFieldListMapper();
 
-// class JsonList extends RawJson<List<dynamic>> {
-//   JsonList(super.value);
-// }
+  @override
+  List<SchemaField> fromSql(String fromDb) =>
+      (jsonDecode(fromDb) as List).map((e) => SchemaField.fromJson(e)).toList();
+
+  @override
+  String toSql(List<SchemaField> value) =>
+      jsonEncode(value.map((e) => e.toJson()).toList());
+}
+
+String newId() {
+  const chars =
+      '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  shortid.characters(chars);
+  return shortid.generate().padLeft(15, '0');
+}

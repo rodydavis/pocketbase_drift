@@ -9,9 +9,12 @@ import 'package:path/path.dart' as p;
 
 DatabaseConnection connect(
   String dbName, {
-  bool useWebWorker = false,
   bool logStatements = false,
+  bool inMemory = false,
 }) {
+  if (inMemory) {
+    DatabaseConnection(NativeDatabase.memory());
+  }
   return DatabaseConnection.delayed(Future.sync(() async {
     final appDir = await getApplicationDocumentsDirectory();
     final dbPath = p.join(appDir.path, dbName);

@@ -1,7 +1,7 @@
 # This is a generated file; do not edit or check into version control.
 path_provider=/Users/rodydavis/.pub-cache/hosted/pub.dev/path_provider-2.0.15/
-path_provider_android=/Users/rodydavis/.pub-cache/hosted/pub.dev/path_provider_android-2.0.20/
+path_provider_android=/Users/rodydavis/.pub-cache/hosted/pub.dev/path_provider_android-2.0.27/
 path_provider_foundation=/Users/rodydavis/.pub-cache/hosted/pub.dev/path_provider_foundation-2.2.3/
-path_provider_linux=/Users/rodydavis/.pub-cache/hosted/pub.dev/path_provider_linux-2.1.7/
-path_provider_windows=/Users/rodydavis/.pub-cache/hosted/pub.dev/path_provider_windows-2.1.3/
+path_provider_linux=/Users/rodydavis/.pub-cache/hosted/pub.dev/path_provider_linux-2.1.11/
+path_provider_windows=/Users/rodydavis/.pub-cache/hosted/pub.dev/path_provider_windows-2.1.7/
 sqlite3_flutter_libs=/Users/rodydavis/.pub-cache/hosted/pub.dev/sqlite3_flutter_libs-0.5.15/
