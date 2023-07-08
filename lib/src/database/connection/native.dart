@@ -10,7 +10,11 @@ import 'package:path/path.dart' as p;
 DatabaseConnection connect(
   String dbName, {
   bool logStatements = false,
+  bool inMemory = false,
 }) {
+  if (inMemory) {
+    DatabaseConnection(NativeDatabase.memory());
+  }
   return DatabaseConnection.delayed(Future.sync(() async {
     final appDir = await getApplicationDocumentsDirectory();
     final dbPath = p.join(appDir.path, dbName);
@@ -27,10 +31,6 @@ DatabaseConnection connect(
     final driftIsolate = await receiveDriftIsolate.first as DriftIsolate;
     return driftIsolate.connect();
   }));
-}
-
-DatabaseConnection memoryDatabase() {
-  return DatabaseConnection(NativeDatabase.memory());
 }
 
 class _IsolateStartRequest {

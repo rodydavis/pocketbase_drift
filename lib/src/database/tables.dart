@@ -23,37 +23,10 @@ import 'package:shortid/shortid.dart';
 //   DateTimeColumn get created => dateTime()();
 // }
 
-@DataClassName('Record', extending: ServiceRecord)
-class Records extends Table with ServiceRecords {
-  TextColumn get data => text().map(const JsonMapper())();
-  TextColumn get collectionId => text().references(Collections, #id)();
-  TextColumn get collectionName => text().references(Collections, #name)();
-
-  @override
-  Set<Column<Object>>? get primaryKey => {id, collectionId};
-
-  // @override
-  // List<Set<Column<Object>>>? get uniqueKeys => [
-  //       {id, collectionId},
-  //     ];
-}
-
-@DataClassName('Collection', extending: ServiceRecord)
-class Collections extends Table with ServiceRecords {
-  TextColumn get type => text().withDefault(const Constant('base'))();
-  TextColumn get name => text()();
-  BoolColumn get system => boolean().withDefault(const Constant(false))();
-  TextColumn get listRule => text().nullable()();
-  TextColumn get viewRule => text().nullable()();
-  TextColumn get createRule => text().nullable()();
-  TextColumn get updateRule => text().nullable()();
-  TextColumn get deleteRule => text().nullable()();
-  TextColumn get schema => text().map(const SchemaFieldListMapper())();
-  TextColumn get indexes => text().map(const StringListMapper())();
-  TextColumn get options => text().map(const JsonMapper())();
-
-  @override
-  Set<Column<Object>>? get primaryKey => {id};
+@DataClassName('AuthToken')
+class AuthTokens extends Table with AutoIncrementingPrimaryKey {
+  TextColumn get token => text()();
+  DateTimeColumn get created => dateTime()();
 }
 
 abstract class ServiceRecord extends DataClass implements Jsonable {

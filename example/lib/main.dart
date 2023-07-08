@@ -17,9 +17,9 @@ const username = 'test@admin.com';
 const password = 'Password123';
 const url = 'http://127.0.0.1:3000';
 
-final client = $PocketBase(
+final client = $PocketBase.database(
   url,
-  connection: memoryDatabase(),
+  connection: connect('app.db', inMemory: true),
   httpClientFactory: () => PocketBaseHttpClient(),
 );
 

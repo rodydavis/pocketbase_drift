@@ -57,6 +57,24 @@ extension CollectionUtils on Collection {
   }
 }
 
+@DataClassName('Collection', extending: ServiceRecord)
+class Collections extends Table with ServiceRecords {
+  TextColumn get type => text().withDefault(const Constant('base'))();
+  TextColumn get name => text()();
+  BoolColumn get system => boolean().withDefault(const Constant(false))();
+  TextColumn get listRule => text().nullable()();
+  TextColumn get viewRule => text().nullable()();
+  TextColumn get createRule => text().nullable()();
+  TextColumn get updateRule => text().nullable()();
+  TextColumn get deleteRule => text().nullable()();
+  TextColumn get schema => text().map(const SchemaFieldListMapper())();
+  TextColumn get indexes => text().map(const StringListMapper())();
+  TextColumn get options => text().map(const JsonMapper())();
+
+  @override
+  Set<Column<Object>>? get primaryKey => {id};
+}
+
 extension CollectionModelUtils on CollectionModel {
   Collection toModel({
     required bool? synced,

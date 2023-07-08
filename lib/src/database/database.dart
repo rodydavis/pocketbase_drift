@@ -2,6 +2,7 @@ import 'package:drift/drift.dart';
 import 'package:pocketbase/pocketbase.dart';
 
 import 'connection/connection.dart' as impl;
+import 'daos/admins.dart';
 import 'daos/records.dart';
 import 'daos/collections.dart';
 import 'tables.dart';
@@ -12,9 +13,20 @@ export 'daos/collections.dart';
 part 'database.g.dart';
 
 @DriftDatabase(
-  tables: [Records, Collections],
-  daos: [RecordsDao, CollectionsDao],
-  include: {'sql/search.drift'},
+  tables: [
+    Records,
+    Collections,
+    AuthTokens,
+    Admins,
+  ],
+  daos: [
+    RecordsDao,
+    CollectionsDao,
+    AdminsDao,
+  ],
+  include: {
+    'sql/search.drift',
+  },
 )
 class DataBase extends _$DataBase {
   DataBase(DatabaseConnection connection) : super.connect(connection);
@@ -43,4 +55,22 @@ class DataBase extends _$DataBase {
   }
 
   String generateId() => newId();
+
+  Future<AuthToken?> getAuthToken() async {
+    final tokens = await select(authTokens).get();
+    if (tokens.isEmpty) return null;
+    return tokens.first;
+  }
+
+  Future<void> setAuthToken(AuthTokensCompanion token) async {
+    final tokens = await select(authTokens).get();
+    if (tokens.isNotEmpty) {
+      await removeAuthToken();
+    }
+    await into(authTokens).insert(token);
+  }
+
+  Future<void> removeAuthToken() async {
+    await delete(authTokens).go();
+  }
 }

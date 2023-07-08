@@ -1,6 +1,4 @@
 import 'dart:io' as io;
-import 'package:drift/drift.dart';
-import 'package:drift/native.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -20,8 +18,7 @@ void main() {
   late final $RecordService col;
 
   setUpAll(() async {
-    final connection = DatabaseConnection(NativeDatabase.memory());
-    client = $PocketBase(url, connection: connection);
+    client = $PocketBase.database(url, inMemory: true);
     await client.admins.authWithPassword(
       username,
       password,

@@ -1,4 +1,5 @@
 import '../tables.dart';
+import '../daos/records.dart';
 
 -- Create a text index of entries, see https://www.sqlite.org/fts5.html#external_content_tables
 CREATE VIRTUAL TABLE text_entries USING fts5 (

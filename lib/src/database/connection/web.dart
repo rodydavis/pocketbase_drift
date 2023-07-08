@@ -5,12 +5,25 @@ import 'dart:async';
 import 'package:drift/drift.dart';
 import 'package:drift/wasm.dart';
 import 'package:flutter/foundation.dart';
+import 'package:sqlite3/wasm.dart';
 
 DatabaseConnection connect(
   String dbName, {
   bool logStatements = false,
+  bool inMemory = false,
 }) {
   return DatabaseConnection.delayed(Future(() async {
+    if (inMemory) {
+      final sqlite = await WasmSqlite3.loadFromUrl(
+        Uri.parse('/sqlite3.wasm'),
+      );
+      return DatabaseConnection(
+        WasmDatabase.inMemory(
+          sqlite,
+          logStatements: logStatements,
+        ),
+      );
+    }
     final result = await WasmDatabase.open(
       // prefer to only use valid identifiers here
       databaseName: dbName.replaceAll('.db', ''),

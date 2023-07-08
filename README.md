@@ -20,8 +20,8 @@ Replace a pocketbase client with a drift client.
 + import 'package:pocketbase_drift/pocketbase_drift.dart';
 
 - final client = PocketBase(
-+ final client = PocketBaseDrift(
-    'http://127.0.0.1:8090'
++ final client = $PocketBase.database(
+    'http://127.0.0.1:8090',
 );
 ```
 

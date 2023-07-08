@@ -207,6 +207,16 @@ extension RecordUtils on Record {
   }
 }
 
+@DataClassName('Record', extending: ServiceRecord)
+class Records extends Table with ServiceRecords {
+  TextColumn get data => text().map(const JsonMapper())();
+  TextColumn get collectionId => text().references(Collections, #id)();
+  TextColumn get collectionName => text().references(Collections, #name)();
+
+  @override
+  Set<Column<Object>>? get primaryKey => {id, collectionId};
+}
+
 extension RecordModelUtils on RecordModel {
   Record toModel({
     required bool? synced,
