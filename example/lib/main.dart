@@ -1,5 +1,6 @@
 // ignore_for_file: public_member_api_docs, sort_constructors_first
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -7,14 +8,13 @@ import 'package:simple_html_css/simple_html_css.dart';
 
 import 'package:pocketbase_drift/pocketbase_drift.dart';
 
+import 'data/collections.json.dart';
 import 'data/todos.json.dart';
 import 'widgets/collection_form.dart';
 import 'widgets/data_view.dart';
 import 'widgets/full_text_search.dart';
 import 'widgets/pending_changes.dart';
 
-const username = 'test@admin.com';
-const password = 'Password123';
 const url = 'http://127.0.0.1:3000';
 
 void main() {
@@ -66,7 +66,10 @@ class _ExampleState extends State<Example> {
   }
 
   Future<void> select(String id) async {
-    col = await widget.client.collections.getOne(id);
+    col = await widget.client.collections.getOne(
+      id,
+      fetchPolicy: FetchPolicy.cacheOnly,
+    );
     collection = widget.client.$collection(col!);
     subscription?.cancel();
     final (stream, cancel) = await collection!.watchRecords();
@@ -84,13 +87,10 @@ class _ExampleState extends State<Example> {
   }
 
   Future<void> init() async {
-    await widget.client.admins.authWithPassword(
-      username,
-      password,
-    );
-    collections = await widget.client.collections.getFullList(
-      fetchPolicy: FetchPolicy.networkOnly,
-    );
+    // Could fetch from API, but for now just use the offline data
+    final c = jsonDecode(jsonEncode(offlineCollections)) as List;
+    collections = c.map((e) => CollectionModel.fromJson(e)).toList();
+    await widget.client.collections.setLocal(collections);
     final users = collections.firstWhere((e) => e.name == 'users');
     final record = widget.client //
         .$collection(users)

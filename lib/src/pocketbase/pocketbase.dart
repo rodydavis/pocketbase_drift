@@ -23,7 +23,6 @@ class $PocketBase extends PocketBase {
     super.lang,
     super.authStore,
     required DataBase database,
-    bool inMemory = false,
     Client Function()? httpClientFactory,
   })  : db = database,
         super(httpClientFactory: httpClientFactory);
@@ -35,9 +34,8 @@ class $PocketBase extends PocketBase {
     String lang = "en-US",
     Client Function()? httpClientFactory,
   }) {
-    final db = DataBase(
-      connection ?? connect('app.db', inMemory: inMemory),
-    );
+    final conn = connection ?? connect('app.db', inMemory: inMemory);
+    final db = DataBase(conn);
     final authStore = $AuthStore(db);
     return $PocketBase(
       baseUrl,

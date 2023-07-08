@@ -8,9 +8,11 @@ import '../../database/database.dart';
 class $AuthStore extends AuthStore {
   final DataBase db;
 
-  $AuthStore(this.db) {
-    debugPrint('initializing auth store');
-    load();
+  $AuthStore(this.db, {bool autoLoad = true}) {
+    if (autoLoad) {
+      debugPrint('initializing auth store');
+      load();
+    }
   }
 
   Future<void> load() async {
@@ -27,7 +29,7 @@ class $AuthStore extends AuthStore {
   }
 
   @override
-  void save(
+  Future<void> save(
     String newToken,
     dynamic /* RecordModel|AdminModel|null */ newModel,
   ) async {
@@ -44,7 +46,7 @@ class $AuthStore extends AuthStore {
   }
 
   @override
-  void clear() async {
+  Future<void> clear() async {
     super.clear();
     await db.removeAuthToken();
   }
