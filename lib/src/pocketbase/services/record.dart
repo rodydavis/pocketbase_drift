@@ -45,8 +45,12 @@ class $RecordService extends $BaseService<RecordModel>
   Stream<RetryProgressEvent?> retryLocal({
     Map<String, dynamic> query = const {},
     Map<String, String> headers = const {},
+    int? batch,
   }) async* {
-    final pending = await dao.getPending();
+    var pending = await dao.getPending();
+    if (batch != null) {
+      pending = pending.take(batch).toList();
+    }
     yield RetryProgressEvent(
       message: 'Found ${pending.length} pending records',
       total: pending.length,
