@@ -17,32 +17,34 @@ const username = 'test@admin.com';
 const password = 'Password123';
 const url = 'http://127.0.0.1:3000';
 
-final client = $PocketBase.database(
-  url,
-  connection: connect('app.db', inMemory: true),
-  httpClientFactory: () => PocketBaseHttpClient(),
-);
-
 void main() {
-  client.logging = kDebugMode;
-  runApp(const MyApp());
+  WidgetsFlutterBinding.ensureInitialized();
+  // PocketBaseHttpClient.offline = true;R
+  final client = $PocketBase.database(
+    url,
+    inMemory: true,
+    httpClientFactory: () => PocketBaseHttpClient(),
+  )..logging = kDebugMode;
+  runApp(MyApp(client: client));
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({Key? key}) : super(key: key);
+  const MyApp({super.key, required this.client});
+  final $PocketBase client;
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Pocketbase Drift Example',
       theme: ThemeData.dark(),
-      home: const Example(),
+      home: Example(client: client),
     );
   }
 }
 
 class Example extends StatefulWidget {
-  const Example({Key? key}) : super(key: key);
+  const Example({super.key, required this.client});
+  final $PocketBase client;
 
   @override
   State<Example> createState() => _ExampleState();
@@ -64,8 +66,8 @@ class _ExampleState extends State<Example> {
   }
 
   Future<void> select(String id) async {
-    col = await client.collections.getOne(id);
-    collection = client.$collection(col!);
+    col = await widget.client.collections.getOne(id);
+    collection = widget.client.$collection(col!);
     subscription?.cancel();
     final (stream, cancel) = await collection!.watchRecords();
     subscription = stream.listen(
@@ -82,12 +84,18 @@ class _ExampleState extends State<Example> {
   }
 
   Future<void> init() async {
-    await client.admins.authWithPassword(
+    await widget.client.admins.authWithPassword(
       username,
       password,
     );
-    collections = await client.collections.getFullList();
-
+    collections = await widget.client.collections.getFullList(
+      fetchPolicy: FetchPolicy.networkOnly,
+    );
+    final users = collections.firstWhere((e) => e.name == 'users');
+    final record = widget.client //
+        .$collection(users)
+        .authWithPassword('rodydavis', 'password');
+    debugPrint('auth record: $record');
     if (collections.isNotEmpty) {
       await select(collections.first.id);
     }
@@ -164,7 +172,7 @@ class _ExampleState extends State<Example> {
               onPressed: () async {
                 final items = LOCAL_TODOS
                     .map((e) => RecordModel(
-                          id: client.db.generateId(),
+                          id: widget.client.db.generateId(),
                           created: DateTime.now().toIso8601String(),
                           updated: DateTime.now().toIso8601String(),
                           data: {
