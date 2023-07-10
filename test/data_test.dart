@@ -97,6 +97,8 @@ void main() {
             item,
           );
 
+          expect(result['name'], item['name']);
+
           final updated = await db.$update(
             todoCollection,
             result['id'],

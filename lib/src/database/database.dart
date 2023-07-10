@@ -406,13 +406,9 @@ class DataBase extends _$DataBase {
       throw Exception('Failed to create record');
     }
 
-    final result = await (select(records)..where((r) => r.rowId.equals(rowId)))
-        .getSingle();
-
-    return $query(
-      collection,
-      filter: 'id = "${result.id}"',
-    ).getSingle();
+    final q = select(records)..where((r) => r.rowId.equals(rowId));
+    final result = await q.getSingle();
+    return $query(collection, filter: 'id = "${result.id}"').getSingle();
   }
 
   Future<Map<String, dynamic>> $update(
