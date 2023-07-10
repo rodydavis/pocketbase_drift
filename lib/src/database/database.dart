@@ -392,7 +392,7 @@ class DataBase extends _$DataBase {
           .getSingleOrNull();
       if (existing != null) {
         rowId = await (update(records)
-              ..where((r) => r.id.equals(id!))
+              ..where((r) => r.id.equals(id))
               ..where((r) => r.collectionId.equals(collection.id)))
             .write(record);
       }
