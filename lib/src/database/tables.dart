@@ -36,6 +36,15 @@ abstract class ServiceRecord extends DataClass implements Jsonable {
   DateTime get updated;
 }
 
+// @DataClassName('Item', extending: ServiceRecord)
+// class Items extends Table with ServiceRecords {
+//   TextColumn get table => text()();
+//   TextColumn get data => text().map(const JsonMapper())();
+
+//   @override
+//   Set<Column<Object>>? get primaryKey => {id, table};
+// }
+
 mixin ServiceRecords on Table {
   TextColumn get id => text().clientDefault(newId)();
   TextColumn get metadata => text().map(const JsonMapper())();

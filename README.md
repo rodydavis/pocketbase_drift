@@ -37,7 +37,10 @@ For web, you need to follow the instructions for [Drift](https://drift.simonbind
 - [X] Offline collections
 - [X] Offline records
 - [X] Full text search for all local records
-- [ ] Add support for fields (select)
-- [ ] Add support for sort
+- [X] Add support for fields (select)
+- [X] Add support for sort
+- [X] Add support for expand single/multi
+- [X] Add support for pagination
+- [ ] Add support for indirect expand
 - [ ] Add support validation of create/update for required fields
 - [ ] Add support for files (and local)

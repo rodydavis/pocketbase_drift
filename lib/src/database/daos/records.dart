@@ -26,7 +26,15 @@ class RecordsDao extends ServiceRecordsDao<$RecordsTable, Record>
   }
 
   Future<List<Record>> getPendingWrites({String? collection}) async {
-    final records = await getAll(collection: collection);
+    final records = await getAll(
+      collection: collection,
+      fields: null,
+      expand: null,
+      filter: null,
+      page: null,
+      perPage: null,
+      sort: null,
+    );
     return records.where((e) {
       final deleted = e.metadata['deleted'] == false;
       final synced = e.metadata['synced'] == false;
@@ -35,7 +43,15 @@ class RecordsDao extends ServiceRecordsDao<$RecordsTable, Record>
   }
 
   Future<List<Record>> getPendingDeletes({String? collection}) async {
-    final records = await getAll(collection: collection);
+    final records = await getAll(
+      collection: collection,
+      fields: null,
+      expand: null,
+      filter: null,
+      page: null,
+      perPage: null,
+      sort: null,
+    );
     return records.where((e) {
       final deleted = e.metadata['deleted'] == true;
       final synced = e.metadata['synced'] == false;
@@ -44,7 +60,15 @@ class RecordsDao extends ServiceRecordsDao<$RecordsTable, Record>
   }
 
   Future<List<Record>> getPending({String? collection}) async {
-    final records = await getAll(collection: collection);
+    final records = await getAll(
+      collection: collection,
+      fields: null,
+      expand: null,
+      filter: null,
+      page: null,
+      perPage: null,
+      sort: null,
+    );
     return records.where((e) {
       final synced = e.metadata['synced'] == false;
       return synced;
@@ -53,15 +77,23 @@ class RecordsDao extends ServiceRecordsDao<$RecordsTable, Record>
 
   @override
   SimpleSelectStatement<$RecordsTable, Record> target({
-    String? id,
-    int? page,
-    int? perPage,
     String? collection,
+    required String? id,
+    required int? page,
+    required int? perPage,
+    required String? sort,
+    required String? fields,
+    required String? expand,
+    required String? filter,
   }) {
     var query = super.target(
       id: id,
       page: page,
       perPage: perPage,
+      sort: sort,
+      fields: fields,
+      expand: expand,
+      filter: filter,
     );
     if (collection != null) {
       query = query..where((t) => t.collectionId.equals(collection));
@@ -74,11 +106,20 @@ class RecordsDao extends ServiceRecordsDao<$RecordsTable, Record>
     int? page,
     int? perPage,
     String? collection,
+    String? sort,
+    String? fields,
+    String? expand,
+    String? filter,
   }) {
     return target(
       page: page,
       perPage: perPage,
       collection: collection,
+      sort: sort,
+      fields: fields,
+      expand: expand,
+      filter: filter,
+      id: null,
     ).get();
   }
 
@@ -87,11 +128,20 @@ class RecordsDao extends ServiceRecordsDao<$RecordsTable, Record>
     int? page,
     int? perPage,
     String? collection,
+    String? sort,
+    String? fields,
+    String? expand,
+    String? filter,
   }) {
     return target(
       page: page,
       perPage: perPage,
       collection: collection,
+      sort: sort,
+      fields: fields,
+      expand: expand,
+      filter: filter,
+      id: null,
     ).watch();
   }
 
@@ -99,10 +149,18 @@ class RecordsDao extends ServiceRecordsDao<$RecordsTable, Record>
   Future<Record?> get(
     String id, {
     String? collection,
+    String? fields,
+    String? expand,
   }) {
     return target(
       id: id,
       collection: collection,
+      fields: fields,
+      expand: expand,
+      page: null,
+      perPage: null,
+      sort: null,
+      filter: null,
     ).getSingleOrNull();
   }
 
@@ -110,10 +168,18 @@ class RecordsDao extends ServiceRecordsDao<$RecordsTable, Record>
   Stream<Record?> watch(
     String id, {
     String? collection,
+    String? fields,
+    String? expand,
   }) {
     return target(
       id: id,
       collection: collection,
+      fields: fields,
+      expand: expand,
+      page: null,
+      perPage: null,
+      sort: null,
+      filter: null,
     ).watchSingleOrNull();
   }
 
@@ -135,6 +201,12 @@ class RecordsDao extends ServiceRecordsDao<$RecordsTable, Record>
     if (collection != null) {
       final items = await getAll(
         collection: collection,
+        fields: null,
+        expand: null,
+        filter: null,
+        page: null,
+        perPage: null,
+        sort: null,
       );
       return items.length;
     }

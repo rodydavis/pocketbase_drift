@@ -38,7 +38,12 @@ class $AdminService extends $BaseService<AdminModel> implements AdminService {
         headers: headers,
       ),
       getLocal: () async {
-        final items = await dao.getAll();
+        final items = await dao.getAll(
+          fields: fields,
+          filter: filter,
+          sort: sort,
+          expand: expand,
+        );
         return items.map((e) => e.toModel()).toList();
       },
       setLocal: (value) async {
@@ -79,6 +84,10 @@ class $AdminService extends $BaseService<AdminModel> implements AdminService {
         final items = await dao.getAll(
           page: page,
           perPage: perPage,
+          fields: fields,
+          filter: filter,
+          sort: sort,
+          expand: expand,
         );
         final count = await dao.getCount();
         return ResultList(
@@ -117,7 +126,13 @@ class $AdminService extends $BaseService<AdminModel> implements AdminService {
         headers: headers,
         fields: fields,
       ),
-      getLocal: () => dao.get(id).then((value) => value!.toModel()),
+      getLocal: () => dao
+          .get(
+            id,
+            fields: fields,
+            expand: expand,
+          )
+          .then((value) => value!.toModel()),
       setLocal: (value) => dao.updateItem(value.toModel(
         deleted: false,
         synced: null,

@@ -137,11 +137,18 @@ class $RecordService extends $BaseService<RecordModel>
     FetchPolicy fetchPolicy = FetchPolicy.cacheAndNetwork,
     bool? deleted = false,
     bool? synced,
+    String? fields,
+    String? expand,
   }) async {
     var stream = client //
         .db
         .recordsDao
-        .watch(id, collection: collection.id)
+        .watch(
+      id,
+      collection: collection.id,
+      fields: fields,
+      expand: expand,
+    )
         .map((e) {
       if (deleted != null) {
         if (e?.data['deleted'] != deleted) return null;
@@ -160,8 +167,20 @@ class $RecordService extends $BaseService<RecordModel>
     FetchPolicy fetchPolicy = FetchPolicy.cacheAndNetwork,
     bool? deleted = false,
     bool? synced,
+    String? fields,
+    String? expand,
+    String? sort,
+    String? filter,
   }) async {
-    final stream = dao.watchAll(collection: collection.id).map((e) {
+    final stream = dao
+        .watchAll(
+      collection: collection.id,
+      fields: fields,
+      expand: expand,
+      sort: sort,
+      filter: filter,
+    )
+        .map((e) {
       var items = e.toList();
       if (deleted != null) {
         items = items.where((e) => e.metadata['deleted'] == deleted).toList();
@@ -198,7 +217,12 @@ class $RecordService extends $BaseService<RecordModel>
         headers: headers,
       ),
       getLocal: () async {
-        final items = await dao.getAll();
+        final items = await dao.getAll(
+          fields: fields,
+          filter: filter,
+          sort: sort,
+          expand: expand,
+        );
         return items.map((e) => e.toModel()).toList();
       },
       setLocal: (value) async {
@@ -239,6 +263,10 @@ class $RecordService extends $BaseService<RecordModel>
         final items = await dao.getAll(
           page: page,
           perPage: perPage,
+          fields: fields,
+          filter: filter,
+          sort: sort,
+          expand: expand,
         );
         final count = await dao.getCount();
         return ResultList(
@@ -294,6 +322,8 @@ class $RecordService extends $BaseService<RecordModel>
       final model = await dao.get(
         id,
         collection: collection.id,
+        fields: fields,
+        expand: expand,
       );
       if (model != null) {
         record = model.toModel();
@@ -324,6 +354,8 @@ class $RecordService extends $BaseService<RecordModel>
     Record? record = await dao.get(
       id,
       collection: collection.id,
+      fields: null,
+      expand: null,
     );
     if (fetchPolicy == FetchPolicy.cacheOnly && record != null) {
       record.metadata['deleted'] = true;
@@ -473,6 +505,8 @@ class $RecordService extends $BaseService<RecordModel>
         final item = await dao.get(
           result,
           collection: collection.id,
+          fields: fields,
+          expand: expand,
         );
         record = item?.toModel();
       } else {

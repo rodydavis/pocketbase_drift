@@ -1,6 +1,7 @@
 import 'package:pocketbase_drift/pocketbase_drift.dart';
 
-class $CollectionService extends $BaseService<CollectionModel> implements CollectionService {
+class $CollectionService extends $BaseService<CollectionModel>
+    implements CollectionService {
   $CollectionService(super.client);
 
   late final _base = CollectionService(client);
@@ -18,7 +19,12 @@ class $CollectionService extends $BaseService<CollectionModel> implements Collec
     Map<String, dynamic> query = const {},
     Map<String, String> headers = const {},
   }) async {
-    final existing = await dao.getAll();
+    final existing = await dao.getAll(
+      fields: null,
+      filter: null,
+      sort: null,
+      expand: null,
+    );
     for (final item in collections) {
       await dao.createItem(item.toModel(
         deleted: false,
@@ -69,7 +75,12 @@ class $CollectionService extends $BaseService<CollectionModel> implements Collec
         headers: headers,
       ),
       getLocal: () async {
-        final items = await dao.getAll();
+        final items = await dao.getAll(
+          fields: fields,
+          filter: filter,
+          sort: sort,
+          expand: expand,
+        );
         return items.map((e) => e.toModel()).toList();
       },
       setLocal: (value) async {
@@ -110,6 +121,10 @@ class $CollectionService extends $BaseService<CollectionModel> implements Collec
         final items = await dao.getAll(
           page: page,
           perPage: perPage,
+          fields: fields,
+          filter: filter,
+          sort: sort,
+          expand: expand,
         );
         final count = await dao.getCount();
         return ResultList(
@@ -148,7 +163,13 @@ class $CollectionService extends $BaseService<CollectionModel> implements Collec
         headers: headers,
         fields: fields,
       ),
-      getLocal: () => dao.get(id).then((value) => value!.toModel()),
+      getLocal: () => dao
+          .get(
+            id,
+            fields: fields,
+            expand: expand,
+          )
+          .then((value) => value!.toModel()),
       setLocal: (value) => dao.updateItem(value.toModel(
         deleted: false,
         synced: null,
