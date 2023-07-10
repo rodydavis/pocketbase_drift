@@ -23,7 +23,7 @@ void main() {
   final client = $PocketBase.database(
     url,
     inMemory: true,
-    httpClientFactory: () => PocketBaseHttpClient(),
+    httpClientFactory: () => PocketBaseHttpClient.retry(retries: 1),
   )..logging = kDebugMode;
   runApp(MyApp(client: client));
 }
@@ -256,8 +256,7 @@ class _ExampleState extends State<Example> {
           for (final field in fields) {
             final value = record.toJson()[field.name];
             if (value != null) {
-              final match =
-                  '$value'.toLowerCase().contains(query.toLowerCase());
+              final match = '$value'.toLowerCase().contains(query.toLowerCase());
               matches.add(match ? 1 : 0);
             }
           }
@@ -324,10 +323,9 @@ class _ExampleState extends State<Example> {
               return DataCell(HTML.toRichText(
                 context,
                 '${value ?? ''}',
-                defaultTextStyle:
-                    Theme.of(context).textTheme.bodySmall!.copyWith(
-                          color: Theme.of(context).colorScheme.onSurface,
-                        ),
+                defaultTextStyle: Theme.of(context).textTheme.bodySmall!.copyWith(
+                      color: Theme.of(context).colorScheme.onSurface,
+                    ),
               ));
             }).toList(),
             DataCell(Text(record.created)),

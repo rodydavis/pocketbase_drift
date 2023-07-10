@@ -1,7 +1,6 @@
 import 'package:pocketbase_drift/pocketbase_drift.dart';
 
-class $CollectionService extends $BaseService<CollectionModel>
-    implements CollectionService {
+class $CollectionService extends $BaseService<CollectionModel> implements CollectionService {
   $CollectionService(super.client);
 
   late final _base = CollectionService(client);

@@ -21,7 +21,7 @@ class $PocketBase extends PocketBase {
   $PocketBase(
     super.baseUrl, {
     super.lang,
-    super.authStore,
+    required this.authStore,
     required DataBase database,
     Client Function()? httpClientFactory,
   })  : db = database,
@@ -31,12 +31,13 @@ class $PocketBase extends PocketBase {
     String baseUrl, {
     DatabaseConnection? connection,
     bool inMemory = false,
+    bool autoLoad = true,
     String lang = "en-US",
     Client Function()? httpClientFactory,
   }) {
     final conn = connection ?? connect('app.db', inMemory: inMemory);
     final db = DataBase(conn);
-    final authStore = $AuthStore(db);
+    final authStore = $AuthStore(db, autoLoad: autoLoad);
     return $PocketBase(
       baseUrl,
       database: db,
@@ -45,6 +46,9 @@ class $PocketBase extends PocketBase {
       httpClientFactory: httpClientFactory,
     );
   }
+
+  @override
+  final $AuthStore authStore;
 
   final DataBase db;
   bool logging = false;

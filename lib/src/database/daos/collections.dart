@@ -8,8 +8,7 @@ import 'base.dart';
 part 'collections.g.dart';
 
 @DriftAccessor(tables: [Collections])
-class CollectionsDao extends ServiceRecordsDao<$CollectionsTable, Collection>
-    with _$CollectionsDaoMixin {
+class CollectionsDao extends ServiceRecordsDao<$CollectionsTable, Collection> with _$CollectionsDaoMixin {
   CollectionsDao(DataBase db) : super(db);
 
   @override
@@ -25,9 +24,7 @@ class CollectionsDao extends ServiceRecordsDao<$CollectionsTable, Collection>
   @override
   Future<void> updateItem(Collection data) async {
     final companion = toCompanion(data);
-    final existing = await (select(table)
-          ..where((tbl) => tbl.id.equals(data.id)))
-        .getSingleOrNull();
+    final existing = await (select(table)..where((tbl) => tbl.id.equals(data.id))).getSingleOrNull();
     if (existing == null) {
       await into(table).insert(companion);
     } else {
