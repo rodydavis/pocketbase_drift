@@ -27,6 +27,7 @@ extension FetchPolicyUtils on FetchPolicy {
     required Future<T> Function() remote,
     required Future<T> Function() getLocal,
     required Future<void> Function(T) setLocal,
+    // Duration timeout = const Duration(seconds: 3),
   }) async {
     T? result;
 
@@ -49,9 +50,7 @@ extension FetchPolicyUtils on FetchPolicy {
     }
 
     if (result == null) {
-      throw Exception(
-        'Failed to get',
-      );
+      throw Exception('Failed to get');
     }
 
     return result;

@@ -8,12 +8,12 @@ import '../database/connection/connection.dart';
 import '../database/database.dart';
 import 'services/admin.dart';
 import 'services/backup.dart';
-import 'services/collection.dart';
+import 'services/collections.dart';
 import 'services/files.dart';
 import 'services/health.dart';
 import 'services/logs.dart';
 import 'services/realtime.dart';
-import 'services/record.dart';
+import 'services/records.dart';
 import 'services/settings.dart';
 import 'stores/auth.dart';
 
@@ -53,25 +53,24 @@ class $PocketBase extends PocketBase {
   final DataBase db;
   bool logging = false;
 
-  final _recordServices = <String, $RecordService>{};
+  final _recordServices = <String, $RecordsService>{};
 
-  $RecordService $collection(CollectionModel collection) {
-    var service = _recordServices[collection.id];
+  @override
+  $RecordsService collection(String collectionIdOrName) {
+    var service = _recordServices[collectionIdOrName];
 
     if (service == null) {
-      service = $RecordService(this, collection);
-      _recordServices[collection.id] = service;
+      service = $RecordsService(this, collectionIdOrName);
+      _recordServices[collectionIdOrName] = service;
     }
 
     return service;
   }
 
-  Future<List<RecordModel>> search(String query) {
-    return db.search(query);
-  }
+  Selectable<SearchResult> search(String query) => db.search(query);
 
   @override
-  late final $CollectionService collections = $CollectionService(this);
+  late final $CollectionsService collections = $CollectionsService(this);
 
   @override
   late final $AdminService admins = $AdminService(this);

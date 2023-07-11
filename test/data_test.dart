@@ -13,26 +13,24 @@ void main() {
   final db = DataBase(connection);
   final collections = [...offlineCollections]
       .map((e) => CollectionModel.fromJson(jsonDecode(jsonEncode(e))))
-      .map((e) => e.toModel(synced: true, deleted: false))
       .toList();
   late final todoCollection = collections.firstWhere((e) => e.name == 'todo');
+  final todo = todoCollection.name;
 
   group('data test', () {
     setUpAll(() async {
-      for (final collection in collections) {
-        await db.collectionsDao.createItem(collection);
-      }
+      await db.setSchema(collections.map((e) => e.toJson()).toList());
     });
 
     test('check', () async {
-      final result = await db.$query(todoCollection).get();
+      final result = await db.$query(todo).get();
 
       expect(result, []);
     });
 
     test('create', () async {
       final result = await db.$create(
-        todoCollection,
+        todo,
         {'name': 'test'},
       );
 
@@ -40,19 +38,19 @@ void main() {
       expect(result['id'], isNotEmpty);
 
       await db.$delete(
-        todoCollection,
+        todo,
         result['id'],
       );
     });
 
     test('update', () async {
       final result = await db.$create(
-        todoCollection,
+        todo,
         {'name': 'test'},
       );
 
       final updated = await db.$update(
-        todoCollection,
+        todo,
         result['id'],
         {'name': 'test2'},
       );
@@ -61,23 +59,23 @@ void main() {
       expect(updated['id'], result['id']);
 
       await db.$delete(
-        todoCollection,
+        todo,
         result['id'],
       );
     });
 
     test('delete', () async {
       final result = await db.$create(
-        todoCollection,
+        todo,
         {'name': 'test'},
       );
 
       await db.$delete(
-        todoCollection,
+        todo,
         result['id'],
       );
 
-      final results = await db.$query(todoCollection).get();
+      final results = await db.$query(todo).get();
 
       expect(results, []);
     });
@@ -93,14 +91,14 @@ void main() {
 
         await Future.forEach(items, (item) async {
           final result = await db.$create(
-            todoCollection,
+            todo,
             item,
           );
 
           expect(result['name'], item['name']);
 
           final updated = await db.$update(
-            todoCollection,
+            todo,
             result['id'],
             {'name': 'test2'},
           );
@@ -109,12 +107,12 @@ void main() {
           expect(updated['id'], result['id']);
 
           await db.$delete(
-            todoCollection,
+            todo,
             result['id'],
           );
         });
 
-        final results = await db.$query(todoCollection).get();
+        final results = await db.$query(todo).get();
 
         expect(results, []);
       });

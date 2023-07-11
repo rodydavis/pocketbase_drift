@@ -1,30 +1,30 @@
 import '../tables.dart';
-import '../daos/records.dart';
+import '../daos/services.dart';
 
 -- Create a text index of entries, see https://www.sqlite.org/fts5.html#external_content_tables
 CREATE VIRTUAL TABLE text_entries USING fts5 (
     data,
-    content=records,
+    content=services,
     content_rowid=rowid
 );
 
 -- Triggers to keep entries and fts5 index in sync.
-CREATE TRIGGER records_insert AFTER INSERT ON records BEGIN
+CREATE TRIGGER services_insert AFTER INSERT ON services BEGIN
   INSERT INTO text_entries(rowid, data) VALUES (new.rowid, new.data);
 END;
 
-CREATE TRIGGER records_delete AFTER DELETE ON records BEGIN
+CREATE TRIGGER services_delete AFTER DELETE ON services BEGIN
   INSERT INTO text_entries(text_entries, rowid, data) VALUES ('delete', old.rowid, old.data);
 END;
 
-CREATE TRIGGER records_update AFTER UPDATE ON records BEGIN
+CREATE TRIGGER services_update AFTER UPDATE ON services BEGIN
   INSERT INTO text_entries(text_entries, rowid, data) VALUES ('delete', new.rowid, new.data);
   INSERT INTO text_entries(rowid, data) VALUES (new.rowid, new.data);
 END;
 
 -- Full text search query.
 _search: 
-    SELECT r.** FROM text_entries
-    INNER JOIN records r ON r.rowid = text_entries.rowid
+    SELECT record.** FROM text_entries
+    INNER JOIN services record ON record.rowid = text_entries.rowid
     WHERE text_entries MATCH :query
     ORDER BY rank;

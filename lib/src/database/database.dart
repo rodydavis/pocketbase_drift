@@ -1,29 +1,22 @@
 import 'dart:convert';
 
 import 'package:drift/drift.dart';
+import 'package:flutter/foundation.dart';
 import 'package:pocketbase/pocketbase.dart';
 
 import 'connection/connection.dart' as impl;
 import 'daos/admins.dart';
-import 'daos/records.dart';
-import 'daos/collections.dart';
 import 'tables.dart';
-
-export 'daos/records.dart';
-export 'daos/collections.dart';
 
 part 'database.g.dart';
 
 @DriftDatabase(
   tables: [
-    Records,
-    Collections,
     AuthTokens,
     Admins,
+    Services,
   ],
   daos: [
-    RecordsDao,
-    CollectionsDao,
     AdminsDao,
   ],
   include: {
@@ -36,25 +29,19 @@ class DataBase extends _$DataBase {
   factory DataBase.file({
     String dbName = 'pocketbase.db',
     bool logStatements = false,
+    bool inMemory = false,
   }) {
     return DataBase(impl.connect(
       dbName,
       logStatements: logStatements,
+      inMemory: inMemory,
     ));
   }
 
   @override
   int get schemaVersion => 3;
 
-  Future<List<RecordModel>> search(
-    String query, {
-    String? collectionId,
-  }) async {
-    final results = await _search(query).get();
-    final items = results.map((e) => e.r.toModel()).toList();
-    if (collectionId == null) return items;
-    return items.where((item) => item.collectionId == collectionId).toList();
-  }
+  Selectable<SearchResult> search(String query) => _search(query);
 
   String generateId() => newId();
 
@@ -77,24 +64,28 @@ class DataBase extends _$DataBase {
   }
 
   String queryBuilder(
-    String table, {
+    String service, {
     String? fields,
     String? filter,
     String? sort,
+    int? offset,
+    int? limit,
   }) {
     final baseFields = <String>[
       "id",
       "created",
       "updated",
-      "collectionId",
-      "collectionName",
-      "expand",
     ];
 
-    String fixField(String field) {
+    String fixField(
+      String field, {
+      bool alias = true,
+    }) {
       field = field.trim();
       if (baseFields.contains(field)) return field;
-      return "json_extract(records.data, '\$.$field') as $field";
+      var str = "json_extract(services.data, '\$.$field')";
+      if (alias) str += ' as $field';
+      return str;
     }
 
     final sb = StringBuffer();
@@ -111,8 +102,8 @@ class DataBase extends _$DataBase {
     } else {
       sb.write('*');
     }
-    sb.write(' FROM records');
-    sb.write(' WHERE collectionName = "$table"');
+    sb.write(' FROM services');
+    sb.write(' WHERE service = "$service"');
     if (filter != null && filter.isNotEmpty) {
       // Replace && and || with AND and OR
       if (filter.startsWith('(') && filter.endsWith(')')) {
@@ -136,17 +127,30 @@ class DataBase extends _$DataBase {
       // ?<= Any/At least one of Less than or equal
       // ?~ Any/At least one of Like/Contains (if not specified auto wraps the right string OPERAND in a "%" for wildcard match)
       // ?!~ Any/At least one of NOT Like/Contains (if not specified auto wraps the right string OPERAND in a "%" for wildcard match)
-      filter = filter.replaceAllMapped(
-        RegExp(
-          r'(\w+)\s*(=|!=|>|<|>=|<=|~|!~|\?=|\?!=|\?>|\?>=|\?<|\?<=|\?~|\?!~)\s*(\w+)',
-        ),
-        (match) {
-          final field = match.group(1);
-          final op = match.group(2);
-          final value = match.group(3);
-          return '${fixField(field!)} $op $value';
-        },
-      );
+      final parts = filter
+          .replaceAll('(', '')
+          .replaceAll(')', '')
+          .multiSplit([' AND ', ' OR ']);
+      for (final part in parts) {
+        final words = part.split(' ');
+        final field = words[0].trim();
+        filter = filter!.replaceAll(
+          field,
+          fixField(field, alias: false),
+        );
+      }
+      // final regExp = RegExp(
+      //   r'(\w+)\s*(=|!=|>|<|>=|<=|~|!~|\?=|\?!=|\?>|\?>=|\?<|\?<=|\?~|\?!~)\s*(\w+)',
+      // );
+      // filter = filter.replaceAllMapped(
+      //   regExp,
+      //   (match) {
+      //     final field = match.group(1);
+      //     final op = match.group(2);
+      //     final value = match.group(3);
+      //     return '${fixField(field!)} $op $value';
+      //   },
+      // );
       sb.write(' AND ($filter)');
     }
     if (sort != null && sort.isNotEmpty) {
@@ -173,29 +177,49 @@ class DataBase extends _$DataBase {
         }
       }
     }
+    if (offset != null) {
+      sb.write(' OFFSET $offset');
+    }
+    if (limit != null) {
+      sb.write(' LIMIT $limit');
+    }
     return sb.toString();
   }
 
+  Selectable<CollectionModel> $collections({
+    String? service,
+  }) {
+    var str = "SELECT * FROM services WHERE service = 'schema'";
+    if (service != null) {
+      str += " AND json_extract(services.data, '\$.name') = '$service'";
+    }
+    final query = customSelect(str).map(parseRow);
+    return query.map(CollectionModel.fromJson);
+  }
+
   Selectable<Map<String, dynamic>> $query(
-    Collection collection, {
+    String service, {
     String? expand,
     String? fields,
     String? filter,
     String? sort,
-    List<Variable<Object>> variables = const [],
+    int? offset,
+    int? limit,
   }) {
     final query = queryBuilder(
-      collection.name,
+      service,
       fields: fields,
       filter: filter,
       sort: sort,
+      offset: offset,
+      limit: limit,
     );
+    debugPrint('query: $query');
     return customSelect(
       query,
-      variables: variables,
-      readsFrom: {records},
+      readsFrom: {services},
     ).asyncMap((r) async {
-      final collections = await select(this.collections).get();
+      final collections = await $collections().get();
       final record = parseRow(r);
       if (expand != null && expand.isNotEmpty) {
         record['expand'] = {};
@@ -226,7 +250,7 @@ class DataBase extends _$DataBase {
           }
 
           // Match field to relation
-          final c = collections.firstWhere((e) => e.id == collection.id);
+          final c = collections.firstWhere((e) => e.name == service);
           final schemaField = c.schema.firstWhere(
             (e) => e.name == targetField,
           );
@@ -235,37 +259,50 @@ class DataBase extends _$DataBase {
           );
           final isSingle = schemaField.options['maxSelect'] == 1;
           final id = record[targetField] as String?;
-          record['expand'][targetField] = [];
+          final results = <Map<String, dynamic>>[];
           if (id != null) {
             final query = $query(
-              targetCollection,
+              targetCollection.name,
               expand: nestedExpand ?? '',
-              fields: fields,
-              filter: 'id="$id"',
-              variables: [],
+              filter: 'id = "$id"',
             );
             if (isSingle) {
               final result = await query.getSingleOrNull();
               if (result != null) {
-                record['expand'][targetField]!.add(result);
+                results.add(result);
               }
             } else {
               final result = await query.get();
-              final items = result.toList();
-              record['expand'][targetField]!.addAll(items);
+              var items = result.toList();
+              if (schemaField.options['maxSelect'] != null) {
+                final maxCount = schemaField.options['maxSelect'] as int;
+                items = items.take(maxCount).toList();
+              }
+              results.addAll(items);
             }
           }
+          record['expand'][targetField] = results;
         }
       }
       return record;
     });
   }
 
+  Future<int> $count(String service) async {
+    final query = queryBuilder(
+      service,
+      fields: 'COUNT(*)',
+    );
+    final result = await customSelect(
+      query,
+      readsFrom: {services},
+    ).getSingleOrNull();
+    return result?.read<int>('COUNT(*)') ?? 0;
+  }
+
   Map<String, dynamic> parseRow(QueryRow row) {
     const fields = [
       'id',
-      'collectionId',
-      'collectionName',
       'created',
       'updated',
     ];
@@ -280,12 +317,13 @@ class DataBase extends _$DataBase {
 
     for (final field in row.data.keys) {
       if (fields.contains(field)) {
-        if (field == 'created' || field == 'updated') {
-          result[field] = row.readNullable<DateTime>(field)?.toIso8601String();
-          continue;
-        } else {
-          result[field] = row.readNullable<String>(field);
-        }
+        // if (field == 'created' || field == 'updated') {
+        //   result[field] = row.readNullable<DateTime>(field)?.toIso8601String();
+        //   continue;
+        // } else {
+        //   result[field] = row.readNullable<String>(field);
+        // }
+        result[field] = row.readNullable<String>(field);
         continue;
       }
     }
@@ -298,7 +336,7 @@ class DataBase extends _$DataBase {
   /// Throws exception if data is invalid for each field
   ///
   /// Returns true if data is valid
-  bool validateData(Collection collection, Map<String, dynamic> data) {
+  bool validateData(CollectionModel collection, Map<String, dynamic> data) {
     for (final field in collection.schema) {
       final value = data[field.name];
       if (field.required && value == null) {
@@ -351,7 +389,7 @@ class DataBase extends _$DataBase {
   }
 
   Future<Map<String, dynamic>> $create(
-    Collection collection,
+    String service,
     Map<String, dynamic> data, {
     bool? synced,
     bool? deleted = false,
@@ -363,56 +401,53 @@ class DataBase extends _$DataBase {
     final id = data['id'] as String?;
     data.remove('id');
 
+    final collection = await $collections(service: service).getSingle();
+
     if (validate) validateData(collection, data);
 
-    final created = data['created'] ?? DateTime.now().toIso8601String();
-    final updated = data['updated'] ?? DateTime.now().toIso8601String();
+    String date(String key) {
+      final value = data[key];
+      if (value is String) return value;
+      return DateTime.now().toIso8601String();
+    }
 
-    final record = RecordsCompanion.insert(
+    final String created = date('created');
+    final String updated = date('updated');
+
+    final item = ServicesCompanion.insert(
       id: id != null ? Value(id) : const Value.absent(),
-      collectionId: collection.id,
-      collectionName: collection.name,
-      data: data,
-      metadata: {
+      service: service,
+      data: {
+        ...data,
         'synced': synced,
         'deleted': deleted,
         if (isNew != null) 'new': isNew,
         if (local != null) 'local': local,
       },
-      created: DateTime.parse(created),
-      updated: DateTime.parse(updated),
+      created: Value(created),
+      updated: Value(updated),
     );
 
-    int rowId = -1;
-
     if (id != null) {
-      final existing = await (select(records)
-            ..where((r) => r.collectionId.equals(collection.id))
+      final existing = await (select(services)
+            ..where((r) => r.service.equals(service))
             ..where((r) => r.id.equals(id)))
           .getSingleOrNull();
       if (existing != null) {
-        rowId = await (update(records)
+        await (update(services)
               ..where((r) => r.id.equals(id))
-              ..where((r) => r.collectionId.equals(collection.id)))
-            .write(record);
+              ..where((r) => r.service.equals(service)))
+            .write(item);
+        return $query(service, filter: 'id = "$id"').getSingle();
       }
     }
 
-    if (rowId == -1) {
-      rowId = await into(records).insert(record);
-    }
-
-    if (rowId == -1) {
-      throw Exception('Failed to create record');
-    }
-
-    final q = select(records)..where((r) => r.rowId.equals(rowId));
-    final result = await q.getSingle();
-    return $query(collection, filter: 'id = "${result.id}"').getSingle();
+    final result = await into(services).insertReturning(item);
+    return $query(service, filter: 'id = "${result.id}"').getSingle();
   }
 
   Future<Map<String, dynamic>> $update(
-    Collection collection,
+    String service,
     String id,
     Map<String, dynamic> data, {
     bool? synced,
@@ -422,7 +457,7 @@ class DataBase extends _$DataBase {
     bool validate = false,
   }) {
     return $create(
-      collection,
+      service,
       {...data, 'id': id},
       synced: synced,
       deleted: deleted,
@@ -433,12 +468,77 @@ class DataBase extends _$DataBase {
   }
 
   Future<void> $delete(
-    Collection collection,
-    String id,
-  ) async {
-    await (delete(records)
-          ..where((r) => r.collectionId.equals(collection.id))
-          ..where((r) => r.id.equals(id)))
-        .go();
+    String service,
+    String id, {
+    Batch? batch,
+  }) async {
+    if (batch == null) {
+      await (delete(services)
+            ..where((r) => r.service.equals(service))
+            ..where((r) => r.id.equals(id)))
+          .go();
+    } else {
+      batch.deleteWhere(
+        services,
+        (r) => r.service.equals(service) & r.id.equals(id),
+      );
+    }
+  }
+
+  Future<void> deleteAll(
+    String service, {
+    List<String>? ids,
+  }) async {
+    if (ids != null) {
+      return batch((b) async {
+        for (final id in ids) {
+          await $delete(service, id, batch: b);
+        }
+      });
+    } else {
+      final query = delete(services)..where((r) => r.service.equals(service));
+      await query.go();
+    }
+  }
+
+  Future<void> setSchema(List<Map<String, dynamic>> items) async {
+    const service = 'schema';
+    // Remove existing
+    await (delete(services)..where((r) => r.service.equals(service))).go();
+    // Add all
+    await batch((b) async {
+      for (final item in items) {
+        b.insert(
+          services,
+          ServicesCompanion.insert(
+            id: Value(item['id']),
+            data: item,
+            service: service,
+            created: Value(DateTime.now().toIso8601String()),
+            updated: Value(DateTime.now().toIso8601String()),
+          ),
+        );
+      }
+    });
+    // Get all
+    final query = select(services)..where((tbl) => tbl.service.equals(service));
+    final results = await query.get();
+    debugPrint('schema: ${results.length}');
+  }
+}
+
+extension StringUtils on String {
+  List<String> multiSplit(Iterable<String> delimiters) => delimiters.isEmpty
+      ? [this]
+      : split(RegExp(delimiters.map(RegExp.escape).join('|')));
+}
+
+extension on Service {
+  Map<String, dynamic> toData() {
+    return {
+      ...data,
+      'service': service,
+      'id': id,
+    };
   }
 }
