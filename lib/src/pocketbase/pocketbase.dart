@@ -73,7 +73,7 @@ class $PocketBase extends PocketBase {
   late final $CollectionsService collections = $CollectionsService(this);
 
   @override
-  late final $AdminService admins = $AdminService(this);
+  late final $AdminsService admins = $AdminsService(this);
 
   @override
   late final $FileService files = $FileService(this);

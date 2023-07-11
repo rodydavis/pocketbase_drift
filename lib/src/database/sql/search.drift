@@ -1,5 +1,4 @@
 import '../tables.dart';
-import '../daos/services.dart';
 
 -- Create a text index of entries, see https://www.sqlite.org/fts5.html#external_content_tables
 CREATE VIRTUAL TABLE text_entries USING fts5 (
@@ -27,4 +26,10 @@ _search:
     SELECT record.** FROM text_entries
     INNER JOIN services record ON record.rowid = text_entries.rowid
     WHERE text_entries MATCH :query
+    ORDER BY rank;
+_searchService: 
+    SELECT record.** FROM text_entries
+    INNER JOIN services record ON record.rowid = text_entries.rowid
+    WHERE text_entries MATCH :query
+    AND record.service = :service
     ORDER BY rank;

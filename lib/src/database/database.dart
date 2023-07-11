@@ -5,23 +5,13 @@ import 'package:flutter/foundation.dart';
 import 'package:pocketbase/pocketbase.dart';
 
 import 'connection/connection.dart' as impl;
-import 'daos/admins.dart';
 import 'tables.dart';
 
 part 'database.g.dart';
 
 @DriftDatabase(
-  tables: [
-    AuthTokens,
-    Admins,
-    Services,
-  ],
-  daos: [
-    AdminsDao,
-  ],
-  include: {
-    'sql/search.drift',
-  },
+  tables: [AuthTokens, Services],
+  include: {'sql/search.drift'},
 )
 class DataBase extends _$DataBase {
   DataBase(DatabaseConnection connection) : super.connect(connection);
@@ -139,18 +129,6 @@ class DataBase extends _$DataBase {
           fixField(field, alias: false),
         );
       }
-      // final regExp = RegExp(
-      //   r'(\w+)\s*(=|!=|>|<|>=|<=|~|!~|\?=|\?!=|\?>|\?>=|\?<|\?<=|\?~|\?!~)\s*(\w+)',
-      // );
-      // filter = filter.replaceAllMapped(
-      //   regExp,
-      //   (match) {
-      //     final field = match.group(1);
-      //     final op = match.group(2);
-      //     final value = match.group(3);
-      //     return '${fixField(field!)} $op $value';
-      //   },
-      // );
       sb.write(' AND ($filter)');
     }
     if (sort != null && sort.isNotEmpty) {
@@ -317,12 +295,6 @@ class DataBase extends _$DataBase {
 
     for (final field in row.data.keys) {
       if (fields.contains(field)) {
-        // if (field == 'created' || field == 'updated') {
-        //   result[field] = row.readNullable<DateTime>(field)?.toIso8601String();
-        //   continue;
-        // } else {
-        //   result[field] = row.readNullable<String>(field);
-        // }
         result[field] = row.readNullable<String>(field);
         continue;
       }
@@ -531,14 +503,4 @@ extension StringUtils on String {
   List<String> multiSplit(Iterable<String> delimiters) => delimiters.isEmpty
       ? [this]
       : split(RegExp(delimiters.map(RegExp.escape).join('|')));
-}
-
-extension on Service {
-  Map<String, dynamic> toData() {
-    return {
-      ...data,
-      'service': service,
-      'id': id,
-    };
-  }
 }

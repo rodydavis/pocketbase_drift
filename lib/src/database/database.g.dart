@@ -665,340 +665,6 @@ class AuthTokensCompanion extends UpdateCompanion<AuthToken> {
   }
 }
 
-class $AdminsTable extends Admins with TableInfo<$AdminsTable, Admin> {
-  @override
-  final GeneratedDatabase attachedDatabase;
-  final String? _alias;
-  $AdminsTable(this.attachedDatabase, [this._alias]);
-  static const VerificationMeta _idMeta = const VerificationMeta('id');
-  @override
-  late final GeneratedColumn<String> id = GeneratedColumn<String>(
-      'id', aliasedName, false,
-      type: DriftSqlType.string,
-      requiredDuringInsert: false,
-      clientDefault: newId);
-  static const VerificationMeta _metadataMeta =
-      const VerificationMeta('metadata');
-  @override
-  late final GeneratedColumnWithTypeConverter<Map<String, dynamic>, String>
-      metadata = GeneratedColumn<String>('metadata', aliasedName, false,
-              type: DriftSqlType.string, requiredDuringInsert: true)
-          .withConverter<Map<String, dynamic>>($AdminsTable.$convertermetadata);
-  static const VerificationMeta _createdMeta =
-      const VerificationMeta('created');
-  @override
-  late final GeneratedColumn<DateTime> created = GeneratedColumn<DateTime>(
-      'created', aliasedName, false,
-      type: DriftSqlType.dateTime, requiredDuringInsert: true);
-  static const VerificationMeta _updatedMeta =
-      const VerificationMeta('updated');
-  @override
-  late final GeneratedColumn<DateTime> updated = GeneratedColumn<DateTime>(
-      'updated', aliasedName, false,
-      type: DriftSqlType.dateTime, requiredDuringInsert: true);
-  static const VerificationMeta _emailMeta = const VerificationMeta('email');
-  @override
-  late final GeneratedColumn<String> email = GeneratedColumn<String>(
-      'email', aliasedName, false,
-      type: DriftSqlType.string, requiredDuringInsert: true);
-  static const VerificationMeta _avatarMeta = const VerificationMeta('avatar');
-  @override
-  late final GeneratedColumn<int> avatar = GeneratedColumn<int>(
-      'avatar', aliasedName, false,
-      type: DriftSqlType.int,
-      requiredDuringInsert: false,
-      defaultValue: const Constant(0));
-  @override
-  List<GeneratedColumn> get $columns =>
-      [id, metadata, created, updated, email, avatar];
-  @override
-  String get aliasedName => _alias ?? 'Admins';
-  @override
-  String get actualTableName => 'Admins';
-  @override
-  VerificationContext validateIntegrity(Insertable<Admin> instance,
-      {bool isInserting = false}) {
-    final context = VerificationContext();
-    final data = instance.toColumns(true);
-    if (data.containsKey('id')) {
-      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
-    }
-    context.handle(_metadataMeta, const VerificationResult.success());
-    if (data.containsKey('created')) {
-      context.handle(_createdMeta,
-          created.isAcceptableOrUnknown(data['created']!, _createdMeta));
-    } else if (isInserting) {
-      context.missing(_createdMeta);
-    }
-    if (data.containsKey('updated')) {
-      context.handle(_updatedMeta,
-          updated.isAcceptableOrUnknown(data['updated']!, _updatedMeta));
-    } else if (isInserting) {
-      context.missing(_updatedMeta);
-    }
-    if (data.containsKey('email')) {
-      context.handle(
-          _emailMeta, email.isAcceptableOrUnknown(data['email']!, _emailMeta));
-    } else if (isInserting) {
-      context.missing(_emailMeta);
-    }
-    if (data.containsKey('avatar')) {
-      context.handle(_avatarMeta,
-          avatar.isAcceptableOrUnknown(data['avatar']!, _avatarMeta));
-    }
-    return context;
-  }
-
-  @override
-  Set<GeneratedColumn> get $primaryKey => {id};
-  @override
-  Admin map(Map<String, dynamic> data, {String? tablePrefix}) {
-    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
-    return Admin(
-      id: attachedDatabase.typeMapping
-          .read(DriftSqlType.string, data['${effectivePrefix}id'])!,
-      metadata: $AdminsTable.$convertermetadata.fromSql(attachedDatabase
-          .typeMapping
-          .read(DriftSqlType.string, data['${effectivePrefix}metadata'])!),
-      created: attachedDatabase.typeMapping
-          .read(DriftSqlType.dateTime, data['${effectivePrefix}created'])!,
-      updated: attachedDatabase.typeMapping
-          .read(DriftSqlType.dateTime, data['${effectivePrefix}updated'])!,
-      email: attachedDatabase.typeMapping
-          .read(DriftSqlType.string, data['${effectivePrefix}email'])!,
-      avatar: attachedDatabase.typeMapping
-          .read(DriftSqlType.int, data['${effectivePrefix}avatar'])!,
-    );
-  }
-
-  @override
-  $AdminsTable createAlias(String alias) {
-    return $AdminsTable(attachedDatabase, alias);
-  }
-
-  static TypeConverter<Map<String, dynamic>, String> $convertermetadata =
-      const JsonMapper();
-}
-
-class Admin extends ServiceRecord implements Insertable<Admin> {
-  final String id;
-  final Map<String, dynamic> metadata;
-  final DateTime created;
-  final DateTime updated;
-  final String email;
-  final int avatar;
-  const Admin(
-      {required this.id,
-      required this.metadata,
-      required this.created,
-      required this.updated,
-      required this.email,
-      required this.avatar});
-  @override
-  Map<String, Expression> toColumns(bool nullToAbsent) {
-    final map = <String, Expression>{};
-    map['id'] = Variable<String>(id);
-    {
-      final converter = $AdminsTable.$convertermetadata;
-      map['metadata'] = Variable<String>(converter.toSql(metadata));
-    }
-    map['created'] = Variable<DateTime>(created);
-    map['updated'] = Variable<DateTime>(updated);
-    map['email'] = Variable<String>(email);
-    map['avatar'] = Variable<int>(avatar);
-    return map;
-  }
-
-  AdminsCompanion toCompanion(bool nullToAbsent) {
-    return AdminsCompanion(
-      id: Value(id),
-      metadata: Value(metadata),
-      created: Value(created),
-      updated: Value(updated),
-      email: Value(email),
-      avatar: Value(avatar),
-    );
-  }
-
-  factory Admin.fromJson(Map<String, dynamic> json,
-      {ValueSerializer? serializer}) {
-    serializer ??= driftRuntimeOptions.defaultSerializer;
-    return Admin(
-      id: serializer.fromJson<String>(json['id']),
-      metadata: serializer.fromJson<Map<String, dynamic>>(json['metadata']),
-      created: serializer.fromJson<DateTime>(json['created']),
-      updated: serializer.fromJson<DateTime>(json['updated']),
-      email: serializer.fromJson<String>(json['email']),
-      avatar: serializer.fromJson<int>(json['avatar']),
-    );
-  }
-  @override
-  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
-    serializer ??= driftRuntimeOptions.defaultSerializer;
-    return <String, dynamic>{
-      'id': serializer.toJson<String>(id),
-      'metadata': serializer.toJson<Map<String, dynamic>>(metadata),
-      'created': serializer.toJson<DateTime>(created),
-      'updated': serializer.toJson<DateTime>(updated),
-      'email': serializer.toJson<String>(email),
-      'avatar': serializer.toJson<int>(avatar),
-    };
-  }
-
-  Admin copyWith(
-          {String? id,
-          Map<String, dynamic>? metadata,
-          DateTime? created,
-          DateTime? updated,
-          String? email,
-          int? avatar}) =>
-      Admin(
-        id: id ?? this.id,
-        metadata: metadata ?? this.metadata,
-        created: created ?? this.created,
-        updated: updated ?? this.updated,
-        email: email ?? this.email,
-        avatar: avatar ?? this.avatar,
-      );
-  @override
-  String toString() {
-    return (StringBuffer('Admin(')
-          ..write('id: $id, ')
-          ..write('metadata: $metadata, ')
-          ..write('created: $created, ')
-          ..write('updated: $updated, ')
-          ..write('email: $email, ')
-          ..write('avatar: $avatar')
-          ..write(')'))
-        .toString();
-  }
-
-  @override
-  int get hashCode =>
-      Object.hash(id, metadata, created, updated, email, avatar);
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      (other is Admin &&
-          other.id == this.id &&
-          other.metadata == this.metadata &&
-          other.created == this.created &&
-          other.updated == this.updated &&
-          other.email == this.email &&
-          other.avatar == this.avatar);
-}
-
-class AdminsCompanion extends UpdateCompanion<Admin> {
-  final Value<String> id;
-  final Value<Map<String, dynamic>> metadata;
-  final Value<DateTime> created;
-  final Value<DateTime> updated;
-  final Value<String> email;
-  final Value<int> avatar;
-  final Value<int> rowid;
-  const AdminsCompanion({
-    this.id = const Value.absent(),
-    this.metadata = const Value.absent(),
-    this.created = const Value.absent(),
-    this.updated = const Value.absent(),
-    this.email = const Value.absent(),
-    this.avatar = const Value.absent(),
-    this.rowid = const Value.absent(),
-  });
-  AdminsCompanion.insert({
-    this.id = const Value.absent(),
-    required Map<String, dynamic> metadata,
-    required DateTime created,
-    required DateTime updated,
-    required String email,
-    this.avatar = const Value.absent(),
-    this.rowid = const Value.absent(),
-  })  : metadata = Value(metadata),
-        created = Value(created),
-        updated = Value(updated),
-        email = Value(email);
-  static Insertable<Admin> custom({
-    Expression<String>? id,
-    Expression<String>? metadata,
-    Expression<DateTime>? created,
-    Expression<DateTime>? updated,
-    Expression<String>? email,
-    Expression<int>? avatar,
-    Expression<int>? rowid,
-  }) {
-    return RawValuesInsertable({
-      if (id != null) 'id': id,
-      if (metadata != null) 'metadata': metadata,
-      if (created != null) 'created': created,
-      if (updated != null) 'updated': updated,
-      if (email != null) 'email': email,
-      if (avatar != null) 'avatar': avatar,
-      if (rowid != null) 'rowid': rowid,
-    });
-  }
-
-  AdminsCompanion copyWith(
-      {Value<String>? id,
-      Value<Map<String, dynamic>>? metadata,
-      Value<DateTime>? created,
-      Value<DateTime>? updated,
-      Value<String>? email,
-      Value<int>? avatar,
-      Value<int>? rowid}) {
-    return AdminsCompanion(
-      id: id ?? this.id,
-      metadata: metadata ?? this.metadata,
-      created: created ?? this.created,
-      updated: updated ?? this.updated,
-      email: email ?? this.email,
-      avatar: avatar ?? this.avatar,
-      rowid: rowid ?? this.rowid,
-    );
-  }
-
-  @override
-  Map<String, Expression> toColumns(bool nullToAbsent) {
-    final map = <String, Expression>{};
-    if (id.present) {
-      map['id'] = Variable<String>(id.value);
-    }
-    if (metadata.present) {
-      final converter = $AdminsTable.$convertermetadata;
-      map['metadata'] = Variable<String>(converter.toSql(metadata.value));
-    }
-    if (created.present) {
-      map['created'] = Variable<DateTime>(created.value);
-    }
-    if (updated.present) {
-      map['updated'] = Variable<DateTime>(updated.value);
-    }
-    if (email.present) {
-      map['email'] = Variable<String>(email.value);
-    }
-    if (avatar.present) {
-      map['avatar'] = Variable<int>(avatar.value);
-    }
-    if (rowid.present) {
-      map['rowid'] = Variable<int>(rowid.value);
-    }
-    return map;
-  }
-
-  @override
-  String toString() {
-    return (StringBuffer('AdminsCompanion(')
-          ..write('id: $id, ')
-          ..write('metadata: $metadata, ')
-          ..write('created: $created, ')
-          ..write('updated: $updated, ')
-          ..write('email: $email, ')
-          ..write('avatar: $avatar, ')
-          ..write('rowid: $rowid')
-          ..write(')'))
-        .toString();
-  }
-}
-
 abstract class _$DataBase extends GeneratedDatabase {
   _$DataBase(QueryExecutor e) : super(e);
   _$DataBase.connect(DatabaseConnection c) : super.connect(c);
@@ -1014,8 +680,6 @@ abstract class _$DataBase extends GeneratedDatabase {
       'CREATE TRIGGER services_update AFTER UPDATE ON services BEGIN INSERT INTO text_entries (text_entries, "rowid", data) VALUES (\'delete\', new."rowid", new.data);INSERT INTO text_entries ("rowid", data) VALUES (new."rowid", new.data);END',
       'services_update');
   late final $AuthTokensTable authTokens = $AuthTokensTable(this);
-  late final $AdminsTable admins = $AdminsTable(this);
-  late final AdminsDao adminsDao = AdminsDao(this as DataBase);
   Selectable<SearchResult> _search(String query) {
     return customSelect(
         'SELECT"record"."id" AS "nested_0.id", "record"."data" AS "nested_0.data", "record"."service" AS "nested_0.service", "record"."created" AS "nested_0.created", "record"."updated" AS "nested_0.updated" FROM text_entries INNER JOIN services AS record ON record."rowid" = text_entries."rowid" WHERE text_entries MATCH ?1 ORDER BY rank',
@@ -1032,6 +696,23 @@ abstract class _$DataBase extends GeneratedDatabase {
     });
   }
 
+  Selectable<SearchServiceResult> _searchService(String query, String service) {
+    return customSelect(
+        'SELECT"record"."id" AS "nested_0.id", "record"."data" AS "nested_0.data", "record"."service" AS "nested_0.service", "record"."created" AS "nested_0.created", "record"."updated" AS "nested_0.updated" FROM text_entries INNER JOIN services AS record ON record."rowid" = text_entries."rowid" WHERE text_entries MATCH ?1 AND record.service = ?2 ORDER BY rank',
+        variables: [
+          Variable<String>(query),
+          Variable<String>(service)
+        ],
+        readsFrom: {
+          textEntries,
+          services,
+        }).asyncMap((QueryRow row) async {
+      return SearchServiceResult(
+        record: await services.mapFromRow(row, tablePrefix: 'nested_0'),
+      );
+    });
+  }
+
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -1042,8 +723,7 @@ abstract class _$DataBase extends GeneratedDatabase {
         servicesInsert,
         servicesDelete,
         servicesUpdate,
-        authTokens,
-        admins
+        authTokens
       ];
   @override
   StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules(
@@ -1076,6 +756,13 @@ abstract class _$DataBase extends GeneratedDatabase {
 class SearchResult {
   final Service record;
   SearchResult({
+    required this.record,
+  });
+}
+
+class SearchServiceResult {
+  final Service record;
+  SearchServiceResult({
     required this.record,
   });
 }
