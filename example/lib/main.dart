@@ -4,9 +4,10 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:simple_html_css/simple_html_css.dart';
+// import 'package:simple_html_css/simple_html_css.dart';
 
 import 'package:pocketbase_drift/pocketbase_drift.dart';
+import 'package:pocketbase_drift/database.dart';
 
 import 'data/collections.json.dart';
 import 'data/todos.json.dart';
@@ -16,15 +17,21 @@ import 'widgets/full_text_search.dart';
 import 'widgets/pending_changes.dart';
 
 const url = 'http://127.0.0.1:3000';
+final collections = [...offlineCollections]
+    .map((e) => CollectionModel.fromJson(jsonDecode(jsonEncode(e))))
+    .toList();
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // PocketBaseHttpClient.offline = true;R
   final client = $PocketBase.database(
     url,
     inMemory: true,
     httpClientFactory: () => PocketBaseHttpClient.retry(retries: 1),
+    connection: connect('pocketbase.db', inMemory: true),
   )..logging = kDebugMode;
+
+  await client.db.setSchema(collections.map((e) => e.toJson()).toList());
   runApp(MyApp(client: client));
 }
 
@@ -53,7 +60,6 @@ class Example extends StatefulWidget {
 class _ExampleState extends State<Example> {
   bool loaded = false;
 
-  List<CollectionModel> collections = [];
   $RecordService? collection;
   CollectionModel? col;
   List<RecordModel> records = [];
@@ -66,14 +72,16 @@ class _ExampleState extends State<Example> {
   }
 
   Future<void> select(String id) async {
+    print('select: $id');
     col = await widget.client.collections.getOne(
       id,
       fetchPolicy: FetchPolicy.cacheOnly,
     );
-    collection = widget.client.$collection(col!);
+    print('col: $col');
+    collection = widget.client.collection(col!.name);
     subscription?.cancel();
-    final (stream, cancel) = await collection!.watchRecords();
-    subscription = stream.listen(
+    print('watching...');
+    subscription = collection!.watchRecords().listen(
       (event) {
         debugPrint('items: ${event.length}');
         if (mounted) {
@@ -82,18 +90,12 @@ class _ExampleState extends State<Example> {
           });
         }
       },
-      onDone: cancel,
     );
   }
 
   Future<void> init() async {
-    // Could fetch from API, but for now just use the offline data
-    final c = jsonDecode(jsonEncode(offlineCollections)) as List;
-    collections = c.map((e) => CollectionModel.fromJson(e)).toList();
-    await widget.client.collections.setLocal(collections);
-    final users = collections.firstWhere((e) => e.name == 'users');
-    final record = widget.client //
-        .$collection(users)
+    final record = await widget.client //
+        .collection('users')
         .authWithPassword('rodydavis', 'password');
     debugPrint('auth record: $record');
     if (collections.isNotEmpty) {
@@ -256,7 +258,8 @@ class _ExampleState extends State<Example> {
           for (final field in fields) {
             final value = record.toJson()[field.name];
             if (value != null) {
-              final match = '$value'.toLowerCase().contains(query.toLowerCase());
+              final match =
+                  '$value'.toLowerCase().contains(query.toLowerCase());
               matches.add(match ? 1 : 0);
             }
           }
@@ -320,13 +323,31 @@ class _ExampleState extends State<Example> {
             DataCell(Text(record.id)),
             ...fields.map((e) {
               final value = record.toJson()[e.name];
-              return DataCell(HTML.toRichText(
-                context,
-                '${value ?? ''}',
-                defaultTextStyle: Theme.of(context).textTheme.bodySmall!.copyWith(
-                      color: Theme.of(context).colorScheme.onSurface,
-                    ),
-              ));
+              return DataCell(
+                Builder(
+                  builder: (context) {
+                    final theme = Theme.of(context);
+                    final style = theme.textTheme.bodySmall!.copyWith(
+                      color: theme.colorScheme.onSurface,
+                    );
+                    final str = '${value ?? ''}';
+                    // try {
+                    //   return HTML.toRichText(
+                    //     context,
+                    //     str,
+                    //     defaultTextStyle: style,
+                    //   );
+                    // } catch (e) {
+                    //   return Text(str, style: style);
+                    // }
+                    return Text(
+                      str,
+                      style: style,
+                      maxLines: 1,
+                    );
+                  },
+                ),
+              );
             }).toList(),
             DataCell(Text(record.created)),
             DataCell(Text(record.updated)),

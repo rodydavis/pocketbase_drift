@@ -13,7 +13,7 @@ DatabaseConnection connect(
   bool inMemory = false,
 }) {
   if (inMemory) {
-    DatabaseConnection(NativeDatabase.memory());
+    return DatabaseConnection(NativeDatabase.memory());
   }
   return DatabaseConnection.delayed(Future.sync(() async {
     final appDir = await getApplicationDocumentsDirectory();

@@ -1,10 +1,8 @@
 import 'dart:convert';
 
 import 'package:drift/drift.dart';
-import 'package:flutter/foundation.dart';
 import 'package:pocketbase/pocketbase.dart';
 
-import 'connection/connection.dart' as impl;
 import 'tables.dart';
 
 part 'database.g.dart';
@@ -16,22 +14,16 @@ part 'database.g.dart';
 class DataBase extends _$DataBase {
   DataBase(DatabaseConnection connection) : super.connect(connection);
 
-  factory DataBase.file({
-    String dbName = 'pocketbase.db',
-    bool logStatements = false,
-    bool inMemory = false,
-  }) {
-    return DataBase(impl.connect(
-      dbName,
-      logStatements: logStatements,
-      inMemory: inMemory,
-    ));
-  }
-
   @override
   int get schemaVersion => 3;
 
-  Selectable<SearchResult> search(String query) => _search(query);
+  Selectable<Service> search(String query, {String? service}) {
+    if (service != null) {
+      return _searchService(query, service).map((p0) => p0.record);
+    } else {
+      return _search(query).map((p0) => p0.record);
+    }
+  }
 
   String generateId() => newId();
 
@@ -72,6 +64,9 @@ class DataBase extends _$DataBase {
       bool alias = true,
     }) {
       field = field.trim();
+      if (field.toLowerCase().contains('count(')) {
+        return field;
+      }
       if (baseFields.contains(field)) return field;
       var str = "json_extract(services.data, '\$.$field')";
       if (alias) str += ' as $field';
@@ -93,7 +88,7 @@ class DataBase extends _$DataBase {
       sb.write('*');
     }
     sb.write(' FROM services');
-    sb.write(' WHERE service = "$service"');
+    sb.write(" WHERE service = '$service'");
     if (filter != null && filter.isNotEmpty) {
       // Replace && and || with AND and OR
       if (filter.startsWith('(') && filter.endsWith(')')) {
@@ -155,11 +150,11 @@ class DataBase extends _$DataBase {
         }
       }
     }
-    if (offset != null) {
-      sb.write(' OFFSET $offset');
-    }
     if (limit != null) {
       sb.write(' LIMIT $limit');
+    }
+    if (offset != null) {
+      sb.write(' OFFSET $offset');
     }
     return sb.toString();
   }
@@ -192,12 +187,11 @@ class DataBase extends _$DataBase {
       offset: offset,
       limit: limit,
     );
-    debugPrint('query: $query');
+    print('query: $query');
     return customSelect(
       query,
       readsFrom: {services},
     ).asyncMap((r) async {
-      final collections = await $collections().get();
       final record = parseRow(r);
       if (expand != null && expand.isNotEmpty) {
         record['expand'] = {};
@@ -228,6 +222,7 @@ class DataBase extends _$DataBase {
           }
 
           // Match field to relation
+          final collections = await $collections().get();
           final c = collections.firstWhere((e) => e.name == service);
           final schemaField = c.schema.firstWhere(
             (e) => e.name == targetField,
@@ -242,7 +237,7 @@ class DataBase extends _$DataBase {
             final query = $query(
               targetCollection.name,
               expand: nestedExpand ?? '',
-              filter: 'id = "$id"',
+              filter: "id = '$id'",
             );
             if (isSingle) {
               final result = await query.getSingleOrNull();
@@ -373,9 +368,11 @@ class DataBase extends _$DataBase {
     final id = data['id'] as String?;
     data.remove('id');
 
-    final collection = await $collections(service: service).getSingle();
-
-    if (validate) validateData(collection, data);
+    if (validate) {
+      assert(service != 'schema', 'Cannot validate collections');
+      final collection = await $collections(service: service).getSingle();
+      validateData(collection, data);
+    }
 
     String date(String key) {
       final value = data[key];
@@ -410,12 +407,12 @@ class DataBase extends _$DataBase {
               ..where((r) => r.id.equals(id))
               ..where((r) => r.service.equals(service)))
             .write(item);
-        return $query(service, filter: 'id = "$id"').getSingle();
+        return $query(service, filter: "id = '$id'").getSingle();
       }
     }
 
     final result = await into(services).insertReturning(item);
-    return $query(service, filter: 'id = "${result.id}"').getSingle();
+    return $query(service, filter: "id = '${result.id}'").getSingle();
   }
 
   Future<Map<String, dynamic>> $update(
@@ -495,7 +492,7 @@ class DataBase extends _$DataBase {
     // Get all
     final query = select(services)..where((tbl) => tbl.service.equals(service));
     final results = await query.get();
-    debugPrint('schema: ${results.length}');
+    print('schema: ${results.length}');
   }
 }
 

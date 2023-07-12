@@ -1,7 +1,6 @@
 // ignore_for_file: public_member_api_docs, sort_constructors_first
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import "package:http/http.dart" as http;
 
 import '../../../pocketbase_drift.dart';
@@ -24,6 +23,7 @@ abstract class $Service<M extends Jsonable> extends BaseCrudService<M> {
     FetchPolicy fetchPolicy = FetchPolicy.cacheAndNetwork,
   }) async {
     return fetchPolicy.fetch<M>(
+      label: service,
       remote: () => super.getOne(
         id,
         fields: fields,
@@ -37,7 +37,7 @@ abstract class $Service<M extends Jsonable> extends BaseCrudService<M> {
               service,
               expand: expand,
               fields: fields,
-              filter: 'id = "$id"',
+              filter: "id = '$id'",
             )
             .getSingleOrNull();
         if (result == null) {
@@ -63,17 +63,36 @@ abstract class $Service<M extends Jsonable> extends BaseCrudService<M> {
     Map<String, dynamic> query = const {},
     Map<String, String> headers = const {},
     FetchPolicy fetchPolicy = FetchPolicy.cacheAndNetwork,
-  }) async {
+  }) {
     return fetchPolicy.fetch<List<M>>(
-      remote: () => super.getFullList(
-        batch: batch,
-        expand: expand,
-        filter: filter,
-        fields: fields,
-        sort: sort,
-        query: query,
-        headers: headers,
-      ),
+      label: service,
+      remote: () {
+        final result = <M>[];
+
+        Future<List<M>> request(int page) async {
+          return getList(
+            page: page,
+            perPage: batch,
+            filter: filter,
+            sort: sort,
+            fields: fields,
+            expand: expand,
+            query: query,
+            headers: headers,
+            fetchPolicy: fetchPolicy,
+          ).then((list) {
+            result.addAll(list.items);
+
+            if (list.items.isNotEmpty && list.totalItems > result.length) {
+              return request(page + 1);
+            }
+
+            return result;
+          });
+        }
+
+        return request(1);
+      },
       getLocal: () async {
         final items = await client.db
             .$query(
@@ -98,6 +117,61 @@ abstract class $Service<M extends Jsonable> extends BaseCrudService<M> {
   }
 
   @override
+  Future<M> getFirstListItem(
+    String filter, {
+    String? expand,
+    String? fields,
+    Map<String, dynamic> query = const {},
+    Map<String, String> headers = const {},
+    FetchPolicy fetchPolicy = FetchPolicy.cacheAndNetwork,
+  }) {
+    return fetchPolicy.fetch<M>(
+      label: service,
+      remote: () {
+        return getList(
+          perPage: 1,
+          filter: filter,
+          expand: expand,
+          fields: fields,
+          query: query,
+          headers: headers,
+          fetchPolicy: fetchPolicy,
+        ).then((result) {
+          if (result.items.isEmpty) {
+            throw ClientException(
+              statusCode: 404,
+              response: <String, dynamic>{
+                "code": 404,
+                "message": "The requested resource wasn't found.",
+                "data": <String, dynamic>{},
+              },
+            );
+          }
+          return result.items.first;
+        });
+      },
+      getLocal: () async {
+        final item = await client.db
+            .$query(
+              service,
+              expand: expand,
+              fields: fields,
+              filter: filter,
+            )
+            .getSingleOrNull();
+        return itemFactoryFunc(item!);
+      },
+      setLocal: (value) async {
+        print('setting: $value');
+        await client.db.$create(
+          service,
+          value.toJson(),
+        );
+      },
+    );
+  }
+
+  @override
   Future<ResultList<M>> getList({
     int page = 1,
     int perPage = 30,
@@ -110,6 +184,7 @@ abstract class $Service<M extends Jsonable> extends BaseCrudService<M> {
     FetchPolicy fetchPolicy = FetchPolicy.cacheAndNetwork,
   }) async {
     return fetchPolicy.fetch<ResultList<M>>(
+      label: service,
       remote: () => super.getList(
         page: page,
         perPage: perPage,
@@ -136,7 +211,7 @@ abstract class $Service<M extends Jsonable> extends BaseCrudService<M> {
             .get();
         final results = items.map((e) => itemFactoryFunc(e)).toList();
         final count = await client.db.$count(service);
-        final totalPages = (count / perPage).floor();
+        final totalPages = (count / perPage).ceil();
         return ResultList(
           page: page,
           perPage: perPage,
@@ -176,7 +251,7 @@ abstract class $Service<M extends Jsonable> extends BaseCrudService<M> {
       return result;
     } catch (e) {
       if (client.logging) {
-        debugPrint('cannot find $id in $service $e');
+        print('cannot find $id in $service $e');
       }
     }
     return null;
@@ -184,7 +259,10 @@ abstract class $Service<M extends Jsonable> extends BaseCrudService<M> {
 
   Future<void> setLocal(List<M> items) async {
     for (final item in items) {
-      await create(body: item.toJson());
+      await client.db.$create(
+        service,
+        item.toJson(),
+      );
     }
   }
 
@@ -219,7 +297,7 @@ abstract class $Service<M extends Jsonable> extends BaseCrudService<M> {
         if (fetchPolicy == FetchPolicy.networkOnly) {
           throw Exception(msg);
         } else {
-          debugPrint(msg);
+          print(msg);
         }
       }
     }
@@ -286,7 +364,7 @@ abstract class $Service<M extends Jsonable> extends BaseCrudService<M> {
         if (fetchPolicy == FetchPolicy.networkOnly) {
           throw Exception(msg);
         } else {
-          debugPrint(msg);
+          print(msg);
         }
       }
     }
@@ -322,7 +400,6 @@ class RetryProgressEvent {
   double get progress => current / total;
 }
 
-
 enum FetchPolicy {
   cacheOnly,
   networkOnly,
@@ -336,17 +413,21 @@ extension FetchPolicyUtils on FetchPolicy {
       this == FetchPolicy.cacheOnly || this == FetchPolicy.cacheAndNetwork;
 
   Future<T> fetch<T>({
+    required String label,
     required Future<T> Function() remote,
     required Future<T> Function() getLocal,
     required Future<void> Function(T) setLocal,
     // Duration timeout = const Duration(seconds: 3),
   }) async {
+    print('fetch policy: $label, $name');
     T? result;
 
     if (isNetwork) {
       try {
+        print('fetching remote...');
         result = await remote();
       } catch (e) {
+        print('error remote... $e');
         if (this == FetchPolicy.networkOnly) {
           throw Exception('Failed to get $e');
         }
@@ -355,8 +436,10 @@ extension FetchPolicyUtils on FetchPolicy {
 
     if (isCache) {
       if (result != null) {
+        print('setting cache...');
         await setLocal(result);
       } else {
+        print('fetching cache...');
         result = await getLocal();
       }
     }

@@ -15,7 +15,7 @@ class PendingChanges extends StatefulWidget {
 
 class _PendingChangesState extends State<PendingChanges> {
   double? progress;
-  List<Record>? records;
+  List<RecordModel>? records;
 
   @override
   void initState() {
@@ -24,7 +24,7 @@ class _PendingChangesState extends State<PendingChanges> {
   }
 
   Future<void> getPending() async {
-    final items = await widget.records.getPending();
+    final items = await widget.records.pending().get();
     if (mounted) {
       setState(() {
         records = items;
@@ -72,7 +72,7 @@ class _PendingChangesState extends State<PendingChanges> {
                     for (final record in records!)
                       Builder(
                         builder: (context) {
-                          final deleted = record.metadata['deleted'] == true;
+                          final deleted = record.data['deleted'] == true;
                           return ListTile(
                             title: Text(record.id),
                             subtitle:

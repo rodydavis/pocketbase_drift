@@ -3,8 +3,8 @@
 import 'package:drift/drift.dart';
 import 'package:http/http.dart';
 import 'package:pocketbase/pocketbase.dart';
+import 'package:pocketbase_drift/pocketbase_drift.dart';
 
-import '../database/connection/connection.dart';
 import '../database/database.dart';
 import 'services/admin.dart';
 import 'services/backup.dart';
@@ -29,13 +29,13 @@ class $PocketBase extends PocketBase {
 
   factory $PocketBase.database(
     String baseUrl, {
-    DatabaseConnection? connection,
+    required DatabaseConnection connection,
     bool inMemory = false,
     bool autoLoad = true,
     String lang = "en-US",
     Client Function()? httpClientFactory,
   }) {
-    final conn = connection ?? connect('app.db', inMemory: inMemory);
+    final conn = connection;
     final db = DataBase(conn);
     final authStore = $AuthStore(db, autoLoad: autoLoad);
     return $PocketBase(
@@ -53,43 +53,67 @@ class $PocketBase extends PocketBase {
   final DataBase db;
   bool logging = false;
 
-  final _recordServices = <String, $RecordsService>{};
+  final _recordServices = <String, $RecordService>{};
 
   @override
-  $RecordsService collection(String collectionIdOrName) {
+  $RecordService collection(String collectionIdOrName) {
     var service = _recordServices[collectionIdOrName];
 
     if (service == null) {
-      service = $RecordsService(this, collectionIdOrName);
+      service = $RecordService(this, collectionIdOrName);
       _recordServices[collectionIdOrName] = service;
     }
 
     return service;
   }
 
-  Selectable<SearchResult> search(String query) => db.search(query);
+  /// Get a collection by id or name and fetch
+  /// the scheme to set it locally for use in
+  /// validation and relations
+  Future<$RecordService> $collection(
+    String collectionIdOrName, {
+    FetchPolicy fetchPolicy = FetchPolicy.cacheAndNetwork,
+  }) async {
+    await collections.getFirstListItem(
+      'id = "$collectionIdOrName" || name = "$collectionIdOrName"',
+      fetchPolicy: fetchPolicy,
+    );
+
+    var service = _recordServices[collectionIdOrName];
+
+    if (service == null) {
+      service = $RecordService(this, collectionIdOrName);
+      _recordServices[collectionIdOrName] = service;
+    }
+
+    return service;
+  }
+
+  Selectable<Service> search(String query, {String? service}) {
+    return db.search(query, service: service);
+  }
 
   @override
-  late final $CollectionsService collections = $CollectionsService(this);
+  $CollectionService get collections => $CollectionService(this);
 
   @override
-  late final $AdminsService admins = $AdminsService(this);
+  $AdminsService get admins => $AdminsService(this);
 
   @override
-  late final $FileService files = $FileService(this);
+  $FileService get files => $FileService(this);
 
   @override
-  late final $RealtimeService realtime = $RealtimeService(this);
+  $RealtimeService get realtime => $RealtimeService(this);
 
   @override
-  late final $SettingsService settings = $SettingsService(this);
+  $SettingsService get settings => $SettingsService(this);
 
   @override
-  late final $LogService logs = $LogService(this);
+  $LogService get logs => $LogService(this);
 
   @override
-  late final $HealthService health = $HealthService(this);
+  $HealthService get health => $HealthService(this);
 
   @override
-  late final $BackupService backups = $BackupService(this);
+  $BackupService get backups => $BackupService(this);
 }

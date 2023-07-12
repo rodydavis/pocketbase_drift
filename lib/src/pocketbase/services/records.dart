@@ -1,11 +1,11 @@
-import 'package:flutter/foundation.dart';
+import 'dart:async';
+
+import 'package:drift/drift.dart';
 
 import '../../../pocketbase_drift.dart';
 
-import 'service.dart';
-
-class $RecordsService extends $Service<RecordModel> implements RecordService {
-  $RecordsService($PocketBase client, String collection)
+class $RecordService extends $Service<RecordModel> implements RecordService {
+  $RecordService($PocketBase client, String collection)
       : super(client, collection);
 
   late final _base = RecordService(client, service);
@@ -18,10 +18,21 @@ class $RecordsService extends $Service<RecordModel> implements RecordService {
     return _base.itemFactoryFunc(json);
   }
 
-  Future<CollectionModel> getCollection(String name) async {
-    return client.collections.getFirstListItem(
-      'name = "$service" || id = "$service"',
-    );
+  Selectable<RecordModel> search(String query) {
+    return client.db.search(query, service: service).map(
+          (p0) => itemFactoryFunc({
+            ...p0.data,
+            'created': p0.created,
+            'updated': p0.updated,
+            'id': p0.id,
+          }),
+        );
+  }
+
+  Selectable<RecordModel> pending() {
+    return client.db
+        .$query(service, filter: 'synced = false')
+        .map(itemFactoryFunc);
   }
 
   Stream<RetryProgressEvent?> retryLocal({
@@ -29,39 +40,36 @@ class $RecordsService extends $Service<RecordModel> implements RecordService {
     Map<String, String> headers = const {},
     int? batch,
   }) async* {
-    final items = await client //
-        .db
-        .$query(service, filter: 'synced = false')
-        .get();
+    final items = await pending().get();
     final total = items.length;
     yield RetryProgressEvent(current: 0, total: total);
     for (var i = 0; i < total; i++) {
       final item = items[i];
       try {
-        final id = item['id'];
-        if (item['deleted'] == true) {
+        final id = item.id;
+        if (item.data['deleted'] == true) {
           await delete(
             id,
-            body: item,
+            body: item.toJson(),
             query: query,
             headers: headers,
           );
-        } else if (item['new'] == true) {
+        } else if (item.data['new'] == true) {
           await create(
-            body: item,
+            body: item.toJson(),
             query: query,
             headers: headers,
           );
         } else {
           await update(
             id,
-            body: item,
+            body: item.toJson(),
             query: query,
             headers: headers,
           );
         }
       } catch (e) {
-        debugPrint('error retry $item: $e');
+        print('error retry $item: $e');
       }
       yield RetryProgressEvent(current: i + 1, total: total);
     }
@@ -112,6 +120,55 @@ class $RecordsService extends $Service<RecordModel> implements RecordService {
         );
       }
     }
+  }
+
+  Stream<RecordModel?> watchRecord(
+    String id, {
+    FetchPolicy fetchPolicy = FetchPolicy.cacheAndNetwork,
+  }) {
+    final controller = StreamController<RecordModel?>(
+      onListen: () async {
+        await getFullList(fetchPolicy: fetchPolicy);
+        if (fetchPolicy.isNetwork) {
+          await subscribe(id, (e) {});
+        }
+      },
+      onCancel: () async {
+        if (fetchPolicy.isNetwork) {
+          await unsubscribe(id);
+        }
+      },
+    );
+    final stream = client.db
+        .$query(
+          service,
+          filter: "id = '$id'",
+        )
+        .map(itemFactoryFunc)
+        .watchSingleOrNull();
+    controller.addStream(stream);
+    return controller.stream;
+  }
+
+  Stream<List<RecordModel>> watchRecords({
+    FetchPolicy fetchPolicy = FetchPolicy.cacheAndNetwork,
+  }) {
+    final controller = StreamController<List<RecordModel>>(
+      onListen: () async {
+        await getFullList(fetchPolicy: fetchPolicy);
+        if (fetchPolicy.isNetwork) {
+          await subscribe('*', (e) {});
+        }
+      },
+      onCancel: () async {
+        if (fetchPolicy.isNetwork) {
+          await unsubscribe('*');
+        }
+      },
+    );
+    final stream = client.db.$query(service).map(itemFactoryFunc).watch();
+    controller.addStream(stream);
+    return controller.stream;
   }
 
   @override

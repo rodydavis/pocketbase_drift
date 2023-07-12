@@ -32,7 +32,7 @@ class _FullTextSearchState extends State<FullTextSearch> {
             if (value.isEmpty) {
               records = [];
             } else {
-              records = await widget.records.search(value);
+              records = await widget.records.search(value).get();
             }
             if (mounted) {
               setState(() {});

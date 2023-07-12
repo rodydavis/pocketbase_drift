@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/retry.dart';
 
@@ -19,7 +18,7 @@ class PocketBaseHttpClient extends http.BaseClient {
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
     if (offline) throw Exception('No internet connection');
-    debugPrint('request: ${request.method} ${request.url}');
+    print('request: ${request.method} ${request.url}');
     return _inner.send(request);
   }
 }

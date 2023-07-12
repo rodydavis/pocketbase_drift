@@ -1,6 +1,5 @@
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart';
 import 'package:pocketbase/pocketbase.dart';
 
 import '../../database/database.dart';
@@ -10,14 +9,14 @@ class $AuthStore extends AuthStore {
 
   $AuthStore(this.db, {bool autoLoad = true}) {
     if (autoLoad) {
-      debugPrint('initializing auth store');
+      print('initializing auth store');
       load();
     }
   }
 
   Future<void> load() async {
     final result = await db.getAuthToken();
-    debugPrint('auth token: $result');
+    print('auth token: $result');
     if (result != null) {
       final raw = result.token;
       final decoded = jsonDecode(raw) as Map<String, dynamic>;
@@ -42,7 +41,7 @@ class $AuthStore extends AuthStore {
       token: encoded,
       created: DateTime.now(),
     ));
-    debugPrint('auth token saved: $encoded');
+    print('auth token saved: $encoded');
   }
 
   @override
