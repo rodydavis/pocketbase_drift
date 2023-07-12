@@ -112,10 +112,7 @@ class DataBase extends _$DataBase {
       // ?<= Any/At least one of Less than or equal
       // ?~ Any/At least one of Like/Contains (if not specified auto wraps the right string OPERAND in a "%" for wildcard match)
       // ?!~ Any/At least one of NOT Like/Contains (if not specified auto wraps the right string OPERAND in a "%" for wildcard match)
-      final parts = filter
-          .replaceAll('(', '')
-          .replaceAll(')', '')
-          .multiSplit([' AND ', ' OR ']);
+      final parts = filter.replaceAll('(', '').replaceAll(')', '').multiSplit([' AND ', ' OR ']);
       for (final part in parts) {
         final words = part.split(' ');
         final field = words[0].trim();
@@ -203,8 +200,7 @@ class DataBase extends _$DataBase {
             throw Exception('Max 6 levels expand supported');
           }
 
-          final nestedExpand =
-              levels.length == 1 ? null : levels.skip(1).join('.');
+          final nestedExpand = levels.length == 1 ? null : levels.skip(1).join('.');
           final targetField = levels.first;
 
           // check for indirect expand=comments(post).user
@@ -340,9 +336,7 @@ class DataBase extends _$DataBase {
           throw Exception('Field ${field.name} must be a valid email');
         }
       }
-      if (field.type == 'select' ||
-          field.type == 'file' ||
-          field.type == 'relation') {
+      if (field.type == 'select' || field.type == 'file' || field.type == 'relation') {
         if (value != null && field.options['maxSelect'] != null) {
           if (field.options['maxSelect'] == 1 && value is! String) {
             throw Exception('Field ${field.name} must be a valid string');
@@ -470,13 +464,25 @@ class DataBase extends _$DataBase {
     }
   }
 
-  Future<void> setSchema(List<Map<String, dynamic>> items) async {
-    const service = 'schema';
+  Future<void> setLocal(
+    String service,
+    List<Map<String, dynamic>> items, {
+    bool removeAll = true,
+  }) async {
     // Remove existing
-    await (delete(services)..where((r) => r.service.equals(service))).go();
+    if (removeAll) {
+      await (delete(services)..where((r) => r.service.equals(service))).go();
+    }
+
     // Add all
     await batch((b) async {
       for (final item in items) {
+        if (!removeAll) {
+          b.deleteWhere(
+            services,
+            (r) => r.service.equals(service) & r.id.equals(item['id'] as String),
+          );
+        }
         b.insert(
           services,
           ServicesCompanion.insert(
@@ -492,12 +498,12 @@ class DataBase extends _$DataBase {
     // Get all
     final query = select(services)..where((tbl) => tbl.service.equals(service));
     final results = await query.get();
-    print('schema: ${results.length}');
+    print('$service: ${results.length}');
   }
+
+  Future<void> setSchema(List<Map<String, dynamic>> items) => setLocal('schema', items);
 }
 
 extension StringUtils on String {
-  List<String> multiSplit(Iterable<String> delimiters) => delimiters.isEmpty
-      ? [this]
-      : split(RegExp(delimiters.map(RegExp.escape).join('|')));
+  List<String> multiSplit(Iterable<String> delimiters) => delimiters.isEmpty ? [this] : split(RegExp(delimiters.map(RegExp.escape).join('|')));
 }

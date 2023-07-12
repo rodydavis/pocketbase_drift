@@ -7,7 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pocketbase_drift/pocketbase_drift.dart';
 import 'package:pocketbase_drift/src/pocketbase/services/service.dart';
 
-import '../collections.json.dart';
+import '../data/collections.json.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -19,9 +19,7 @@ void main() {
 
   late final $PocketBase client;
   late final db = client.db;
-  final collections = [...offlineCollections]
-      .map((e) => CollectionModel.fromJson(jsonDecode(jsonEncode(e))))
-      .toList();
+  final collections = [...offlineCollections].map((e) => CollectionModel.fromJson(jsonDecode(jsonEncode(e)))).toList();
 
   late final $RecordService service;
 
@@ -68,6 +66,7 @@ void main() {
             body: {
               'name': 'test1',
             },
+            fetchPolicy: fetchPolicy,
           );
 
           expect(item.data['name'], 'test1');
@@ -80,6 +79,7 @@ void main() {
             body: {
               'name': 'test1',
             },
+            fetchPolicy: fetchPolicy,
           );
 
           expect(item.data['name'], 'test1');
@@ -89,6 +89,7 @@ void main() {
             body: {
               'name': 'test2',
             },
+            fetchPolicy: fetchPolicy,
           );
 
           expect(updated.data['name'], 'test2');
@@ -101,6 +102,7 @@ void main() {
             body: {
               'name': 'test1',
             },
+            fetchPolicy: fetchPolicy,
           );
 
           expect(item.data['name'], 'test1');
@@ -113,6 +115,37 @@ void main() {
           );
 
           expect(deleted == null, true);
+        });
+
+        test('realtime', () async {
+          final item1 = await service.create(
+            body: {
+              'name': 'test1',
+            },
+          );
+          final item2 = await service.create(
+            body: {
+              'name': 'test2',
+            },
+            fetchPolicy: fetchPolicy,
+          );
+
+          final stream = service.watchRecords(
+            fetchPolicy: fetchPolicy,
+          );
+          final events = await stream.toList();
+
+          expect(events.isNotEmpty, true);
+          expect(events[0], [
+            item1,
+            item2,
+          ]);
+
+          expect(item1.data['name'], 'test1');
+          expect(item2.data['name'], 'test2');
+
+          await service.delete(item1.id);
+          await service.delete(item2.id);
         });
       });
     }

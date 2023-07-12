@@ -5,8 +5,7 @@ import 'package:drift/drift.dart';
 import '../../../pocketbase_drift.dart';
 
 class $RecordService extends $Service<RecordModel> implements RecordService {
-  $RecordService($PocketBase client, String collection)
-      : super(client, collection);
+  $RecordService($PocketBase client, String collection) : super(client, collection);
 
   late final _base = RecordService(client, service);
 
@@ -30,9 +29,7 @@ class $RecordService extends $Service<RecordModel> implements RecordService {
   }
 
   Selectable<RecordModel> pending() {
-    return client.db
-        .$query(service, filter: 'synced = false')
-        .map(itemFactoryFunc);
+    return client.db.$query(service, filter: 'synced = false').map(itemFactoryFunc);
   }
 
   Stream<RetryProgressEvent?> retryLocal({
@@ -130,12 +127,20 @@ class $RecordService extends $Service<RecordModel> implements RecordService {
       onListen: () async {
         await getFullList(fetchPolicy: fetchPolicy);
         if (fetchPolicy.isNetwork) {
-          await subscribe(id, (e) {});
+          try {
+            await subscribe(id, (e) {});
+          } catch (e) {
+            print('error subscribe $service $id: $e');
+          }
         }
       },
       onCancel: () async {
         if (fetchPolicy.isNetwork) {
-          await unsubscribe(id);
+          try {
+            await unsubscribe(id);
+          } catch (e) {
+            print('error unsubscribe $service $id: $e');
+          }
         }
       },
     );
@@ -151,22 +156,50 @@ class $RecordService extends $Service<RecordModel> implements RecordService {
   }
 
   Stream<List<RecordModel>> watchRecords({
+    String? expand,
+    String? filter,
+    String? sort,
+    String? fields,
     FetchPolicy fetchPolicy = FetchPolicy.cacheAndNetwork,
   }) {
     final controller = StreamController<List<RecordModel>>(
       onListen: () async {
-        await getFullList(fetchPolicy: fetchPolicy);
+        final items = await getFullList(
+          fetchPolicy: fetchPolicy,
+          filter: filter,
+          expand: expand,
+          sort: sort,
+          fields: fields,
+        );
+        print('$service realtime full list ${items.length}');
         if (fetchPolicy.isNetwork) {
-          await subscribe('*', (e) {});
+          try {
+            await subscribe('*', (e) {});
+          } catch (e) {
+            print('error subscribe $service: $e');
+          }
         }
       },
       onCancel: () async {
         if (fetchPolicy.isNetwork) {
-          await unsubscribe('*');
+          try {
+            await unsubscribe('*');
+          } catch (e) {
+            print('error unsubscribe $service: $e');
+          }
         }
       },
     );
-    final stream = client.db.$query(service).map(itemFactoryFunc).watch();
+    final stream = client.db
+        .$query(
+          service,
+          filter: filter,
+          expand: expand,
+          sort: sort,
+          fields: fields,
+        )
+        .map(itemFactoryFunc)
+        .watch();
     controller.addStream(stream);
     return controller.stream;
   }
@@ -243,8 +276,8 @@ class $RecordService extends $Service<RecordModel> implements RecordService {
     Map<String, dynamic> body = const {},
     Map<String, dynamic> query = const {},
     Map<String, String> headers = const {},
-  }) {
-    return _base.authWithPassword(
+  }) async {
+    final result = await _base.authWithPassword(
       usernameOrEmail,
       password,
       expand: expand,
@@ -253,6 +286,8 @@ class $RecordService extends $Service<RecordModel> implements RecordService {
       query: query,
       headers: headers,
     );
+    await client.authStore.save(result.token, result.record);
+    return result;
   }
 
   @override

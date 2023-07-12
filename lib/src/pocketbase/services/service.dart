@@ -82,7 +82,7 @@ abstract class $Service<M extends Jsonable> extends BaseCrudService<M> {
             fetchPolicy: fetchPolicy,
           ).then((list) {
             result.addAll(list.items);
-
+            print('$service page result: ${list.page}/${list.totalPages}=>${list.items.length}');
             if (list.items.isNotEmpty && list.totalItems > result.length) {
               return request(page + 1);
             }
@@ -106,12 +106,13 @@ abstract class $Service<M extends Jsonable> extends BaseCrudService<M> {
         return items.map((e) => itemFactoryFunc(e)).toList();
       },
       setLocal: (value) async {
-        for (final item in value) {
-          await client.db.$create(
-            service,
-            item.toJson(),
-          );
-        }
+        // if ((filter == null || filter.isEmpty) && (fields == null || fields.isEmpty)) {
+        //   await client.db.setLocal(
+        //     service,
+        //     value.map((e) => e.toJson()).toList(),
+        //     removeAll: (filter == null || filter.isEmpty) && (fields == null || fields.isEmpty),
+        //   );
+        // }
       },
     );
   }
@@ -162,7 +163,6 @@ abstract class $Service<M extends Jsonable> extends BaseCrudService<M> {
         return itemFactoryFunc(item!);
       },
       setLocal: (value) async {
-        print('setting: $value');
         await client.db.$create(
           service,
           value.toJson(),
@@ -221,12 +221,12 @@ abstract class $Service<M extends Jsonable> extends BaseCrudService<M> {
         );
       },
       setLocal: (value) async {
-        for (final item in value.items) {
-          await client.db.$create(
-            service,
-            item.toJson(),
-          );
-        }
+        // TODO: (filter == null || filter.isEmpty) && (fields == null || fields.isEmpty) ? merge
+        await client.db.setLocal(
+          service,
+          value.items.map((e) => e.toJson()).toList(),
+          removeAll: false,
+        );
       },
     );
   }
@@ -258,12 +258,7 @@ abstract class $Service<M extends Jsonable> extends BaseCrudService<M> {
   }
 
   Future<void> setLocal(List<M> items) async {
-    for (final item in items) {
-      await client.db.$create(
-        service,
-        item.toJson(),
-      );
-    }
+    await client.db.setLocal(service, items.map((e) => e.toJson()).toList());
   }
 
   @override
@@ -407,10 +402,8 @@ enum FetchPolicy {
 }
 
 extension FetchPolicyUtils on FetchPolicy {
-  bool get isNetwork =>
-      this == FetchPolicy.networkOnly || this == FetchPolicy.cacheAndNetwork;
-  bool get isCache =>
-      this == FetchPolicy.cacheOnly || this == FetchPolicy.cacheAndNetwork;
+  bool get isNetwork => this == FetchPolicy.networkOnly || this == FetchPolicy.cacheAndNetwork;
+  bool get isCache => this == FetchPolicy.cacheOnly || this == FetchPolicy.cacheAndNetwork;
 
   Future<T> fetch<T>({
     required String label,

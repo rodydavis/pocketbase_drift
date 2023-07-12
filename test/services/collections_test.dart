@@ -7,7 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pocketbase_drift/pocketbase_drift.dart';
 import 'package:pocketbase_drift/src/pocketbase/services/service.dart';
 
-import '../collections.json.dart';
+import '../data/collections.json.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
