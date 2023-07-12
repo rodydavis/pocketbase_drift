@@ -5,7 +5,8 @@ import 'package:drift/drift.dart';
 import '../../../pocketbase_drift.dart';
 
 class $RecordService extends $Service<RecordModel> implements RecordService {
-  $RecordService($PocketBase client, String collection) : super(client, collection);
+  $RecordService($PocketBase client, String collection)
+      : super(client, collection);
 
   late final _base = RecordService(client, service);
 
@@ -29,7 +30,9 @@ class $RecordService extends $Service<RecordModel> implements RecordService {
   }
 
   Selectable<RecordModel> pending() {
-    return client.db.$query(service, filter: 'synced = false').map(itemFactoryFunc);
+    return client.db
+        .$query(service, filter: 'synced = false')
+        .map(itemFactoryFunc);
   }
 
   Stream<RetryProgressEvent?> retryLocal({
@@ -125,7 +128,6 @@ class $RecordService extends $Service<RecordModel> implements RecordService {
   }) {
     final controller = StreamController<RecordModel?>(
       onListen: () async {
-        await getFullList(fetchPolicy: fetchPolicy);
         if (fetchPolicy.isNetwork) {
           try {
             await subscribe(id, (e) {});
@@ -133,6 +135,7 @@ class $RecordService extends $Service<RecordModel> implements RecordService {
             print('error subscribe $service $id: $e');
           }
         }
+        await getOneOrNull(id, fetchPolicy: fetchPolicy);
       },
       onCancel: () async {
         if (fetchPolicy.isNetwork) {
@@ -164,6 +167,13 @@ class $RecordService extends $Service<RecordModel> implements RecordService {
   }) {
     final controller = StreamController<List<RecordModel>>(
       onListen: () async {
+        if (fetchPolicy.isNetwork) {
+          try {
+            await subscribe('*', (e) {});
+          } catch (e) {
+            print('error subscribe $service: $e');
+          }
+        }
         final items = await getFullList(
           fetchPolicy: fetchPolicy,
           filter: filter,
@@ -172,13 +182,6 @@ class $RecordService extends $Service<RecordModel> implements RecordService {
           fields: fields,
         );
         print('$service realtime full list ${items.length}');
-        if (fetchPolicy.isNetwork) {
-          try {
-            await subscribe('*', (e) {});
-          } catch (e) {
-            print('error subscribe $service: $e');
-          }
-        }
       },
       onCancel: () async {
         if (fetchPolicy.isNetwork) {

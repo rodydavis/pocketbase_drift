@@ -6,7 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:pocketbase_drift/pocketbase_drift.dart';
 
-import 'data/collections.json.dart';
+import 'test_data/collections.json.dart';
 
 void main() {
   final connection = DatabaseConnection(NativeDatabase.memory());
@@ -38,7 +38,7 @@ void main() {
       final statement = db.queryBuilder('todo');
 
       expect(statement.isNotEmpty, true);
-      expect(statement, 'SELECT * FROM services WHERE service = "todo"');
+      expect(statement, 'SELECT * FROM services WHERE service = \'todo\'');
     });
 
     test('fields', () async {
@@ -54,9 +54,9 @@ void main() {
       expect(statement.isNotEmpty, true);
       expect(statement2.isNotEmpty, true);
       expect(
-          statement, 'SELECT id, created FROM services WHERE service = "todo"');
+          statement, 'SELECT id, created FROM services WHERE service = \'todo\'');
       expect(statement2,
-          "SELECT id, json_extract(services.data, '\$.name') as name FROM services WHERE service = \"todo\"");
+          "SELECT id, json_extract(services.data, '\$.name') as name FROM services WHERE service = 'todo'");
     });
 
     test('sort', () async {
@@ -75,13 +75,13 @@ void main() {
 
       expect(statement1.isNotEmpty, true);
       expect(statement1,
-          'SELECT * FROM services WHERE service = "todo" ORDER BY created DESC, id ASC');
+          'SELECT * FROM services WHERE service = \'todo\' ORDER BY created DESC, id ASC');
       expect(statement2.isNotEmpty, true);
       expect(statement2,
-          'SELECT * FROM services WHERE service = "todo" ORDER BY created ASC, id ASC');
+          'SELECT * FROM services WHERE service = \'todo\' ORDER BY created ASC, id ASC');
       expect(statement3.isNotEmpty, true);
       expect(statement3,
-          'SELECT * FROM services WHERE service = "todo" ORDER BY date ASC');
+          'SELECT * FROM services WHERE service = \'todo\' ORDER BY date ASC');
     });
 
     test('all', () async {
@@ -94,7 +94,7 @@ void main() {
 
       expect(statement.isNotEmpty, true);
       expect(statement,
-          'SELECT id, created FROM services WHERE service = "todo" AND (id = "1234") ORDER BY created DESC, id ASC');
+          'SELECT id, created FROM services WHERE service = \'todo\' AND (id = "1234") ORDER BY created DESC, id ASC');
     });
 
     test('string multi split', () {
@@ -119,7 +119,7 @@ void main() {
 
       expect(statement.isNotEmpty, true);
       expect(statement,
-          'SELECT id, json_extract(services.data, \'\$.name\') as name FROM services WHERE service = "todo"');
+          'SELECT id, json_extract(services.data, \'\$.name\') as name FROM services WHERE service = \'todo\'');
     });
 
     test('json_extract filter', () {
@@ -130,7 +130,7 @@ void main() {
 
       expect(statement.isNotEmpty, true);
       expect(statement,
-          'SELECT * FROM services WHERE service = "todo" AND (json_extract(services.data, \'\$.name\') = "test1")');
+          'SELECT * FROM services WHERE service = \'todo\' AND (json_extract(services.data, \'\$.name\') = "test1")');
     });
   });
   group('query test', () {
@@ -239,7 +239,7 @@ void main() {
       );
 
       final result = await db
-          .$query(todo, fields: 'id, name', filter: 'name = "test1"')
+          .$query(todo, fields: 'id, name', filter: 'name = \'test1\'')
           .get();
 
       expect(result.length, 1);
@@ -266,7 +266,7 @@ void main() {
       );
 
       final result =
-          await db.$query(todo, fields: 'name', filter: 'name = "test1"').get();
+          await db.$query(todo, fields: 'name', filter: 'name = \'test1\'').get();
 
       expect(result.length, 1);
       expect(result[0]['name'], 'test1');

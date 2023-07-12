@@ -82,7 +82,8 @@ abstract class $Service<M extends Jsonable> extends BaseCrudService<M> {
             fetchPolicy: fetchPolicy,
           ).then((list) {
             result.addAll(list.items);
-            print('$service page result: ${list.page}/${list.totalPages}=>${list.items.length}');
+            print(
+                '$service page result: ${list.page}/${list.totalPages}=>${list.items.length}');
             if (list.items.isNotEmpty && list.totalItems > result.length) {
               return request(page + 1);
             }
@@ -324,15 +325,57 @@ abstract class $Service<M extends Jsonable> extends BaseCrudService<M> {
     String? expand,
     String? fields,
   }) async {
-    return create(
-      body: {...body, 'id': id},
-      fetchPolicy: fetchPolicy,
-      query: query,
-      files: files,
-      headers: headers,
-      expand: expand,
-      fields: fields,
-    );
+    // return create(
+    //   body: {...body, 'id': id},
+    //   fetchPolicy: fetchPolicy,
+    //   query: query,
+    //   files: files,
+    //   headers: headers,
+    //   expand: expand,
+    //   fields: fields,
+    // );
+    M? result;
+    bool saved = false;
+
+    // TODO: Save files for offline
+
+    if (fetchPolicy.isNetwork) {
+      try {
+        result = await super.update(
+          id,
+          body: body,
+          query: query,
+          headers: headers,
+          expand: expand,
+          files: files,
+          fields: fields,
+        );
+        saved = true;
+      } catch (e) {
+        final msg = 'Failed to update record $body in $service: $e';
+        if (fetchPolicy == FetchPolicy.networkOnly) {
+          throw Exception(msg);
+        } else {
+          print(msg);
+        }
+      }
+    }
+
+    if (fetchPolicy.isCache) {
+      final data = await client.db.$update(
+        service,
+        id,
+        {
+          ...result?.toJson() ?? body,
+          'deleted': false,
+          'synced': saved,
+          'isNew': false,
+        },
+      );
+      result = itemFactoryFunc(data);
+    }
+
+    return result!;
   }
 
   @override
@@ -402,8 +445,10 @@ enum FetchPolicy {
 }
 
 extension FetchPolicyUtils on FetchPolicy {
-  bool get isNetwork => this == FetchPolicy.networkOnly || this == FetchPolicy.cacheAndNetwork;
-  bool get isCache => this == FetchPolicy.cacheOnly || this == FetchPolicy.cacheAndNetwork;
+  bool get isNetwork =>
+      this == FetchPolicy.networkOnly || this == FetchPolicy.cacheAndNetwork;
+  bool get isCache =>
+      this == FetchPolicy.cacheOnly || this == FetchPolicy.cacheAndNetwork;
 
   Future<T> fetch<T>({
     required String label,

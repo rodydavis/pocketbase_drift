@@ -6,7 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:pocketbase_drift/pocketbase_drift.dart';
 
-import 'data/collections.json.dart';
+import 'test_data/collections.json.dart';
 
 void main() {
   final connection = DatabaseConnection(NativeDatabase.memory());
