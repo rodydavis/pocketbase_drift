@@ -330,7 +330,7 @@ class _ExampleState extends State<Example> {
                     final style = theme.textTheme.bodySmall!.copyWith(
                       color: theme.colorScheme.onSurface,
                     );
-                    final str = '${value ?? ''}';
+                    final str = '${value ?? ''}'.trim();
                     // try {
                     //   return HTML.toRichText(
                     //     context,
