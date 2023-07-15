@@ -4,19 +4,14 @@ import 'package:drift/drift.dart';
 
 import '../../../pocketbase_drift.dart';
 
-class $RecordService extends $Service<RecordModel> implements RecordService {
-  $RecordService($PocketBase client, String collection)
-      : super(client, collection);
-
-  late final _base = RecordService(client, service);
+class $RecordService extends RecordService with ServiceMixin<RecordModel> {
+  $RecordService(this.client, this.service) : super(client, service);
 
   @override
-  String get baseCrudPath => _base.baseCrudPath;
+  final $PocketBase client;
 
   @override
-  RecordModel itemFactoryFunc(Map<String, dynamic> json) {
-    return _base.itemFactoryFunc(json);
-  }
+  final String service;
 
   Selectable<RecordModel> search(String query) {
     return client.db.search(query, service: service).map(
@@ -30,9 +25,7 @@ class $RecordService extends $Service<RecordModel> implements RecordService {
   }
 
   Selectable<RecordModel> pending() {
-    return client.db
-        .$query(service, filter: 'synced = false')
-        .map(itemFactoryFunc);
+    return client.db.$query(service, filter: 'synced = false').map(itemFactoryFunc);
   }
 
   Stream<RetryProgressEvent?> retryLocal({
@@ -81,15 +74,10 @@ class $RecordService extends $Service<RecordModel> implements RecordService {
     String topic,
     RecordSubscriptionFunc callback,
   ) {
-    return _base.subscribe(topic, (e) {
+    return super.subscribe(topic, (e) {
       onEvent(e);
       callback(e);
     });
-  }
-
-  @override
-  Future<void> unsubscribe([String topic = ""]) {
-    return _base.unsubscribe(topic);
   }
 
   Future<void> onEvent(RecordSubscriptionEvent e) async {
@@ -205,231 +193,5 @@ class $RecordService extends $Service<RecordModel> implements RecordService {
         .watch();
     controller.addStream(stream);
     return controller.stream;
-  }
-
-  @override
-  Future<RecordAuth> authRefresh({
-    String? expand,
-    String? fields,
-    Map<String, dynamic> body = const {},
-    Map<String, dynamic> query = const {},
-    Map<String, String> headers = const {},
-  }) {
-    return _base.authRefresh(
-      expand: expand,
-      fields: fields,
-      body: body,
-      query: query,
-      headers: headers,
-    );
-  }
-
-  @override
-  Future<RecordAuth> authWithOAuth2(
-    String providerName,
-    OAuth2UrlCallbackFunc urlCallback, {
-    List<String> scopes = const [],
-    Map<String, dynamic> createData = const {},
-    String? expand,
-    String? fields,
-  }) {
-    return _base.authWithOAuth2(
-      providerName,
-      urlCallback,
-      scopes: scopes,
-      createData: createData,
-      expand: expand,
-      fields: fields,
-    );
-  }
-
-  @override
-  Future<RecordAuth> authWithOAuth2Code(
-    String provider,
-    String code,
-    String codeVerifier,
-    String redirectUrl, {
-    Map<String, dynamic> createData = const {},
-    Map<String, dynamic> body = const {},
-    Map<String, dynamic> query = const {},
-    Map<String, String> headers = const {},
-    String? expand,
-    String? fields,
-  }) {
-    return _base.authWithOAuth2Code(
-      provider,
-      code,
-      codeVerifier,
-      redirectUrl,
-      createData: createData,
-      body: body,
-      query: query,
-      headers: headers,
-      expand: expand,
-      fields: fields,
-    );
-  }
-
-  @override
-  Future<RecordAuth> authWithPassword(
-    String usernameOrEmail,
-    String password, {
-    String? expand,
-    String? fields,
-    Map<String, dynamic> body = const {},
-    Map<String, dynamic> query = const {},
-    Map<String, String> headers = const {},
-  }) async {
-    final result = await _base.authWithPassword(
-      usernameOrEmail,
-      password,
-      expand: expand,
-      fields: fields,
-      body: body,
-      query: query,
-      headers: headers,
-    );
-    await client.authStore.save(result.token, result.record);
-    return result;
-  }
-
-  @override
-  String get baseCollectionPath => _base.baseCollectionPath;
-
-  @override
-  Future<void> confirmEmailChange(
-    String emailChangeToken,
-    String userPassword, {
-    Map<String, dynamic> body = const {},
-    Map<String, dynamic> query = const {},
-    Map<String, String> headers = const {},
-  }) {
-    return _base.confirmEmailChange(
-      emailChangeToken,
-      userPassword,
-      body: body,
-      query: query,
-      headers: headers,
-    );
-  }
-
-  @override
-  Future<void> confirmPasswordReset(
-    String passwordResetToken,
-    String password,
-    String passwordConfirm, {
-    Map<String, dynamic> body = const {},
-    Map<String, dynamic> query = const {},
-    Map<String, String> headers = const {},
-  }) {
-    return _base.confirmPasswordReset(
-      passwordResetToken,
-      password,
-      passwordConfirm,
-      body: body,
-      query: query,
-      headers: headers,
-    );
-  }
-
-  @override
-  Future<void> confirmVerification(
-    String verificationToken, {
-    Map<String, dynamic> body = const {},
-    Map<String, dynamic> query = const {},
-    Map<String, String> headers = const {},
-  }) {
-    return _base.confirmVerification(
-      verificationToken,
-      body: body,
-      query: query,
-      headers: headers,
-    );
-  }
-
-  @override
-  Future<AuthMethodsList> listAuthMethods({
-    Map<String, dynamic> query = const {},
-    Map<String, String> headers = const {},
-  }) {
-    return _base.listAuthMethods(
-      query: query,
-      headers: headers,
-    );
-  }
-
-  @override
-  Future<List<ExternalAuthModel>> listExternalAuths(
-    String recordId, {
-    Map<String, dynamic> query = const {},
-    Map<String, String> headers = const {},
-  }) {
-    return _base.listExternalAuths(
-      recordId,
-      query: query,
-      headers: headers,
-    );
-  }
-
-  @override
-  Future<void> requestEmailChange(
-    String newEmail, {
-    Map<String, dynamic> body = const {},
-    Map<String, dynamic> query = const {},
-    Map<String, String> headers = const {},
-  }) {
-    return _base.requestEmailChange(
-      newEmail,
-      body: body,
-      query: query,
-      headers: headers,
-    );
-  }
-
-  @override
-  Future<void> requestPasswordReset(
-    String email, {
-    Map<String, dynamic> body = const {},
-    Map<String, dynamic> query = const {},
-    Map<String, String> headers = const {},
-  }) {
-    return _base.requestPasswordReset(
-      email,
-      body: body,
-      query: query,
-      headers: headers,
-    );
-  }
-
-  @override
-  Future<void> requestVerification(
-    String email, {
-    Map<String, dynamic> body = const {},
-    Map<String, dynamic> query = const {},
-    Map<String, String> headers = const {},
-  }) {
-    return _base.requestVerification(
-      email,
-      body: body,
-      query: query,
-      headers: headers,
-    );
-  }
-
-  @override
-  Future<void> unlinkExternalAuth(
-    String recordId,
-    String provider, {
-    Map<String, dynamic> body = const {},
-    Map<String, dynamic> query = const {},
-    Map<String, String> headers = const {},
-  }) {
-    return _base.unlinkExternalAuth(
-      recordId,
-      provider,
-      body: body,
-      query: query,
-      headers: headers,
-    );
   }
 }

@@ -8,14 +8,14 @@ import 'tables.dart';
 part 'database.g.dart';
 
 @DriftDatabase(
-  tables: [AuthTokens, Services],
+  tables: [Services],
   include: {'sql/search.drift'},
 )
 class DataBase extends _$DataBase {
   DataBase(DatabaseConnection connection) : super.connect(connection);
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 1;
 
   Selectable<Service> search(String query, {String? service}) {
     if (service != null) {
@@ -26,24 +26,6 @@ class DataBase extends _$DataBase {
   }
 
   String generateId() => newId();
-
-  Future<AuthToken?> getAuthToken() async {
-    final tokens = await select(authTokens).get();
-    if (tokens.isEmpty) return null;
-    return tokens.first;
-  }
-
-  Future<void> setAuthToken(AuthTokensCompanion token) async {
-    final tokens = await select(authTokens).get();
-    if (tokens.isNotEmpty) {
-      await removeAuthToken();
-    }
-    await into(authTokens).insert(token);
-  }
-
-  Future<void> removeAuthToken() async {
-    await delete(authTokens).go();
-  }
 
   String queryBuilder(
     String service, {
@@ -489,8 +471,8 @@ class DataBase extends _$DataBase {
             id: Value(item['id']),
             data: item,
             service: service,
-            created: Value(DateTime.now().toIso8601String()),
-            updated: Value(DateTime.now().toIso8601String()),
+            created: Value((DateTime.tryParse(item['created']) ?? DateTime.now()).toIso8601String()),
+            updated: Value((DateTime.tryParse(item['updated']) ?? DateTime.now()).toIso8601String()),
           ),
         );
       }

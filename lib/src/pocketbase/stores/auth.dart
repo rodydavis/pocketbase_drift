@@ -1,52 +1,45 @@
 import 'dart:convert';
 
 import 'package:pocketbase/pocketbase.dart';
-
-import '../../database/database.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class $AuthStore extends AuthStore {
-  final DataBase db;
+  final SharedPreferences prefs;
+  final String key;
 
-  $AuthStore(this.db, {bool autoLoad = true}) {
-    if (autoLoad) {
-      print('initializing auth store');
-      load();
-    }
-  }
-
-  Future<void> load() async {
-    final result = await db.getAuthToken();
-    print('auth token: $result');
-    if (result != null) {
-      final raw = result.token;
-      final decoded = jsonDecode(raw) as Map<String, dynamic>;
-      final token = decoded["token"] as String? ?? "";
-      final model = decoded["model"] as Map<String, dynamic>? ?? {};
-      final record = RecordModel.fromJson(model);
-      save(token, record);
-    }
+  $AuthStore(this.prefs, {this.key = "pb_auth"}) {
+    reload();
   }
 
   @override
-  Future<void> save(
+  void save(
     String newToken,
     dynamic /* RecordModel|AdminModel|null */ newModel,
-  ) async {
+  ) {
+    print('saving token: $newToken model: $newModel');
     super.save(newToken, newModel);
-    final encoded = jsonEncode(<String, dynamic>{
-      "token": newToken,
-      "model": newModel,
-    });
-    await db.setAuthToken(AuthTokensCompanion.insert(
-      token: encoded,
-      created: DateTime.now(),
-    ));
-    print('auth token saved: $encoded');
+
+    final encoded = jsonEncode(<String, dynamic>{"token": newToken, "model": newModel});
+    prefs.setString(key, encoded);
   }
 
   @override
-  Future<void> clear() async {
+  void clear() {
     super.clear();
-    await db.removeAuthToken();
+    print('clearing token');
+    prefs.remove(key);
+  }
+
+  Future<void> reload() async {
+    final String? raw = prefs.getString(key);
+    print('loading token: $raw');
+
+    if (raw != null && raw.isNotEmpty) {
+      final decoded = jsonDecode(raw);
+      final token = (decoded as Map<String, dynamic>)["token"] as String? ?? "";
+      final model = RecordModel.fromJson(decoded["model"] as Map<String, dynamic>? ?? {});
+
+      save(token, model);
+    }
   }
 }

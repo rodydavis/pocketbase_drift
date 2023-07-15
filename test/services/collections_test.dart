@@ -5,6 +5,7 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:pocketbase_drift/pocketbase_drift.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../test_data/collections.json.dart';
 
@@ -18,14 +19,13 @@ void main() {
 
   late final $PocketBase client;
   late final db = client.db;
-  final collections = [...offlineCollections]
-      .map((e) => CollectionModel.fromJson(jsonDecode(jsonEncode(e))))
-      .toList();
+  final collections = [...offlineCollections].map((e) => CollectionModel.fromJson(jsonDecode(jsonEncode(e)))).toList();
 
   group('collections service', () {
     setUpAll(() async {
       client = $PocketBase.database(
         url,
+        prefs: await SharedPreferences.getInstance(),
         inMemory: true,
         connection: DatabaseConnection(NativeDatabase.memory()),
         httpClientFactory: () => PocketBaseHttpClient.retry(retries: 1),
@@ -87,8 +87,7 @@ void main() {
       ]) {
         test(fetchPolicy.name, () async {
           const targetName = 'todo';
-          final targetId =
-              collections.firstWhere((e) => e.name == targetName).id;
+          final targetId = collections.firstWhere((e) => e.name == targetName).id;
 
           final idList = await client.collections.getList(
             filter: 'id = "$targetId"',

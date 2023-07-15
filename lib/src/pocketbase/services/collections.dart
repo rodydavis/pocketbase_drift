@@ -1,34 +1,11 @@
 import '../../../pocketbase_drift.dart';
 
-class $CollectionService extends $Service<CollectionModel>
-    implements CollectionService {
-  $CollectionService($PocketBase client) : super(client, 'schema');
-
-  late final _base = CollectionService(client);
+class $CollectionService extends CollectionService with ServiceMixin<CollectionModel> {
+  $CollectionService(this.client) : super(client);
 
   @override
-  String get baseCrudPath => _base.baseCrudPath;
+  final $PocketBase client;
 
   @override
-  CollectionModel itemFactoryFunc(Map<String, dynamic> json) {
-    return _base.itemFactoryFunc(json);
-  }
-
-  @override
-  Future<void> import(
-    List<CollectionModel> collections, {
-    bool deleteMissing = false,
-    Map<String, dynamic> body = const {},
-    Map<String, dynamic> query = const {},
-    Map<String, String> headers = const {},
-  }) async {
-    await setLocal(collections);
-    return _base.import(
-      collections,
-      deleteMissing: deleteMissing,
-      body: body,
-      query: query,
-      headers: headers,
-    );
-  }
+  final String service = 'schema';
 }

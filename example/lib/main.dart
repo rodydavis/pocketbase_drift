@@ -4,6 +4,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 // import 'package:simple_html_css/simple_html_css.dart';
 
 import 'package:pocketbase_drift/pocketbase_drift.dart';
@@ -27,6 +28,7 @@ void main() async {
   final client = $PocketBase.database(
     url,
     inMemory: true,
+    prefs: await SharedPreferences.getInstance(),
     httpClientFactory: () => PocketBaseHttpClient.retry(retries: 1),
     connection: connect('pocketbase.db', inMemory: true),
   )..logging = kDebugMode;

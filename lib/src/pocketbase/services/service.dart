@@ -5,13 +5,11 @@ import "package:http/http.dart" as http;
 
 import '../../../pocketbase_drift.dart';
 
-abstract class $Service<M extends Jsonable> extends BaseCrudService<M> {
-  $Service(this.client, this.service) : super(client);
-
-  final String service;
+mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
+  String get service;
 
   @override
-  final $PocketBase client;
+  $PocketBase get client;
 
   @override
   Future<M> getOne(
@@ -82,8 +80,7 @@ abstract class $Service<M extends Jsonable> extends BaseCrudService<M> {
             fetchPolicy: fetchPolicy,
           ).then((list) {
             result.addAll(list.items);
-            print(
-                '$service page result: ${list.page}/${list.totalPages}=>${list.items.length}');
+            print('$service page result: ${list.page}/${list.totalPages}=>${list.items.length}');
             if (list.items.isNotEmpty && list.totalItems > result.length) {
               return request(page + 1);
             }
@@ -170,6 +167,29 @@ abstract class $Service<M extends Jsonable> extends BaseCrudService<M> {
         );
       },
     );
+  }
+
+  Future<M?> getFirstListItemOrNull(
+    String filter, {
+    String? expand,
+    String? fields,
+    Map<String, dynamic> query = const {},
+    Map<String, String> headers = const {},
+    FetchPolicy fetchPolicy = FetchPolicy.cacheAndNetwork,
+  }) async {
+    try {
+      return getFirstListItem(
+        filter,
+        expand: expand,
+        fields: fields,
+        query: query,
+        headers: headers,
+        fetchPolicy: fetchPolicy,
+      );
+    } catch (e) {
+      print('error get $filter: $e');
+      return null;
+    }
   }
 
   @override
@@ -272,6 +292,10 @@ abstract class $Service<M extends Jsonable> extends BaseCrudService<M> {
     String? expand,
     String? fields,
   }) async {
+    if (fetchPolicy != FetchPolicy.networkOnly && files.isNotEmpty) {
+      throw Exception('Cannot upload files in offline mode');
+    }
+
     M? result;
     bool saved = false;
 
@@ -279,14 +303,31 @@ abstract class $Service<M extends Jsonable> extends BaseCrudService<M> {
 
     if (fetchPolicy.isNetwork) {
       try {
-        result = await super.create(
-          body: body,
-          query: query,
-          headers: headers,
-          expand: expand,
-          files: files,
-          fields: fields,
-        );
+        try {
+          result = await super.create(
+            body: body,
+            query: query,
+            headers: headers,
+            expand: expand,
+            files: files,
+            fields: fields,
+          );
+        } on ClientException catch (e) {
+          if (e.statusCode == 400 && body['id'] != null) {
+            final id = body.remove('id');
+            result = await super.update(
+              id,
+              body: body,
+              query: query,
+              files: files,
+              headers: headers,
+              expand: expand,
+              fields: fields,
+            );
+          } else {
+            rethrow;
+          }
+        }
         saved = true;
       } catch (e) {
         final msg = 'Failed to create record $body in $service: $e';
@@ -325,6 +366,9 @@ abstract class $Service<M extends Jsonable> extends BaseCrudService<M> {
     String? expand,
     String? fields,
   }) async {
+    if (fetchPolicy != FetchPolicy.networkOnly && files.isNotEmpty) {
+      throw Exception('Cannot upload files in offline mode');
+    }
     // return create(
     //   body: {...body, 'id': id},
     //   fetchPolicy: fetchPolicy,
@@ -341,15 +385,30 @@ abstract class $Service<M extends Jsonable> extends BaseCrudService<M> {
 
     if (fetchPolicy.isNetwork) {
       try {
-        result = await super.update(
-          id,
-          body: body,
-          query: query,
-          headers: headers,
-          expand: expand,
-          files: files,
-          fields: fields,
-        );
+        try {
+          result = await super.update(
+            id,
+            body: body,
+            query: query,
+            headers: headers,
+            expand: expand,
+            files: files,
+            fields: fields,
+          );
+        } on ClientException catch (e) {
+          if (e.statusCode == 404 || e.statusCode == 400) {
+            result = await super.create(
+              body: {...body, 'id': id},
+              query: query,
+              files: files,
+              headers: headers,
+              expand: expand,
+              fields: fields,
+            );
+          } else {
+            rethrow;
+          }
+        }
         saved = true;
       } catch (e) {
         final msg = 'Failed to update record $body in $service: $e';
@@ -445,10 +504,8 @@ enum FetchPolicy {
 }
 
 extension FetchPolicyUtils on FetchPolicy {
-  bool get isNetwork =>
-      this == FetchPolicy.networkOnly || this == FetchPolicy.cacheAndNetwork;
-  bool get isCache =>
-      this == FetchPolicy.cacheOnly || this == FetchPolicy.cacheAndNetwork;
+  bool get isNetwork => this == FetchPolicy.networkOnly || this == FetchPolicy.cacheAndNetwork;
+  bool get isCache => this == FetchPolicy.cacheOnly || this == FetchPolicy.cacheAndNetwork;
 
   Future<T> fetch<T>({
     required String label,

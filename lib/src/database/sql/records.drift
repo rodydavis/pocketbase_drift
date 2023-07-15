@@ -1,7 +1,0 @@
-import '../tables.dart';
-
-_deleteRecord:
-    DELETE FROM records
-    WHERE collectionId = :collectionId 
-    AND id = :id;
-  

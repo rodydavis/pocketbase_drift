@@ -2,20 +2,9 @@
 
 import 'package:drift/drift.dart';
 import 'package:http/http.dart';
-import 'package:pocketbase/pocketbase.dart';
 import 'package:pocketbase_drift/pocketbase_drift.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-import '../database/database.dart';
-import 'services/admin.dart';
-import 'services/backup.dart';
-import 'services/collections.dart';
-import 'services/files.dart';
-import 'services/health.dart';
-import 'services/logs.dart';
-import 'services/realtime.dart';
-import 'services/records.dart';
-import 'services/settings.dart';
-import 'stores/auth.dart';
 
 class $PocketBase extends PocketBase {
   $PocketBase(
@@ -30,14 +19,14 @@ class $PocketBase extends PocketBase {
   factory $PocketBase.database(
     String baseUrl, {
     required DatabaseConnection connection,
+    required SharedPreferences prefs,
     bool inMemory = false,
     bool autoLoad = true,
     String lang = "en-US",
     Client Function()? httpClientFactory,
   }) {
-    final conn = connection;
-    final db = DataBase(conn);
-    final authStore = $AuthStore(db, autoLoad: autoLoad);
+    final db = DataBase(connection);
+    final authStore = $AuthStore(prefs);
     return $PocketBase(
       baseUrl,
       database: db,
@@ -62,6 +51,7 @@ class $PocketBase extends PocketBase {
     if (service == null) {
       service = $RecordService(this, collectionIdOrName);
       _recordServices[collectionIdOrName] = service;
+      service.retryLocal();
     }
 
     return service;
@@ -96,24 +86,24 @@ class $PocketBase extends PocketBase {
   @override
   $CollectionService get collections => $CollectionService(this);
 
-  @override
-  $AdminsService get admins => $AdminsService(this);
+  // @override
+  // $AdminsService get admins => $AdminsService(this);
 
-  @override
-  $FileService get files => $FileService(this);
+  // @override
+  // $FileService get files => $FileService(this);
 
-  @override
-  $RealtimeService get realtime => $RealtimeService(this);
+  // @override
+  // $RealtimeService get realtime => $RealtimeService(this);
 
-  @override
-  $SettingsService get settings => $SettingsService(this);
+  // @override
+  // $SettingsService get settings => $SettingsService(this);
 
-  @override
-  $LogService get logs => $LogService(this);
+  // @override
+  // $LogService get logs => $LogService(this);
 
-  @override
-  $HealthService get health => $HealthService(this);
+  // @override
+  // $HealthService get health => $HealthService(this);
 
-  @override
-  $BackupService get backups => $BackupService(this);
+  // @override
+  // $BackupService get backups => $BackupService(this);
 }
