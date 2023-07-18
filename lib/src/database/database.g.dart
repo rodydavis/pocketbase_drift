@@ -459,6 +459,374 @@ class TextEntriesCompanion extends UpdateCompanion<TextEntrie> {
   }
 }
 
+class $BlobFilesTable extends BlobFiles
+    with TableInfo<$BlobFilesTable, BlobFile> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $BlobFilesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+      'id', aliasedName, false,
+      hasAutoIncrement: true,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('PRIMARY KEY AUTOINCREMENT'));
+  static const VerificationMeta _recordIdMeta =
+      const VerificationMeta('recordId');
+  @override
+  late final GeneratedColumn<String> recordId = GeneratedColumn<String>(
+      'recordId', aliasedName, false,
+      type: DriftSqlType.string,
+      requiredDuringInsert: true,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('REFERENCES Services (id)'));
+  static const VerificationMeta _filenameMeta =
+      const VerificationMeta('filename');
+  @override
+  late final GeneratedColumn<String> filename = GeneratedColumn<String>(
+      'filename', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _dataMeta = const VerificationMeta('data');
+  @override
+  late final GeneratedColumn<Uint8List> data = GeneratedColumn<Uint8List>(
+      'data', aliasedName, false,
+      type: DriftSqlType.blob, requiredDuringInsert: true);
+  static const VerificationMeta _expirationMeta =
+      const VerificationMeta('expiration');
+  @override
+  late final GeneratedColumn<DateTime> expiration = GeneratedColumn<DateTime>(
+      'expiration', aliasedName, true,
+      type: DriftSqlType.dateTime, requiredDuringInsert: false);
+  static const VerificationMeta _createdMeta =
+      const VerificationMeta('created');
+  @override
+  late final GeneratedColumn<String> created = GeneratedColumn<String>(
+      'created', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _updatedMeta =
+      const VerificationMeta('updated');
+  @override
+  late final GeneratedColumn<String> updated = GeneratedColumn<String>(
+      'updated', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  @override
+  List<GeneratedColumn> get $columns =>
+      [id, recordId, filename, data, expiration, created, updated];
+  @override
+  String get aliasedName => _alias ?? 'BlobFiles';
+  @override
+  String get actualTableName => 'BlobFiles';
+  @override
+  VerificationContext validateIntegrity(Insertable<BlobFile> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('recordId')) {
+      context.handle(_recordIdMeta,
+          recordId.isAcceptableOrUnknown(data['recordId']!, _recordIdMeta));
+    } else if (isInserting) {
+      context.missing(_recordIdMeta);
+    }
+    if (data.containsKey('filename')) {
+      context.handle(_filenameMeta,
+          filename.isAcceptableOrUnknown(data['filename']!, _filenameMeta));
+    } else if (isInserting) {
+      context.missing(_filenameMeta);
+    }
+    if (data.containsKey('data')) {
+      context.handle(
+          _dataMeta, this.data.isAcceptableOrUnknown(data['data']!, _dataMeta));
+    } else if (isInserting) {
+      context.missing(_dataMeta);
+    }
+    if (data.containsKey('expiration')) {
+      context.handle(
+          _expirationMeta,
+          expiration.isAcceptableOrUnknown(
+              data['expiration']!, _expirationMeta));
+    }
+    if (data.containsKey('created')) {
+      context.handle(_createdMeta,
+          created.isAcceptableOrUnknown(data['created']!, _createdMeta));
+    }
+    if (data.containsKey('updated')) {
+      context.handle(_updatedMeta,
+          updated.isAcceptableOrUnknown(data['updated']!, _updatedMeta));
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  BlobFile map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return BlobFile(
+      id: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}id'])!,
+      recordId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}recordId'])!,
+      filename: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}filename'])!,
+      data: attachedDatabase.typeMapping
+          .read(DriftSqlType.blob, data['${effectivePrefix}data'])!,
+      expiration: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}expiration']),
+      created: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}created']),
+      updated: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}updated']),
+    );
+  }
+
+  @override
+  $BlobFilesTable createAlias(String alias) {
+    return $BlobFilesTable(attachedDatabase, alias);
+  }
+}
+
+class BlobFile extends DataClass implements Insertable<BlobFile> {
+  final int id;
+  final String recordId;
+  final String filename;
+  final Uint8List data;
+  final DateTime? expiration;
+  final String? created;
+  final String? updated;
+  const BlobFile(
+      {required this.id,
+      required this.recordId,
+      required this.filename,
+      required this.data,
+      this.expiration,
+      this.created,
+      this.updated});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['recordId'] = Variable<String>(recordId);
+    map['filename'] = Variable<String>(filename);
+    map['data'] = Variable<Uint8List>(data);
+    if (!nullToAbsent || expiration != null) {
+      map['expiration'] = Variable<DateTime>(expiration);
+    }
+    if (!nullToAbsent || created != null) {
+      map['created'] = Variable<String>(created);
+    }
+    if (!nullToAbsent || updated != null) {
+      map['updated'] = Variable<String>(updated);
+    }
+    return map;
+  }
+
+  BlobFilesCompanion toCompanion(bool nullToAbsent) {
+    return BlobFilesCompanion(
+      id: Value(id),
+      recordId: Value(recordId),
+      filename: Value(filename),
+      data: Value(data),
+      expiration: expiration == null && nullToAbsent
+          ? const Value.absent()
+          : Value(expiration),
+      created: created == null && nullToAbsent
+          ? const Value.absent()
+          : Value(created),
+      updated: updated == null && nullToAbsent
+          ? const Value.absent()
+          : Value(updated),
+    );
+  }
+
+  factory BlobFile.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return BlobFile(
+      id: serializer.fromJson<int>(json['id']),
+      recordId: serializer.fromJson<String>(json['recordId']),
+      filename: serializer.fromJson<String>(json['filename']),
+      data: serializer.fromJson<Uint8List>(json['data']),
+      expiration: serializer.fromJson<DateTime?>(json['expiration']),
+      created: serializer.fromJson<String?>(json['created']),
+      updated: serializer.fromJson<String?>(json['updated']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'recordId': serializer.toJson<String>(recordId),
+      'filename': serializer.toJson<String>(filename),
+      'data': serializer.toJson<Uint8List>(data),
+      'expiration': serializer.toJson<DateTime?>(expiration),
+      'created': serializer.toJson<String?>(created),
+      'updated': serializer.toJson<String?>(updated),
+    };
+  }
+
+  BlobFile copyWith(
+          {int? id,
+          String? recordId,
+          String? filename,
+          Uint8List? data,
+          Value<DateTime?> expiration = const Value.absent(),
+          Value<String?> created = const Value.absent(),
+          Value<String?> updated = const Value.absent()}) =>
+      BlobFile(
+        id: id ?? this.id,
+        recordId: recordId ?? this.recordId,
+        filename: filename ?? this.filename,
+        data: data ?? this.data,
+        expiration: expiration.present ? expiration.value : this.expiration,
+        created: created.present ? created.value : this.created,
+        updated: updated.present ? updated.value : this.updated,
+      );
+  @override
+  String toString() {
+    return (StringBuffer('BlobFile(')
+          ..write('id: $id, ')
+          ..write('recordId: $recordId, ')
+          ..write('filename: $filename, ')
+          ..write('data: $data, ')
+          ..write('expiration: $expiration, ')
+          ..write('created: $created, ')
+          ..write('updated: $updated')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, recordId, filename,
+      $driftBlobEquality.hash(data), expiration, created, updated);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is BlobFile &&
+          other.id == this.id &&
+          other.recordId == this.recordId &&
+          other.filename == this.filename &&
+          $driftBlobEquality.equals(other.data, this.data) &&
+          other.expiration == this.expiration &&
+          other.created == this.created &&
+          other.updated == this.updated);
+}
+
+class BlobFilesCompanion extends UpdateCompanion<BlobFile> {
+  final Value<int> id;
+  final Value<String> recordId;
+  final Value<String> filename;
+  final Value<Uint8List> data;
+  final Value<DateTime?> expiration;
+  final Value<String?> created;
+  final Value<String?> updated;
+  const BlobFilesCompanion({
+    this.id = const Value.absent(),
+    this.recordId = const Value.absent(),
+    this.filename = const Value.absent(),
+    this.data = const Value.absent(),
+    this.expiration = const Value.absent(),
+    this.created = const Value.absent(),
+    this.updated = const Value.absent(),
+  });
+  BlobFilesCompanion.insert({
+    this.id = const Value.absent(),
+    required String recordId,
+    required String filename,
+    required Uint8List data,
+    this.expiration = const Value.absent(),
+    this.created = const Value.absent(),
+    this.updated = const Value.absent(),
+  })  : recordId = Value(recordId),
+        filename = Value(filename),
+        data = Value(data);
+  static Insertable<BlobFile> custom({
+    Expression<int>? id,
+    Expression<String>? recordId,
+    Expression<String>? filename,
+    Expression<Uint8List>? data,
+    Expression<DateTime>? expiration,
+    Expression<String>? created,
+    Expression<String>? updated,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (recordId != null) 'recordId': recordId,
+      if (filename != null) 'filename': filename,
+      if (data != null) 'data': data,
+      if (expiration != null) 'expiration': expiration,
+      if (created != null) 'created': created,
+      if (updated != null) 'updated': updated,
+    });
+  }
+
+  BlobFilesCompanion copyWith(
+      {Value<int>? id,
+      Value<String>? recordId,
+      Value<String>? filename,
+      Value<Uint8List>? data,
+      Value<DateTime?>? expiration,
+      Value<String?>? created,
+      Value<String?>? updated}) {
+    return BlobFilesCompanion(
+      id: id ?? this.id,
+      recordId: recordId ?? this.recordId,
+      filename: filename ?? this.filename,
+      data: data ?? this.data,
+      expiration: expiration ?? this.expiration,
+      created: created ?? this.created,
+      updated: updated ?? this.updated,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (recordId.present) {
+      map['recordId'] = Variable<String>(recordId.value);
+    }
+    if (filename.present) {
+      map['filename'] = Variable<String>(filename.value);
+    }
+    if (data.present) {
+      map['data'] = Variable<Uint8List>(data.value);
+    }
+    if (expiration.present) {
+      map['expiration'] = Variable<DateTime>(expiration.value);
+    }
+    if (created.present) {
+      map['created'] = Variable<String>(created.value);
+    }
+    if (updated.present) {
+      map['updated'] = Variable<String>(updated.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('BlobFilesCompanion(')
+          ..write('id: $id, ')
+          ..write('recordId: $recordId, ')
+          ..write('filename: $filename, ')
+          ..write('data: $data, ')
+          ..write('expiration: $expiration, ')
+          ..write('created: $created, ')
+          ..write('updated: $updated')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$DataBase extends GeneratedDatabase {
   _$DataBase(QueryExecutor e) : super(e);
   _$DataBase.connect(DatabaseConnection c) : super.connect(c);
@@ -473,6 +841,7 @@ abstract class _$DataBase extends GeneratedDatabase {
   late final Trigger servicesUpdate = Trigger(
       'CREATE TRIGGER services_update AFTER UPDATE ON services BEGIN INSERT INTO text_entries (text_entries, "rowid", data) VALUES (\'delete\', new."rowid", new.data);INSERT INTO text_entries ("rowid", data) VALUES (new."rowid", new.data);END',
       'services_update');
+  late final $BlobFilesTable blobFiles = $BlobFilesTable(this);
   Selectable<SearchResult> _search(String query) {
     return customSelect(
         'SELECT"record"."id" AS "nested_0.id", "record"."data" AS "nested_0.data", "record"."service" AS "nested_0.service", "record"."created" AS "nested_0.created", "record"."updated" AS "nested_0.updated" FROM text_entries INNER JOIN services AS record ON record."rowid" = text_entries."rowid" WHERE text_entries MATCH ?1 ORDER BY rank',
@@ -510,8 +879,14 @@ abstract class _$DataBase extends GeneratedDatabase {
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
   @override
-  List<DatabaseSchemaEntity> get allSchemaEntities =>
-      [services, textEntries, servicesInsert, servicesDelete, servicesUpdate];
+  List<DatabaseSchemaEntity> get allSchemaEntities => [
+        services,
+        textEntries,
+        servicesInsert,
+        servicesDelete,
+        servicesUpdate,
+        blobFiles
+      ];
   @override
   StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules(
         [

@@ -3,8 +3,6 @@
 import 'package:drift/drift.dart';
 import 'package:http/http.dart';
 import 'package:pocketbase_drift/pocketbase_drift.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-
 
 class $PocketBase extends PocketBase {
   $PocketBase(
@@ -19,17 +17,15 @@ class $PocketBase extends PocketBase {
   factory $PocketBase.database(
     String baseUrl, {
     required DatabaseConnection connection,
-    required SharedPreferences prefs,
+    required AuthStore authStore,
     bool inMemory = false,
     bool autoLoad = true,
     String lang = "en-US",
     Client Function()? httpClientFactory,
   }) {
-    final db = DataBase(connection);
-    final authStore = $AuthStore(prefs);
     return $PocketBase(
       baseUrl,
-      database: db,
+      database: DataBase(connection),
       lang: lang,
       authStore: authStore,
       httpClientFactory: httpClientFactory,
@@ -37,7 +33,7 @@ class $PocketBase extends PocketBase {
   }
 
   @override
-  final $AuthStore authStore;
+  final AuthStore authStore;
 
   final DataBase db;
   bool logging = false;

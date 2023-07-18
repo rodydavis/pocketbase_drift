@@ -61,6 +61,7 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
     Map<String, dynamic> query = const {},
     Map<String, String> headers = const {},
     FetchPolicy fetchPolicy = FetchPolicy.cacheAndNetwork,
+    Duration timeout = const Duration(seconds: 30),
   }) {
     return fetchPolicy.fetch<List<M>>(
       label: service,
@@ -78,6 +79,7 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
             query: query,
             headers: headers,
             fetchPolicy: fetchPolicy,
+            timeout: timeout,
           ).then((list) {
             result.addAll(list.items);
             print('$service page result: ${list.page}/${list.totalPages}=>${list.items.length}');
@@ -203,19 +205,22 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
     Map<String, dynamic> query = const {},
     Map<String, String> headers = const {},
     FetchPolicy fetchPolicy = FetchPolicy.cacheAndNetwork,
+    Duration timeout = const Duration(seconds: 30),
   }) async {
     return fetchPolicy.fetch<ResultList<M>>(
       label: service,
-      remote: () => super.getList(
-        page: page,
-        perPage: perPage,
-        expand: expand,
-        filter: filter,
-        fields: fields,
-        sort: sort,
-        query: query,
-        headers: headers,
-      ),
+      remote: () => super
+          .getList(
+            page: page,
+            perPage: perPage,
+            expand: expand,
+            filter: filter,
+            fields: fields,
+            sort: sort,
+            query: query,
+            headers: headers,
+          )
+          .timeout(timeout),
       getLocal: () async {
         final limit = perPage;
         final offset = (page - 1) * perPage;

@@ -3,6 +3,7 @@ import 'dart:io' as io;
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pocketbase_drift/auth.dart';
 
 import 'package:pocketbase_drift/pocketbase_drift.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -27,7 +28,7 @@ void main() {
     setUpAll(() async {
       client = $PocketBase.database(
         url,
-        prefs: await SharedPreferences.getInstance(),
+        authStore: $AuthStore(await SharedPreferences.getInstance()),
         inMemory: true,
         connection: DatabaseConnection(NativeDatabase.memory()),
         httpClientFactory: () => PocketBaseHttpClient.retry(retries: 1),

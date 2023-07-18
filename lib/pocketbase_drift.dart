@@ -13,6 +13,5 @@ export 'src/pocketbase/services/logs.dart';
 export 'src/pocketbase/services/realtime.dart';
 export 'src/pocketbase/services/settings.dart';
 export 'src/pocketbase/services/service.dart';
-export 'src/pocketbase/stores/auth.dart';
 
 export 'package:pocketbase/pocketbase.dart';

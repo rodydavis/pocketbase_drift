@@ -16,6 +16,16 @@ class Services extends Table {
   Set<Column<Object>>? get primaryKey => {id, service};
 }
 
+@DataClassName('BlobFile')
+class BlobFiles extends Table with AutoIncrementingPrimaryKey {
+  TextColumn get recordId => text().references(Services, #id)();
+  TextColumn get filename => text()();
+  BlobColumn get data => blob()();
+  DateTimeColumn get expiration => dateTime().nullable()();
+  TextColumn get created => text().nullable()();
+  TextColumn get updated => text().nullable()();
+}
+
 mixin AutoIncrementingPrimaryKey on Table {
   IntColumn get id => integer().autoIncrement()();
 }

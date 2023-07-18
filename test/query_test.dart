@@ -53,8 +53,8 @@ void main() {
 
       expect(statement.isNotEmpty, true);
       expect(statement2.isNotEmpty, true);
-      expect(
-          statement, 'SELECT id, created FROM services WHERE service = \'todo\'');
+      expect(statement,
+          'SELECT id, created FROM services WHERE service = \'todo\'');
       expect(statement2,
           "SELECT id, json_extract(services.data, '\$.name') as name FROM services WHERE service = 'todo'");
     });
@@ -265,8 +265,9 @@ void main() {
         ).toJson(),
       );
 
-      final result =
-          await db.$query(todo, fields: 'name', filter: 'name = \'test1\'').get();
+      final result = await db
+          .$query(todo, fields: 'name', filter: 'name = \'test1\'')
+          .get();
 
       expect(result.length, 1);
       expect(result[0]['name'], 'test1');

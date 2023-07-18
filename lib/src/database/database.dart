@@ -8,14 +8,28 @@ import 'tables.dart';
 part 'database.g.dart';
 
 @DriftDatabase(
-  tables: [Services],
+  tables: [Services, BlobFiles],
   include: {'sql/search.drift'},
 )
 class DataBase extends _$DataBase {
   DataBase(DatabaseConnection connection) : super.connect(connection);
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
+
+  @override
+  MigrationStrategy get migration {
+    return MigrationStrategy(
+      onCreate: (Migrator m) async {
+        await m.createAll();
+      },
+      onUpgrade: (Migrator m, int from, int to) async {
+        if (from < 2) {
+          await m.createTable(blobFiles);
+        }
+      },
+    );
+  }
 
   Selectable<Service> search(String query, {String? service}) {
     if (service != null) {
@@ -373,21 +387,24 @@ class DataBase extends _$DataBase {
       updated: Value(updated),
     );
 
-    if (id != null) {
-      final existing = await (select(services)
-            ..where((r) => r.service.equals(service))
-            ..where((r) => r.id.equals(id)))
-          .getSingleOrNull();
-      if (existing != null) {
-        await (update(services)
-              ..where((r) => r.id.equals(id))
-              ..where((r) => r.service.equals(service)))
-            .write(item);
-        return $query(service, filter: "id = '$id'").getSingle();
-      }
-    }
+    // if (id != null) {
+    //   final existing = await (select(services)
+    //         ..where((r) => r.service.equals(service))
+    //         ..where((r) => r.id.equals(id)))
+    //       .getSingleOrNull();
+    //   if (existing != null) {
+    //     await (update(services)
+    //           ..where((r) => r.id.equals(id))
+    //           ..where((r) => r.service.equals(service)))
+    //         .write(item);
+    //     return $query(service, filter: "id = '$id'").getSingle();
+    //   }
+    // }
 
-    final result = await into(services).insertReturning(item);
+    final result = await into(services).insertReturning(
+      item,
+      onConflict: DoUpdate((old) => item),
+    );
     return $query(service, filter: "id = '${result.id}'").getSingle();
   }
 
@@ -484,6 +501,37 @@ class DataBase extends _$DataBase {
   }
 
   Future<void> setSchema(List<Map<String, dynamic>> items) => setLocal('schema', items);
+
+  // -- Files --
+
+  Selectable<BlobFile?> getFile(String recordId, String filename) {
+    return select(blobFiles)..where((tbl) => tbl.recordId.equals(recordId) & tbl.filename.equals(filename));
+  }
+
+  Future<BlobFile> setFile(
+    String recordId,
+    String filename,
+    Uint8List data, {
+    DateTime? expires,
+  }) async {
+    final item = BlobFilesCompanion.insert(
+      filename: filename,
+      data: data,
+      recordId: recordId,
+      expiration: expires != null ? Value(expires) : const Value.absent(),
+      created: Value(DateTime.now().toIso8601String()),
+      updated: Value(DateTime.now().toIso8601String()),
+    );
+    return await into(blobFiles).insertReturning(
+      item,
+      onConflict: DoUpdate((old) => item),
+    );
+  }
+
+  Future<void> deleteFile(String recordId, String filename) async {
+    final q = delete(blobFiles)..where((tbl) => tbl.recordId.equals(recordId) & tbl.filename.equals(filename));
+    await q.go();
+  }
 }
 
 extension StringUtils on String {

@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 // import 'package:simple_html_css/simple_html_css.dart';
 
 import 'package:pocketbase_drift/pocketbase_drift.dart';
+import 'package:pocketbase_drift/auth.dart';
 import 'package:pocketbase_drift/database.dart';
 
 import 'data/collections.json.dart';
@@ -18,9 +19,7 @@ import 'widgets/full_text_search.dart';
 import 'widgets/pending_changes.dart';
 
 const url = 'http://127.0.0.1:3000';
-final collections = [...offlineCollections]
-    .map((e) => CollectionModel.fromJson(jsonDecode(jsonEncode(e))))
-    .toList();
+final collections = [...offlineCollections].map((e) => CollectionModel.fromJson(jsonDecode(jsonEncode(e)))).toList();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -28,7 +27,7 @@ void main() async {
   final client = $PocketBase.database(
     url,
     inMemory: true,
-    prefs: await SharedPreferences.getInstance(),
+    authStore: $AuthStore(await SharedPreferences.getInstance()),
     httpClientFactory: () => PocketBaseHttpClient.retry(retries: 1),
     connection: connect('pocketbase.db', inMemory: true),
   )..logging = kDebugMode;
@@ -260,8 +259,7 @@ class _ExampleState extends State<Example> {
           for (final field in fields) {
             final value = record.toJson()[field.name];
             if (value != null) {
-              final match =
-                  '$value'.toLowerCase().contains(query.toLowerCase());
+              final match = '$value'.toLowerCase().contains(query.toLowerCase());
               matches.add(match ? 1 : 0);
             }
           }

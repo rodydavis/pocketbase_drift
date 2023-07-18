@@ -7,9 +7,7 @@ class $AuthStore extends AuthStore {
   final SharedPreferences prefs;
   final String key;
 
-  $AuthStore(this.prefs, {this.key = "pb_auth"}) {
-    reload();
-  }
+  $AuthStore(this.prefs, {this.key = "pb_auth"});
 
   @override
   void save(
@@ -18,6 +16,12 @@ class $AuthStore extends AuthStore {
   ) {
     print('saving token: $newToken model: $newModel');
     super.save(newToken, newModel);
+
+    if (newModel == null) {
+      print('clearing token');
+      prefs.remove(key);
+      return;
+    }
 
     final encoded = jsonEncode(<String, dynamic>{"token": newToken, "model": newModel});
     prefs.setString(key, encoded);

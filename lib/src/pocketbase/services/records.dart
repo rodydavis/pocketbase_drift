@@ -25,7 +25,9 @@ class $RecordService extends RecordService with ServiceMixin<RecordModel> {
   }
 
   Selectable<RecordModel> pending() {
-    return client.db.$query(service, filter: 'synced = false').map(itemFactoryFunc);
+    return client.db
+        .$query(service, filter: 'synced = false')
+        .map(itemFactoryFunc);
   }
 
   Stream<RetryProgressEvent?> retryLocal({
