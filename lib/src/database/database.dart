@@ -504,7 +504,7 @@ class DataBase extends _$DataBase {
 
   // -- Files --
 
-  Selectable<BlobFile?> getFile(String recordId, String filename) {
+  Selectable<BlobFile> getFile(String recordId, String filename) {
     return select(blobFiles)..where((tbl) => tbl.recordId.equals(recordId) & tbl.filename.equals(filename));
   }
 
@@ -514,6 +514,12 @@ class DataBase extends _$DataBase {
     Uint8List data, {
     DateTime? expires,
   }) async {
+    final existing = await getFile(recordId, filename).get();
+    await batch((batch) {
+      for (final item in existing) {
+        batch.deleteWhere(blobFiles, (tbl) => tbl.rowId.equals(item.id));
+      }
+    });
     final item = BlobFilesCompanion.insert(
       filename: filename,
       data: data,

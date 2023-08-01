@@ -12,7 +12,11 @@ class PocketBaseHttpClient extends http.BaseClient {
     http.Client? client,
   }) {
     final baseClient = client ?? http.Client();
-    return PocketBaseHttpClient(RetryClient(baseClient, retries: retries));
+    return PocketBaseHttpClient(RetryClient(
+      baseClient,
+      retries: retries,
+      delay: (attempt) => Duration(seconds: attempt),
+    ));
   }
 
   @override

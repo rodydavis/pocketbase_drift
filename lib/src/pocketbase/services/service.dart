@@ -63,58 +63,31 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
     FetchPolicy fetchPolicy = FetchPolicy.cacheAndNetwork,
     Duration timeout = const Duration(seconds: 30),
   }) {
-    return fetchPolicy.fetch<List<M>>(
-      label: service,
-      remote: () {
-        final result = <M>[];
+    final result = <M>[];
 
-        Future<List<M>> request(int page) async {
-          return getList(
-            page: page,
-            perPage: batch,
-            filter: filter,
-            sort: sort,
-            fields: fields,
-            expand: expand,
-            query: query,
-            headers: headers,
-            fetchPolicy: fetchPolicy,
-            timeout: timeout,
-          ).then((list) {
-            result.addAll(list.items);
-            print('$service page result: ${list.page}/${list.totalPages}=>${list.items.length}');
-            if (list.items.isNotEmpty && list.totalItems > result.length) {
-              return request(page + 1);
-            }
-
-            return result;
-          });
+    Future<List<M>> request(int page) async {
+      return getList(
+        page: page,
+        perPage: batch,
+        filter: filter,
+        sort: sort,
+        fields: fields,
+        expand: expand,
+        query: query,
+        headers: headers,
+        fetchPolicy: fetchPolicy,
+        timeout: timeout,
+      ).then((list) {
+        result.addAll(list.items);
+        print('$service page result: ${list.page}/${list.totalPages}=>${list.items.length}$batch');
+        if (list.items.length < batch || list.items.isEmpty || list.page == list.totalPages) {
+          return result;
         }
+        return request(page + 1);
+      });
+    }
 
-        return request(1);
-      },
-      getLocal: () async {
-        final items = await client.db
-            .$query(
-              service,
-              expand: expand,
-              fields: fields,
-              filter: filter,
-              sort: sort,
-            )
-            .get();
-        return items.map((e) => itemFactoryFunc(e)).toList();
-      },
-      setLocal: (value) async {
-        // if ((filter == null || filter.isEmpty) && (fields == null || fields.isEmpty)) {
-        //   await client.db.setLocal(
-        //     service,
-        //     value.map((e) => e.toJson()).toList(),
-        //     removeAll: (filter == null || filter.isEmpty) && (fields == null || fields.isEmpty),
-        //   );
-        // }
-      },
-    );
+    return request(1);
   }
 
   @override

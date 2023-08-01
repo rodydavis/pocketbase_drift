@@ -73,11 +73,14 @@ class PocketBaseImageProvider extends ImageProvider<PocketBaseImageProvider> {
     );
   }
 
-  Uri url() => client.files.getUrl(record, filename);
+  Future<Uri> url() async {
+    final token = await client.files.getToken();
+    return client.files.getUrl(record, filename, token: token);
+  }
 
   Future<Uint8List?> download() async {
     final client = this.client.httpClientFactory();
-    final url = this.url();
+    final url = await this.url();
     debugPrint('url: $url');
     final response = await client.get(url);
     if (response.statusCode == 200) {
@@ -108,7 +111,6 @@ class PocketBaseImageProvider extends ImageProvider<PocketBaseImageProvider> {
       try {
         final bytes = await download();
         if (bytes != null) {
-          await client.db.deleteFile(record.id, filename);
           file = await client.db.setFile(
             record.id,
             filename,

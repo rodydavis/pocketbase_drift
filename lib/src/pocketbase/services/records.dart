@@ -25,9 +25,7 @@ class $RecordService extends RecordService with ServiceMixin<RecordModel> {
   }
 
   Selectable<RecordModel> pending() {
-    return client.db
-        .$query(service, filter: 'synced = false')
-        .map(itemFactoryFunc);
+    return client.db.$query(service, filter: 'synced = false').map(itemFactoryFunc);
   }
 
   Stream<RetryProgressEvent?> retryLocal({
@@ -171,7 +169,7 @@ class $RecordService extends RecordService with ServiceMixin<RecordModel> {
           sort: sort,
           fields: fields,
         );
-        print('$service realtime full list ${items.length}');
+        print('$service ${fetchPolicy.name} realtime full list ${items.length}');
       },
       onCancel: () async {
         if (fetchPolicy.isNetwork) {
