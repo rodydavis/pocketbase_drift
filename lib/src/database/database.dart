@@ -476,21 +476,23 @@ class DataBase extends _$DataBase {
     // Add all
     await batch((b) async {
       for (final item in items) {
-        if (!removeAll) {
-          b.deleteWhere(
-            services,
-            (r) => r.service.equals(service) & r.id.equals(item['id'] as String),
-          );
-        }
+        // if (!removeAll) {
+        //   b.deleteWhere(
+        //     services,
+        //     (r) => r.service.equals(service) & r.id.equals(item['id'] as String),
+        //   );
+        // }
+        final row = ServicesCompanion.insert(
+          id: Value(item['id']),
+          data: item,
+          service: service,
+          created: Value((DateTime.tryParse(item['created']) ?? DateTime.now()).toIso8601String()),
+          updated: Value((DateTime.tryParse(item['updated']) ?? DateTime.now()).toIso8601String()),
+        );
         b.insert(
           services,
-          ServicesCompanion.insert(
-            id: Value(item['id']),
-            data: item,
-            service: service,
-            created: Value((DateTime.tryParse(item['created']) ?? DateTime.now()).toIso8601String()),
-            updated: Value((DateTime.tryParse(item['updated']) ?? DateTime.now()).toIso8601String()),
-          ),
+          row,
+          onConflict: DoUpdate((old) => row),
         );
       }
     });

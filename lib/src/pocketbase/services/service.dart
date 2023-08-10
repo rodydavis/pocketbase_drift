@@ -256,8 +256,15 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
     return null;
   }
 
-  Future<void> setLocal(List<M> items) async {
-    await client.db.setLocal(service, items.map((e) => e.toJson()).toList());
+  Future<void> setLocal(
+    List<M> items, {
+    bool removeAll = true,
+  }) async {
+    await client.db.setLocal(
+      service,
+      items.map((e) => e.toJson()).toList(),
+      removeAll: removeAll,
+    );
   }
 
   @override

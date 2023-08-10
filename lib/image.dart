@@ -15,6 +15,7 @@ class PocketBaseImageProvider extends ImageProvider<PocketBaseImageProvider> {
     this.color,
     this.scale,
     this.expireAfter,
+    this.token = true,
   });
 
   final $PocketBase client;
@@ -25,6 +26,7 @@ class PocketBaseImageProvider extends ImageProvider<PocketBaseImageProvider> {
   final Color? color;
   final double? scale;
   final Duration? expireAfter;
+  final bool token;
 
   @override
   ImageStreamCompleter load(PocketBaseImageProvider key, decode) {
@@ -74,7 +76,7 @@ class PocketBaseImageProvider extends ImageProvider<PocketBaseImageProvider> {
   }
 
   Future<Uri> url() async {
-    final token = await client.files.getToken();
+    final token = !this.token ? null : await client.files.getToken();
     return client.files.getUrl(record, filename, token: token);
   }
 
