@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:drift/drift.dart';
+import 'package:flutter/foundation.dart';
 import 'package:pocketbase/pocketbase.dart';
 
 import 'tables.dart';
@@ -191,7 +192,7 @@ class DataBase extends _$DataBase {
       offset: offset,
       limit: limit,
     );
-    print('query: $query');
+    debugPrint('query: $query');
     return customSelect(
       query,
       readsFrom: {services},
@@ -515,7 +516,7 @@ class DataBase extends _$DataBase {
     // Get all
     final query = select(services)..where((tbl) => tbl.service.equals(service));
     final results = await query.get();
-    print('$service: ${results.length}');
+    debugPrint('$service: ${results.length}');
   }
 
   Future<void> setSchema(List<Map<String, dynamic>> items) =>

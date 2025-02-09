@@ -1,6 +1,7 @@
 // ignore_for_file: public_member_api_docs, sort_constructors_first
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import "package:http/http.dart" as http;
 
 import '../../../pocketbase_drift.dart';
@@ -79,7 +80,7 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
         timeout: timeout,
       ).then((list) {
         result.addAll(list.items);
-        print(
+        debugPrint(
             '$service page result: ${list.page}/${list.totalPages}=>${list.items.length}$batch');
         if (list.items.length < batch ||
             list.items.isEmpty ||
@@ -165,7 +166,7 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
         fetchPolicy: fetchPolicy,
       );
     } catch (e) {
-      print('error get $filter: $e');
+      debugPrint('error get $filter: $e');
       return null;
     }
   }
@@ -255,7 +256,7 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
       return result;
     } catch (e) {
       if (client.logging) {
-        print('cannot find $id in $service $e');
+        debugPrint('cannot find $id in $service $e');
       }
     }
     return null;
@@ -324,7 +325,7 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
         if (fetchPolicy == FetchPolicy.networkOnly) {
           throw Exception(msg);
         } else {
-          print(msg);
+          debugPrint(msg);
         }
       }
     }
@@ -405,7 +406,7 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
         if (fetchPolicy == FetchPolicy.networkOnly) {
           throw Exception(msg);
         } else {
-          print(msg);
+          debugPrint(msg);
         }
       }
     }
@@ -451,7 +452,7 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
         if (fetchPolicy == FetchPolicy.networkOnly) {
           throw Exception(msg);
         } else {
-          print(msg);
+          debugPrint(msg);
         }
       }
     }
@@ -506,15 +507,15 @@ extension FetchPolicyUtils on FetchPolicy {
     required Future<void> Function(T) setLocal,
     // Duration timeout = const Duration(seconds: 3),
   }) async {
-    print('fetch policy: $label, $name');
+    debugPrint('fetch policy: $label, $name');
     T? result;
 
     if (isNetwork) {
       try {
-        print('fetching remote...');
+        debugPrint('fetching remote...');
         result = await remote();
       } catch (e) {
-        print('error remote... $e');
+        debugPrint('error remote... $e');
         if (this == FetchPolicy.networkOnly) {
           throw Exception('Failed to get $e');
         }
@@ -523,10 +524,10 @@ extension FetchPolicyUtils on FetchPolicy {
 
     if (isCache) {
       if (result != null) {
-        print('setting cache...');
+        debugPrint('setting cache...');
         await setLocal(result);
       } else {
-        print('fetching cache...');
+        debugPrint('fetching cache...');
         result = await getLocal();
       }
     }

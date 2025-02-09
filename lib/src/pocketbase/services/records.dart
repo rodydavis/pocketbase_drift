@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:drift/drift.dart';
+import 'package:flutter/foundation.dart';
 
 import '../../../pocketbase_drift.dart';
 
@@ -64,7 +65,7 @@ class $RecordService extends RecordService with ServiceMixin<RecordModel> {
           );
         }
       } catch (e) {
-        print('error retry $item: $e');
+        debugPrint('error retry $item: $e');
       }
       yield RetryProgressEvent(current: i + 1, total: total);
     }
@@ -135,7 +136,7 @@ class $RecordService extends RecordService with ServiceMixin<RecordModel> {
           try {
             await subscribe(id, (e) {});
           } catch (e) {
-            print('error subscribe $service $id: $e');
+            debugPrint('error subscribe $service $id: $e');
           }
         }
         await getOneOrNull(id, fetchPolicy: fetchPolicy);
@@ -145,7 +146,7 @@ class $RecordService extends RecordService with ServiceMixin<RecordModel> {
           try {
             await unsubscribe(id);
           } catch (e) {
-            print('error unsubscribe $service $id: $e');
+            debugPrint('error unsubscribe $service $id: $e');
           }
         }
       },
@@ -174,7 +175,7 @@ class $RecordService extends RecordService with ServiceMixin<RecordModel> {
           try {
             await subscribe('*', (e) {});
           } catch (e) {
-            print('error subscribe $service: $e');
+            debugPrint('error subscribe $service: $e');
           }
         }
         final items = await getFullList(
@@ -184,7 +185,7 @@ class $RecordService extends RecordService with ServiceMixin<RecordModel> {
           sort: sort,
           fields: fields,
         );
-        print(
+        debugPrint(
             '$service ${fetchPolicy.name} realtime full list ${items.length}');
       },
       onCancel: () async {
@@ -192,7 +193,7 @@ class $RecordService extends RecordService with ServiceMixin<RecordModel> {
           try {
             await unsubscribe('*');
           } catch (e) {
-            print('error unsubscribe $service: $e');
+            debugPrint('error unsubscribe $service: $e');
           }
         }
       },

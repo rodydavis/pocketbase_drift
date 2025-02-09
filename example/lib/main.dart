@@ -75,15 +75,15 @@ class _ExampleState extends State<Example> {
   }
 
   Future<void> select(String id) async {
-    print('select: $id');
+    debugPrint('select: $id');
     col = await widget.client.collections.getOne(
       id,
       fetchPolicy: FetchPolicy.cacheOnly,
     );
-    print('col: $col');
+    debugPrint('col: $col');
     collection = widget.client.collection(col!.name);
     subscription?.cancel();
-    print('watching...');
+    debugPrint('watching...');
     subscription = collection!.watchRecords().listen(
       (event) {
         debugPrint('items: ${event.length}');
@@ -352,8 +352,8 @@ class _ExampleState extends State<Example> {
                 ),
               );
             }).toList(),
-            DataCell(Text(record.created)),
-            DataCell(Text(record.updated)),
+            DataCell(Text(record.get<String>('created'))),
+            DataCell(Text(record.get<String>('updated'))),
           ];
         },
       ),
