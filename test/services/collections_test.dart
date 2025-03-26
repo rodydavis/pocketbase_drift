@@ -27,16 +27,17 @@ void main() {
     setUpAll(() async {
       client = $PocketBase.database(
         url,
-        authStore: $AuthStore((await SharedPreferences.getInstance()), 'pb_auth'),
+        authStore:
+            $AuthStore((await SharedPreferences.getInstance()), 'pb_auth'),
         inMemory: true,
         connection: DatabaseConnection(NativeDatabase.memory()),
         httpClientFactory: () => PocketBaseHttpClient.retry(retries: 1),
       );
 
       await client.collection('_superusers').authWithPassword(
-        username,
-        password,
-      );
+            username,
+            password,
+          );
 
       await db.setSchema(collections.map((e) => e.toJson()).toList());
     });
@@ -47,7 +48,7 @@ void main() {
 
     test('check if added locally', () async {
       final local = await client.collections.getFullList(
-        fetchPolicy: FetchPolicy.cacheOnly,
+        dataPolicy: DataPolicy.cacheOnly,
       );
 
       expect(local, isNotEmpty);
@@ -59,7 +60,7 @@ void main() {
 
       final collection = await client.collections.getOneOrNull(
         collectionId,
-        fetchPolicy: FetchPolicy.cacheOnly,
+        dataPolicy: DataPolicy.cacheOnly,
       );
 
       expect(collection != null, true);
@@ -73,7 +74,7 @@ void main() {
 
       final collection = await client.collections.getOneOrNull(
         collectionId,
-        fetchPolicy: FetchPolicy.networkOnly,
+        dataPolicy: DataPolicy.networkOnly,
       );
 
       expect(collection != null, true);
@@ -82,19 +83,19 @@ void main() {
     });
 
     group('get by name or id', () {
-      for (final fetchPolicy in [
-        FetchPolicy.networkOnly,
-        FetchPolicy.cacheAndNetwork,
-        FetchPolicy.cacheOnly,
+      for (final dataPolicy in [
+        DataPolicy.networkOnly,
+        DataPolicy.cacheAndNetwork,
+        DataPolicy.cacheOnly,
       ]) {
-        test(fetchPolicy.name, () async {
+        test(dataPolicy.name, () async {
           const targetName = 'todo';
           final targetId =
               collections.firstWhere((e) => e.name == targetName).id;
 
           final idList = await client.collections.getList(
             filter: 'id = "$targetId"',
-            fetchPolicy: fetchPolicy,
+            dataPolicy: dataPolicy,
           );
 
           expect(idList.items.isNotEmpty, true);
@@ -103,7 +104,7 @@ void main() {
 
           final nameList = await client.collections.getList(
             filter: 'name = "$targetName"',
-            fetchPolicy: fetchPolicy,
+            dataPolicy: dataPolicy,
           );
 
           expect(nameList.items.isNotEmpty, true);
@@ -112,7 +113,7 @@ void main() {
 
           final itemId = await client.collections.getFirstListItem(
             'id = "$targetId" || name = "$targetId"',
-            fetchPolicy: fetchPolicy,
+            dataPolicy: dataPolicy,
           );
 
           expect(itemId.id, targetId);
@@ -120,7 +121,7 @@ void main() {
 
           final itemName = await client.collections.getFirstListItem(
             'id = "$targetName" || name = "$targetName"',
-            fetchPolicy: fetchPolicy,
+            dataPolicy: dataPolicy,
           );
 
           expect(itemName.id, targetId);

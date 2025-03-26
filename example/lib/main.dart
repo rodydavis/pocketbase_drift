@@ -76,7 +76,7 @@ class _ExampleState extends State<Example> {
     debugPrint('select: $id');
     col = await widget.client.collections.getOne(
       id,
-      fetchPolicy: FetchPolicy.cacheOnly,
+      dataPolicy: DataPolicy.cacheOnly,
     );
     debugPrint('col: $col');
     collection = widget.client.collection(col!.name);
@@ -370,7 +370,7 @@ class _ExampleState extends State<Example> {
           if (result != null) {
             await collection!.create(
               body: result,
-              // fetchPolicy: FetchPolicy.cacheOnly,
+              // dataPolicy: DataPolicy.cacheOnly,
             );
             if (mounted) setState(() {});
           }

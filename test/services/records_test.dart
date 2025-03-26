@@ -29,16 +29,17 @@ void main() {
     setUpAll(() async {
       client = $PocketBase.database(
         url,
-        authStore: $AuthStore((await SharedPreferences.getInstance()), 'pb_auth'),
+        authStore:
+            $AuthStore((await SharedPreferences.getInstance()), 'pb_auth'),
         inMemory: true,
         connection: DatabaseConnection(NativeDatabase.memory()),
         httpClientFactory: () => PocketBaseHttpClient.retry(retries: 1),
       );
 
       await client.collection('_superusers').authWithPassword(
-        username,
-        password,
-      );
+            username,
+            password,
+          );
 
       await db.setSchema(collections.map((e) => e.toJson()).toList());
 
@@ -123,18 +124,18 @@ void main() {
       });
     });
 
-    for (final fetchPolicy in [
-      FetchPolicy.networkOnly,
-      FetchPolicy.cacheOnly,
-      FetchPolicy.cacheAndNetwork,
+    for (final dataPolicy in [
+      DataPolicy.networkOnly,
+      DataPolicy.cacheOnly,
+      DataPolicy.cacheAndNetwork,
     ]) {
-      group(fetchPolicy.name, () {
+      group(dataPolicy.name, () {
         test('create', () async {
           final item = await service.create(
             body: {
               'name': 'test1',
             },
-            fetchPolicy: fetchPolicy,
+            dataPolicy: dataPolicy,
           );
 
           expect(item.data['name'], 'test1');
@@ -147,7 +148,7 @@ void main() {
             body: {
               'name': 'test1',
             },
-            fetchPolicy: fetchPolicy,
+            dataPolicy: dataPolicy,
           );
 
           expect(item.data['name'], 'test1');
@@ -157,7 +158,7 @@ void main() {
             body: {
               'name': 'test2',
             },
-            fetchPolicy: fetchPolicy,
+            dataPolicy: dataPolicy,
           );
 
           expect(updated.data['name'], 'test2');
@@ -170,7 +171,7 @@ void main() {
             body: {
               'name': 'test1',
             },
-            fetchPolicy: fetchPolicy,
+            dataPolicy: dataPolicy,
           );
 
           expect(item.data['name'], 'test1');
@@ -179,10 +180,10 @@ void main() {
 
           // final deleted = await service.getOneOrNull(
           //   item.id,
-          //   fetchPolicy: FetchPolicy.cacheOnly,
+          //   dataPolicy: DataPolicy.cacheOnly,
           // );
 
-          // if (fetchPolicy.isNetwork) {
+          // if (dataPolicy.isNetwork) {
           //   expect(deleted == null, true);
           // } else {
           //   expect(deleted!.data['deleted'], true);

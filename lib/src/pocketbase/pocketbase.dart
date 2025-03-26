@@ -56,11 +56,11 @@ class $PocketBase extends PocketBase {
   /// validation and relations
   Future<$RecordService> $collection(
     String collectionIdOrName, {
-    FetchPolicy fetchPolicy = FetchPolicy.cacheAndNetwork,
+    DataPolicy dataPolicy = DataPolicy.cacheAndNetwork,
   }) async {
     await collections.getFirstListItem(
       'id = "$collectionIdOrName" || name = "$collectionIdOrName"',
-      fetchPolicy: fetchPolicy,
+      dataPolicy: dataPolicy,
     );
 
     var service = _recordServices[collectionIdOrName];

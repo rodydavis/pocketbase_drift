@@ -128,21 +128,21 @@ class $RecordService extends RecordService with ServiceMixin<RecordModel> {
 
   Stream<RecordModel?> watchRecord(
     String id, {
-    FetchPolicy fetchPolicy = FetchPolicy.cacheAndNetwork,
+    DataPolicy dataPolicy = DataPolicy.cacheAndNetwork,
   }) {
     final controller = StreamController<RecordModel?>(
       onListen: () async {
-        if (fetchPolicy.isNetwork) {
+        if (dataPolicy.isNetwork) {
           try {
             await subscribe(id, (e) {});
           } catch (e) {
             debugPrint('error subscribe $service $id: $e');
           }
         }
-        await getOneOrNull(id, fetchPolicy: fetchPolicy);
+        await getOneOrNull(id, dataPolicy: dataPolicy);
       },
       onCancel: () async {
-        if (fetchPolicy.isNetwork) {
+        if (dataPolicy.isNetwork) {
           try {
             await unsubscribe(id);
           } catch (e) {
@@ -167,11 +167,11 @@ class $RecordService extends RecordService with ServiceMixin<RecordModel> {
     String? filter,
     String? sort,
     String? fields,
-    FetchPolicy fetchPolicy = FetchPolicy.cacheAndNetwork,
+    DataPolicy dataPolicy = DataPolicy.cacheAndNetwork,
   }) {
     final controller = StreamController<List<RecordModel>>(
       onListen: () async {
-        if (fetchPolicy.isNetwork) {
+        if (dataPolicy.isNetwork) {
           try {
             await subscribe('*', (e) {});
           } catch (e) {
@@ -179,17 +179,17 @@ class $RecordService extends RecordService with ServiceMixin<RecordModel> {
           }
         }
         final items = await getFullList(
-          fetchPolicy: fetchPolicy,
+          dataPolicy: dataPolicy,
           filter: filter,
           expand: expand,
           sort: sort,
           fields: fields,
         );
         debugPrint(
-            '$service ${fetchPolicy.name} realtime full list ${items.length}');
+            '$service ${dataPolicy.name} realtime full list ${items.length}');
       },
       onCancel: () async {
-        if (fetchPolicy.isNetwork) {
+        if (dataPolicy.isNetwork) {
           try {
             await unsubscribe('*');
           } catch (e) {

@@ -19,9 +19,9 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
     String? fields,
     Map<String, dynamic> query = const {},
     Map<String, String> headers = const {},
-    FetchPolicy fetchPolicy = FetchPolicy.cacheAndNetwork,
+    DataPolicy dataPolicy = DataPolicy.cacheAndNetwork,
   }) async {
-    return fetchPolicy.fetch<M>(
+    return dataPolicy.fetch<M>(
       label: service,
       remote: () => super.getOne(
         id,
@@ -61,7 +61,7 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
     String? fields,
     Map<String, dynamic> query = const {},
     Map<String, String> headers = const {},
-    FetchPolicy fetchPolicy = FetchPolicy.cacheAndNetwork,
+    DataPolicy dataPolicy = DataPolicy.cacheAndNetwork,
     Duration timeout = const Duration(seconds: 30),
   }) {
     final result = <M>[];
@@ -76,7 +76,7 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
         expand: expand,
         query: query,
         headers: headers,
-        fetchPolicy: fetchPolicy,
+        dataPolicy: dataPolicy,
         timeout: timeout,
       ).then((list) {
         result.addAll(list.items);
@@ -101,9 +101,9 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
     String? fields,
     Map<String, dynamic> query = const {},
     Map<String, String> headers = const {},
-    FetchPolicy fetchPolicy = FetchPolicy.cacheAndNetwork,
+    DataPolicy dataPolicy = DataPolicy.cacheAndNetwork,
   }) {
-    return fetchPolicy.fetch<M>(
+    return dataPolicy.fetch<M>(
       label: service,
       remote: () {
         return getList(
@@ -113,7 +113,7 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
           fields: fields,
           query: query,
           headers: headers,
-          fetchPolicy: fetchPolicy,
+          dataPolicy: dataPolicy,
         ).then((result) {
           if (result.items.isEmpty) {
             throw ClientException(
@@ -154,7 +154,7 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
     String? fields,
     Map<String, dynamic> query = const {},
     Map<String, String> headers = const {},
-    FetchPolicy fetchPolicy = FetchPolicy.cacheAndNetwork,
+    DataPolicy dataPolicy = DataPolicy.cacheAndNetwork,
   }) async {
     try {
       return getFirstListItem(
@@ -163,7 +163,7 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
         fields: fields,
         query: query,
         headers: headers,
-        fetchPolicy: fetchPolicy,
+        dataPolicy: dataPolicy,
       );
     } catch (e) {
       debugPrint('error get $filter: $e');
@@ -182,10 +182,10 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
     String? fields,
     Map<String, dynamic> query = const {},
     Map<String, String> headers = const {},
-    FetchPolicy fetchPolicy = FetchPolicy.cacheAndNetwork,
+    DataPolicy dataPolicy = DataPolicy.cacheAndNetwork,
     Duration timeout = const Duration(seconds: 30),
   }) async {
-    return fetchPolicy.fetch<ResultList<M>>(
+    return dataPolicy.fetch<ResultList<M>>(
       label: service,
       remote: () => super
           .getList(
@@ -242,12 +242,12 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
     String? fields,
     Map<String, dynamic> query = const {},
     Map<String, String> headers = const {},
-    FetchPolicy fetchPolicy = FetchPolicy.cacheAndNetwork,
+    DataPolicy dataPolicy = DataPolicy.cacheAndNetwork,
   }) async {
     try {
       final result = await getOne(
         id,
-        fetchPolicy: fetchPolicy,
+        dataPolicy: dataPolicy,
         expand: expand,
         fields: fields,
         query: query,
@@ -275,7 +275,7 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
 
   @override
   Future<M> create({
-    FetchPolicy fetchPolicy = FetchPolicy.cacheAndNetwork,
+    DataPolicy dataPolicy = DataPolicy.cacheAndNetwork,
     Map<String, dynamic> body = const {},
     Map<String, dynamic> query = const {},
     List<http.MultipartFile> files = const [],
@@ -283,7 +283,7 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
     String? expand,
     String? fields,
   }) async {
-    if (fetchPolicy != FetchPolicy.networkOnly && files.isNotEmpty) {
+    if (dataPolicy != DataPolicy.networkOnly && files.isNotEmpty) {
       throw Exception('Cannot upload files in offline mode');
     }
 
@@ -292,7 +292,7 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
 
     // TODO: Save files for offline
 
-    if (fetchPolicy.isNetwork) {
+    if (dataPolicy.isNetwork) {
       try {
         try {
           result = await super.create(
@@ -322,7 +322,7 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
         saved = true;
       } catch (e) {
         final msg = 'Failed to create record $body in $service: $e';
-        if (fetchPolicy == FetchPolicy.networkOnly) {
+        if (dataPolicy == DataPolicy.networkOnly) {
           throw Exception(msg);
         } else {
           debugPrint(msg);
@@ -330,7 +330,7 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
       }
     }
 
-    if (fetchPolicy.isCache) {
+    if (dataPolicy.isCache) {
       final data = await client.db.$create(
         service,
         {
@@ -349,7 +349,7 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
   @override
   Future<M> update(
     String id, {
-    FetchPolicy fetchPolicy = FetchPolicy.cacheAndNetwork,
+    DataPolicy dataPolicy = DataPolicy.cacheAndNetwork,
     Map<String, dynamic> body = const {},
     Map<String, dynamic> query = const {},
     List<http.MultipartFile> files = const [],
@@ -357,12 +357,12 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
     String? expand,
     String? fields,
   }) async {
-    if (fetchPolicy != FetchPolicy.networkOnly && files.isNotEmpty) {
+    if (dataPolicy != DataPolicy.networkOnly && files.isNotEmpty) {
       throw Exception('Cannot upload files in offline mode');
     }
     // return create(
     //   body: {...body, 'id': id},
-    //   fetchPolicy: fetchPolicy,
+    //   dataPolicy: dataPolicy,
     //   query: query,
     //   files: files,
     //   headers: headers,
@@ -374,7 +374,7 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
 
     // TODO: Save files for offline
 
-    if (fetchPolicy.isNetwork) {
+    if (dataPolicy.isNetwork) {
       try {
         try {
           result = await super.update(
@@ -403,7 +403,7 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
         saved = true;
       } catch (e) {
         final msg = 'Failed to update record $body in $service: $e';
-        if (fetchPolicy == FetchPolicy.networkOnly) {
+        if (dataPolicy == DataPolicy.networkOnly) {
           throw Exception(msg);
         } else {
           debugPrint(msg);
@@ -411,7 +411,7 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
       }
     }
 
-    if (fetchPolicy.isCache) {
+    if (dataPolicy.isCache) {
       final data = await client.db.$update(
         service,
         id,
@@ -431,14 +431,14 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
   @override
   Future<void> delete(
     String id, {
-    FetchPolicy fetchPolicy = FetchPolicy.cacheAndNetwork,
+    DataPolicy dataPolicy = DataPolicy.cacheAndNetwork,
     Map<String, dynamic> body = const {},
     Map<String, dynamic> query = const {},
     Map<String, String> headers = const {},
   }) async {
     bool saved = false;
 
-    if (fetchPolicy.isNetwork) {
+    if (dataPolicy.isNetwork) {
       try {
         await super.delete(
           id,
@@ -449,7 +449,7 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
         saved = true;
       } catch (e) {
         final msg = 'Failed to delete record $id in $service: $e';
-        if (fetchPolicy == FetchPolicy.networkOnly) {
+        if (dataPolicy == DataPolicy.networkOnly) {
           throw Exception(msg);
         } else {
           debugPrint(msg);
@@ -457,7 +457,7 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
       }
     }
 
-    if (fetchPolicy.isCache) {
+    if (dataPolicy.isCache) {
       if (saved) {
         await client.db.$delete(service, id);
       } else {
@@ -488,17 +488,17 @@ class RetryProgressEvent {
   double get progress => current / total;
 }
 
-enum FetchPolicy {
+enum DataPolicy {
   cacheOnly,
   networkOnly,
   cacheAndNetwork,
 }
 
-extension FetchPolicyUtils on FetchPolicy {
+extension DataPolicyUtils on DataPolicy {
   bool get isNetwork =>
-      this == FetchPolicy.networkOnly || this == FetchPolicy.cacheAndNetwork;
+      this == DataPolicy.networkOnly || this == DataPolicy.cacheAndNetwork;
   bool get isCache =>
-      this == FetchPolicy.cacheOnly || this == FetchPolicy.cacheAndNetwork;
+      this == DataPolicy.cacheOnly || this == DataPolicy.cacheAndNetwork;
 
   Future<T> fetch<T>({
     required String label,
@@ -516,7 +516,7 @@ extension FetchPolicyUtils on FetchPolicy {
         result = await remote();
       } catch (e) {
         debugPrint('error remote... $e');
-        if (this == FetchPolicy.networkOnly) {
+        if (this == DataPolicy.networkOnly) {
           throw Exception('Failed to get $e');
         }
       }
@@ -561,7 +561,7 @@ extension FetchPolicyUtils on FetchPolicy {
         }
       } catch (e) {
         debugPrint('error remote... $e');
-        if (this == FetchPolicy.networkOnly) {
+        if (this == DataPolicy.networkOnly) {
           throw Exception('Failed to get $e');
         }
       }
