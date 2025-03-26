@@ -15,10 +15,10 @@ class $PocketBase extends PocketBase {
 
   factory $PocketBase.database(
     String baseUrl, {
-    required AuthStore authStore,
     bool inMemory = false,
     bool autoLoad = true,
     String lang = "en-US",
+    AuthStore? authStore,
     DatabaseConnection? connection,
     Client Function()? httpClientFactory,
   }) {
