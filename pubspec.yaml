@@ -11,12 +11,11 @@ dependencies:
     sdk: flutter
   http: ^1.2.2
   pocketbase: ^0.21.0
-  drift: ^2.23.0
+  drift: ^2.26.0
   sqlite3_flutter_libs: ^0.5.28
   path_provider: ^2.1.5
   path: ^1.9.0
   sqlite3: ^2.5.0
-  drift_dev: ^2.23.0
   shortid: ^0.1.2
   shared_preferences: ^2.3.0
 
@@ -25,6 +24,7 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: ^5.0.0
   build_runner: ^2.4.14
+  drift_dev: ^2.26.0
 
 flutter:
 
