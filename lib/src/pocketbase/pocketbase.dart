@@ -3,7 +3,6 @@
 import 'package:drift/drift.dart';
 import 'package:http/http.dart';
 import 'package:pocketbase_drift/pocketbase_drift.dart';
-import 'package:pocketbase_drift/src/database/connection/connection.dart';
 
 class $PocketBase extends PocketBase {
   $PocketBase(
