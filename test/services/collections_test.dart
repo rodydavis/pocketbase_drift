@@ -3,7 +3,6 @@ import 'dart:io' as io;
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pocketbase_drift/auth.dart';
 
 import 'package:pocketbase_drift/pocketbase_drift.dart';
 import 'package:shared_preferences/shared_preferences.dart';

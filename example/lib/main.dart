@@ -8,8 +8,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 // import 'package:simple_html_css/simple_html_css.dart';
 
 import 'package:pocketbase_drift/pocketbase_drift.dart';
-import 'package:pocketbase_drift/auth.dart';
-import 'package:pocketbase_drift/database.dart';
 
 import 'data/collections.json.dart';
 import 'data/todos.json.dart';
