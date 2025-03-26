@@ -538,4 +538,36 @@ extension FetchPolicyUtils on FetchPolicy {
 
     return result;
   }
+
+  Stream<T> stream<T>({
+    required String label,
+    required Future<T> Function() remote,
+    required Future<T> Function() getLocal,
+    required Future<void> Function(T) setLocal,
+    // Duration timeout = const Duration(seconds: 3),
+  }) async* {
+    debugPrint('fetch policy: $label, $name');
+    T? result;
+
+    if (isCache) result = await getLocal();
+
+    if (isNetwork) {
+      try {
+        debugPrint('fetching remote...');
+        result = await remote();
+        if (isCache && result != null) {
+          debugPrint('setting cache...');
+          await setLocal(result);
+        }
+      } catch (e) {
+        debugPrint('error remote... $e');
+        if (this == FetchPolicy.networkOnly) {
+          throw Exception('Failed to get $e');
+        }
+      }
+    }
+
+    if (result == null) throw Exception('Failed to get');
+    yield result;
+  }
 }
