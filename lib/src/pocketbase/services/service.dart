@@ -507,7 +507,7 @@ extension DataPolicyUtils on DataPolicy {
     required Future<void> Function(T) setLocal,
     // Duration timeout = const Duration(seconds: 3),
   }) async {
-    debugPrint('fetch policy: $label, $name');
+    debugPrint('data policy: $label, $name');
     T? result;
 
     if (isNetwork) {
@@ -546,7 +546,7 @@ extension DataPolicyUtils on DataPolicy {
     required Future<void> Function(T) setLocal,
     // Duration timeout = const Duration(seconds: 3),
   }) async* {
-    debugPrint('fetch policy: $label, $name');
+    debugPrint('data policy: $label, $name');
     T? result;
 
     if (isCache) result = await getLocal();
