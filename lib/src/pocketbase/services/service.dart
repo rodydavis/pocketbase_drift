@@ -338,9 +338,14 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
           'isNew': !saved ? true : null,
         },
       );
-      result = itemFactoryFunc(data);
       // TODO: Save files for offline
-      
+      // for (var i = 0; i < files.length; i++) {
+        
+      // }
+      // final items = files.map(
+      //   (e) => e.finalize().toBytes(),
+      // );
+      result = itemFactoryFunc(data);
     }
 
     return result!;
