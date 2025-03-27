@@ -290,8 +290,6 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
     M? result;
     bool saved = false;
 
-    // TODO: Save files for offline
-
     if (dataPolicy.isNetwork) {
       try {
         try {
@@ -331,6 +329,9 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
     }
 
     if (dataPolicy.isCache) {
+      // TODO: Save files for offline
+      
+
       final data = await client.db.$create(
         service,
         {
