@@ -342,7 +342,7 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
       final items = <Uint8List>[];
       for (var i = 0; i < files.length; i++) {
         final item = await files[i].finalize().toBytes();
-        items.add(item);
+        await client.db.setFile(data['id'], '${files[i].field}$i', item);
       }
 
       result = itemFactoryFunc(data);
