@@ -343,7 +343,7 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
       final items = <Uint8List>[];
       for (var i = 0; i < files.length; i++) {
         final item = await files[i].finalize().toBytes();
-        await client.db.setFile(data['id'], '${files[i].field}$i', item);
+        await client.db.setFile(data['id'], '${files[i].filename}', item);
       }
 
       result = itemFactoryFunc(data);
@@ -377,8 +377,6 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
     // );
     M? result;
     bool saved = false;
-
-    // TODO: Save files for offline
 
     if (dataPolicy.isNetwork) {
       try {
@@ -428,6 +426,8 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
           'isNew': false,
         },
       );
+      // Save files for offline
+      // ?
       result = itemFactoryFunc(data);
     }
 
