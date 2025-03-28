@@ -544,35 +544,38 @@ extension DataPolicyUtils on DataPolicy {
     return result;
   }
 
-  Stream<T> stream<T>({
-    required String label,
-    required Future<T> Function() remote,
-    required Future<T> Function() getLocal,
-    required Future<void> Function(T) setLocal,
-    // Duration timeout = const Duration(seconds: 3),
-  }) async* {
-    debugPrint('data policy: $label, $name');
-    T? result;
+  // Stream<T> stream<T>({
+  //   required String label,
+  //   required Future<T> Function() remote,
+  //   required Future<T> Function() getLocal,
+  //   required Future<void> Function(T) setLocal,
+  //   // Duration timeout = const Duration(seconds: 3),
+  // }) async* {
+  //   debugPrint('data policy: $label, $name');
+  //   T? result;
 
-    if (isCache) result = await getLocal();
+  //   if (isCache) {
+  //     result = await getLocal();
+  //     if (result != null) yield result;
+  //   }
 
-    if (isNetwork) {
-      try {
-        debugPrint('fetching remote...');
-        result = await remote();
-        if (isCache && result != null) {
-          debugPrint('setting cache...');
-          await setLocal(result);
-        }
-      } catch (e) {
-        debugPrint('error remote... $e');
-        if (this == DataPolicy.networkOnly) {
-          throw Exception('Failed to get $e');
-        }
-      }
-    }
+  //   if (isNetwork) {
+  //     try {
+  //       debugPrint('fetching remote...');
+  //       result = await remote();
+  //       if (isCache && result != null) {
+  //         debugPrint('setting cache...');
+  //         await setLocal(result);
+  //       }
+  //     } catch (e) {
+  //       debugPrint('error remote... $e');
+  //       if (this == DataPolicy.networkOnly) {
+  //         throw Exception('Failed to get $e');
+  //       }
+  //     }
+  //   }
 
-    if (result == null) throw Exception('Failed to get');
-    yield result;
-  }
+  //   if (result == null) throw Exception('Failed to get');
+  //   yield result;
+  // }
 }
