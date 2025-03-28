@@ -27,6 +27,7 @@ class $FileService extends FileService {
     if (details == null && record == null) {
       throw 'Add either file details or record, both parameters cannot be null';
     }
+
     final collectionId = details?.collectionIdOrName ?? record!.collectionName;
     final recordId = details?.recordId ?? record!.id;
     final name = details?.filename ?? filename!;

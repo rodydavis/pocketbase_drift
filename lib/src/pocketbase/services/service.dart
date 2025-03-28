@@ -340,10 +340,10 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
         },
       );
       // Save files for offline
-      for (var i = 0; i < files.length; i++) {
-        final item = await files[i].finalize().toBytes();
-        await client.db.setFile(data['id'], '${files[i].filename}', item);
-      }
+      // for (var i = 0; i < files.length; i++) {
+      //   final item = await files[i].finalize().toBytes();
+      //   await client.db.setFile(data['id'], '${files[i].filename}', item);
+      // }
 
       result = itemFactoryFunc(data);
     }
