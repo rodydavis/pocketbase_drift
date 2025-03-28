@@ -340,9 +340,16 @@ class DataBase extends _$DataBase {
         }
       }
       if (field.type == 'email') {
-        if (value != null && value is! String) {
-          // TODO: Regex to validate email?
-          throw Exception('Field ${field.name} must be a valid email');
+        if (value != null) {
+          if (value is! String) {
+            throw Exception('Field ${field.name} must be a valid email');
+          }
+          final pattern =
+              r'^(([^<>()[\]\\.,;:\s@\"]+(\.[^<>()[\]\\.,;:\s@\"]+)*)|(\".+\"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$';
+          final isEmail = RegExp(pattern).hasMatch(value);
+          if (!isEmail) {
+            throw Exception('Field ${field.name} must be a valid email');
+          }
         }
       }
       if (field.type == 'select' ||
