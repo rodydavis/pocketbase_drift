@@ -83,8 +83,8 @@ class $PocketBase extends PocketBase {
   // @override
   // $AdminsService get admins => $AdminsService(this);
 
-  @override
-  $FileService get files => $FileService(this);
+  // @override
+  // $FileService get files => $FileService(this);
 
   // @override
   // $RealtimeService get realtime => $RealtimeService(this);
