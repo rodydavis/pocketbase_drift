@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:drift/drift.dart';
-import 'package:flutter/foundation.dart';
 
 import '../../../pocketbase_drift.dart';
 
@@ -26,8 +25,11 @@ class $RecordService extends RecordService with ServiceMixin<RecordModel> {
   }
 
   Selectable<RecordModel> pending() {
+    // This query now correctly fetches only records that are unsynced
+    // AND are NOT marked as local-only.
     return client.db
-        .$query(service, filter: 'synced = false')
+        .$query(service,
+            filter: "synced = false AND (noSync IS NULL OR noSync = false)")
         .map(itemFactoryFunc);
   }
 
@@ -38,38 +40,79 @@ class $RecordService extends RecordService with ServiceMixin<RecordModel> {
   }) async* {
     final items = await pending().get();
     final total = items.length;
+
+    client.logger
+        .info('Starting retry for $total pending items in service: $service');
     yield RetryProgressEvent(current: 0, total: total);
+
+    if (total == 0) {
+      return;
+    }
+
     for (var i = 0; i < total; i++) {
       final item = items[i];
       try {
-        final id = item.id;
+        final tempId = item.id;
+        client.logger.fine('Retrying item $tempId (${i + 1}/$total)');
+
+        // The record was marked for deletion while offline.
         if (item.data['deleted'] == true) {
           await delete(
-            id,
-            body: item.toJson(),
+            tempId,
+            requestPolicy: RequestPolicy.cacheAndNetwork,
             query: query,
             headers: headers,
           );
-        } else if (item.data['new'] == true) {
-          await create(
-            body: item.toJson(),
+          client.logger.fine('Successfully synced deletion for item $tempId');
+
+          // The record was newly created offline.
+        } else if (item.data['isNew'] == true) {
+          // Prepare body for creation by removing server-generated and local-only fields.
+          final createBody = Map<String, dynamic>.from(item.toJson());
+          createBody.remove('id');
+          createBody.remove('created');
+          createBody.remove('updated');
+          createBody.remove('collectionId');
+          createBody.remove('collectionName');
+          createBody.remove('expand');
+          createBody.remove('synced');
+          createBody.remove('isNew');
+          createBody.remove('deleted');
+
+          // Create the record on the server. RequestPolicy.cacheAndNetwork will
+          // automatically save the new server-authoritative record to the local DB.
+          final newRecord = await create(
+            body: createBody,
+            requestPolicy: RequestPolicy.cacheAndNetwork,
             query: query,
             headers: headers,
           );
+
+          // Clean up the old record that had the temporary ID.
+          await client.db.$delete(service, tempId);
+          client.logger.fine(
+              'Successfully synced new item. Replaced temp ID $tempId with server ID ${newRecord.id}');
+
+          // The record was an existing one that was updated offline.
         } else {
           await update(
-            id,
+            tempId,
             body: item.toJson(),
+            requestPolicy: RequestPolicy.cacheAndNetwork,
             query: query,
             headers: headers,
           );
+          client.logger.fine('Successfully synced update for item $tempId');
         }
       } catch (e) {
-        debugPrint('error retry $item: $e');
+        client.logger
+            .warning('Error retrying local change for item ${item.id}', e);
+        // Continue with other items even if one fails
       }
       yield RetryProgressEvent(current: i + 1, total: total);
     }
-    yield RetryProgressEvent(current: total, total: total);
+
+    client.logger.info('Completed retry for service: $service');
   }
 
   @override
@@ -128,25 +171,28 @@ class $RecordService extends RecordService with ServiceMixin<RecordModel> {
 
   Stream<RecordModel?> watchRecord(
     String id, {
-    DataPolicy dataPolicy = DataPolicy.cacheAndNetwork,
+    RequestPolicy requestPolicy = RequestPolicy.cacheAndNetwork,
   }) {
     final controller = StreamController<RecordModel?>(
       onListen: () async {
-        if (dataPolicy.isNetwork) {
+        if (requestPolicy.isNetwork) {
           try {
             await subscribe(id, (e) {});
           } catch (e) {
-            debugPrint('error subscribe $service $id: $e');
+            client.logger
+                .warning('Error subscribing to record $service/$id', e);
           }
         }
-        await getOneOrNull(id, dataPolicy: dataPolicy);
+        await getOneOrNull(id, requestPolicy: requestPolicy);
       },
       onCancel: () async {
-        if (dataPolicy.isNetwork) {
+        if (requestPolicy.isNetwork) {
           try {
             await unsubscribe(id);
           } catch (e) {
-            debugPrint('error unsubscribe $service $id: $e');
+            client.logger.fine(
+                'Error unsubscribing from record $service/$id (may be intentional)',
+                e);
           }
         }
       },
@@ -167,33 +213,36 @@ class $RecordService extends RecordService with ServiceMixin<RecordModel> {
     String? filter,
     String? sort,
     String? fields,
-    DataPolicy dataPolicy = DataPolicy.cacheAndNetwork,
+    RequestPolicy requestPolicy = RequestPolicy.cacheAndNetwork,
   }) {
     final controller = StreamController<List<RecordModel>>(
       onListen: () async {
-        if (dataPolicy.isNetwork) {
+        if (requestPolicy.isNetwork) {
           try {
             await subscribe('*', (e) {});
           } catch (e) {
-            debugPrint('error subscribe $service: $e');
+            client.logger
+                .warning('Error subscribing to collection $service', e);
           }
         }
         final items = await getFullList(
-          dataPolicy: dataPolicy,
+          requestPolicy: requestPolicy,
           filter: filter,
           expand: expand,
           sort: sort,
           fields: fields,
         );
-        debugPrint(
-            '$service ${dataPolicy.name} realtime full list ${items.length}');
+        client.logger.fine(
+            'Realtime initial full list for "$service" [${requestPolicy.name}]: ${items.length} items');
       },
       onCancel: () async {
-        if (dataPolicy.isNetwork) {
+        if (requestPolicy.isNetwork) {
           try {
             await unsubscribe('*');
           } catch (e) {
-            debugPrint('error unsubscribe $service: $e');
+            client.logger.fine(
+                'Error unsubscribing from collection $service (may be intentional)',
+                e);
           }
         }
       },

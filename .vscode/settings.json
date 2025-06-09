@@ -3,5 +3,6 @@
         "daos",
         "Insertable",
         "Jsonable"
-    ]
+    ],
+    "gitdoc.enabled": false
 }

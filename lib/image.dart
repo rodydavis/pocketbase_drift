@@ -39,7 +39,7 @@ class PocketBaseImageProvider extends ImageProvider<PocketBaseImageProvider> {
   }
 
   Future<ui.Codec> _loadAsync(PocketBaseImageProvider key, decode) async {
-    final bytes = await databaseOrDownload();
+    final bytes = await download();
     if (bytes == null || bytes.isEmpty) {
       PaintingBinding.instance.imageCache.evict(key);
       throw StateError(
@@ -77,60 +77,10 @@ class PocketBaseImageProvider extends ImageProvider<PocketBaseImageProvider> {
     );
   }
 
-  Future<Uri> url() async {
-    final token = !this.token ? null : await client.files.getToken();
-    return client.files.getUrl(record, filename, token: token);
-  }
-
   Future<Uint8List?> download() async {
-    final client = this.client.httpClientFactory();
-    final url = await this.url();
-    debugPrint('url: $url');
-    final response = await client.get(url);
-    if (response.statusCode == 200) {
-      return response.bodyBytes;
-    } else {
-      return null;
-    }
-  }
-
-  Future<BlobFile?> database() async {
-    final client =
-        await this.client.db.getFile(record.id, filename).getSingleOrNull();
-    if (client != null) {
-      return client;
-    } else {
-      return null;
-    }
-  }
-
-  Future<Uint8List?> databaseOrDownload() async {
-    BlobFile? file = await database();
-    final now = DateTime.now();
-    bool needsUpdate = file?.data == null;
-    if (file != null &&
-        file.expiration != null &&
-        file.expiration!.isBefore(now)) {
-      debugPrint(
-          'File ${record.id} ${record.collectionName} $filename expired, downloading again');
-      needsUpdate = true;
-    }
-    if (needsUpdate) {
-      try {
-        final bytes = await download();
-        if (bytes != null) {
-          file = await client.db.setFile(
-            record.id,
-            filename,
-            bytes,
-            expires: expireAfter != null ? now.add(expireAfter!) : null,
-          );
-        }
-      } catch (e) {
-        debugPrint(
-            'Error downloading file ${record.id} ${record.collectionName} $filename: $e');
-      }
-    }
-    return file?.data;
+    // The image provider's entire cache/network logic is now handled by the FileService.
+    // We use a network-first policy by default for images to ensure they are up-to-date.
+    return client.files.get(record, filename,
+        requestPolicy: RequestPolicy.cacheAndNetwork, expireAfter: expireAfter);
   }
 }

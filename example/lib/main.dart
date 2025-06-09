@@ -16,7 +16,7 @@ import 'widgets/data_view.dart';
 import 'widgets/full_text_search.dart';
 import 'widgets/pending_changes.dart';
 
-const url = 'http://127.0.0.1:3000';
+const url = 'http://127.0.0.1:8090';
 final collections = [...offlineCollections]
     .map((e) => CollectionModel.fromJson(jsonDecode(jsonEncode(e))))
     .toList();
@@ -28,7 +28,6 @@ void main() async {
     url,
     inMemory: true,
     authStore: $AuthStore((await SharedPreferences.getInstance()), 'pb_auth'),
-    httpClientFactory: () => PocketBaseHttpClient.retry(retries: 1),
     connection: connect('pocketbase.db', inMemory: true),
   )..logging = kDebugMode;
 
@@ -76,7 +75,7 @@ class _ExampleState extends State<Example> {
     debugPrint('select: $id');
     col = await widget.client.collections.getOne(
       id,
-      dataPolicy: DataPolicy.cacheOnly,
+      requestPolicy: RequestPolicy.cacheOnly,
     );
     debugPrint('col: $col');
     collection = widget.client.collection(col!.name);
@@ -175,7 +174,6 @@ class _ExampleState extends State<Example> {
               onPressed: () async {
                 final items = LOCAL_TODOS
                     .map((e) => RecordModel({
-                          'id': widget.client.db.generateId(),
                           'created': DateTime.now().toIso8601String(),
                           'updated': DateTime.now().toIso8601String(),
                           'data': {
@@ -203,26 +201,6 @@ class _ExampleState extends State<Example> {
                       ),
                     );
                   },
-          ),
-          const SizedBox(width: 8),
-          DropdownButton(
-            value: PocketBaseHttpClient.offline,
-            items: const [
-              DropdownMenuItem(
-                value: true,
-                child: Text('Offline'),
-              ),
-              DropdownMenuItem(
-                value: false,
-                child: Text('Online'),
-              ),
-            ],
-            onChanged: (value) async {
-              PocketBaseHttpClient.offline = value!;
-              if (mounted) {
-                setState(() {});
-              }
-            },
           ),
           const SizedBox(width: 8),
           DropdownButton(
@@ -370,7 +348,7 @@ class _ExampleState extends State<Example> {
           if (result != null) {
             await collection!.create(
               body: result,
-              // dataPolicy: DataPolicy.cacheOnly,
+              // requestPolicy: RequestPolicy.cacheOnly,
             );
             if (mounted) setState(() {});
           }

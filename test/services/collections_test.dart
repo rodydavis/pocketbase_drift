@@ -2,7 +2,9 @@ import 'dart:convert';
 import 'dart:io' as io;
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:logging/logging.dart';
 
 import 'package:pocketbase_drift/pocketbase_drift.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -15,7 +17,7 @@ void main() {
 
   const username = 'test@admin.com';
   const password = 'Password123';
-  const url = 'http://127.0.0.1:3000';
+  const url = 'http://127.0.0.1:8090';
 
   late final $PocketBase client;
   late final db = client.db;
@@ -25,13 +27,36 @@ void main() {
 
   group('collections service', () {
     setUpAll(() async {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      SharedPreferences.setMockInitialValues({});
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+        const MethodChannel('dev.fluttercommunity.plus/connectivity'),
+        (MethodCall methodCall) async {
+          if (methodCall.method == 'check') {
+            return <String>['wifi']; // Report that we are connected to wifi
+          }
+          return null;
+        },
+      );
+
+      hierarchicalLoggingEnabled = true;
+      Logger.root.level = Level.ALL;
+      Logger.root.onRecord.listen((record) {
+        // ignore: avoid_print
+        print('${record.level.name}: ${record.time}: ${record.message}');
+        if (record.error != null) {
+          // ignore: avoid_print
+          print('Error: ${record.error}');
+        }
+      });
+
       client = $PocketBase.database(
         url,
         authStore:
             $AuthStore((await SharedPreferences.getInstance()), 'pb_auth'),
         inMemory: true,
         connection: DatabaseConnection(NativeDatabase.memory()),
-        httpClientFactory: () => PocketBaseHttpClient.retry(retries: 1),
       );
 
       await client.collection('_superusers').authWithPassword(
@@ -48,7 +73,7 @@ void main() {
 
     test('check if added locally', () async {
       final local = await client.collections.getFullList(
-        dataPolicy: DataPolicy.cacheOnly,
+        requestPolicy: RequestPolicy.cacheOnly,
       );
 
       expect(local, isNotEmpty);
@@ -60,7 +85,7 @@ void main() {
 
       final collection = await client.collections.getOneOrNull(
         collectionId,
-        dataPolicy: DataPolicy.cacheOnly,
+        requestPolicy: RequestPolicy.cacheOnly,
       );
 
       expect(collection != null, true);
@@ -74,7 +99,7 @@ void main() {
 
       final collection = await client.collections.getOneOrNull(
         collectionId,
-        dataPolicy: DataPolicy.networkOnly,
+        requestPolicy: RequestPolicy.networkOnly,
       );
 
       expect(collection != null, true);
@@ -83,19 +108,19 @@ void main() {
     });
 
     group('get by name or id', () {
-      for (final dataPolicy in [
-        DataPolicy.networkOnly,
-        DataPolicy.cacheAndNetwork,
-        DataPolicy.cacheOnly,
+      for (final requestPolicy in [
+        RequestPolicy.networkOnly,
+        RequestPolicy.cacheAndNetwork,
+        RequestPolicy.cacheOnly,
       ]) {
-        test(dataPolicy.name, () async {
+        test(requestPolicy.name, () async {
           const targetName = 'todo';
           final targetId =
               collections.firstWhere((e) => e.name == targetName).id;
 
           final idList = await client.collections.getList(
             filter: 'id = "$targetId"',
-            dataPolicy: dataPolicy,
+            requestPolicy: requestPolicy,
           );
 
           expect(idList.items.isNotEmpty, true);
@@ -104,7 +129,7 @@ void main() {
 
           final nameList = await client.collections.getList(
             filter: 'name = "$targetName"',
-            dataPolicy: dataPolicy,
+            requestPolicy: requestPolicy,
           );
 
           expect(nameList.items.isNotEmpty, true);
@@ -113,7 +138,7 @@ void main() {
 
           final itemId = await client.collections.getFirstListItem(
             'id = "$targetId" || name = "$targetId"',
-            dataPolicy: dataPolicy,
+            requestPolicy: requestPolicy,
           );
 
           expect(itemId.id, targetId);
@@ -121,7 +146,7 @@ void main() {
 
           final itemName = await client.collections.getFirstListItem(
             'id = "$targetName" || name = "$targetName"',
-            dataPolicy: dataPolicy,
+            requestPolicy: requestPolicy,
           );
 
           expect(itemName.id, targetId);

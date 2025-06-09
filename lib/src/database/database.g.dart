@@ -15,7 +15,6 @@ class $ServicesTable extends Services with TableInfo<$ServicesTable, Service> {
       type: DriftSqlType.string,
       requiredDuringInsert: false,
       clientDefault: newId);
-  static const VerificationMeta _dataMeta = const VerificationMeta('data');
   @override
   late final GeneratedColumnWithTypeConverter<Map<String, dynamic>, String>
       data = GeneratedColumn<String>('data', aliasedName, false,
@@ -42,9 +41,10 @@ class $ServicesTable extends Services with TableInfo<$ServicesTable, Service> {
   @override
   List<GeneratedColumn> get $columns => [id, data, service, created, updated];
   @override
-  String get aliasedName => _alias ?? 'Services';
+  String get aliasedName => _alias ?? actualTableName;
   @override
-  String get actualTableName => 'Services';
+  String get actualTableName => $name;
+  static const String $name = 'Services';
   @override
   VerificationContext validateIntegrity(Insertable<Service> instance,
       {bool isInserting = false}) {
@@ -53,7 +53,6 @@ class $ServicesTable extends Services with TableInfo<$ServicesTable, Service> {
     if (data.containsKey('id')) {
       context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
     }
-    context.handle(_dataMeta, const VerificationResult.success());
     if (data.containsKey('service')) {
       context.handle(_serviceMeta,
           service.isAcceptableOrUnknown(data['service']!, _serviceMeta));
@@ -116,8 +115,7 @@ class Service extends DataClass implements Insertable<Service> {
     final map = <String, Expression>{};
     map['id'] = Variable<String>(id);
     {
-      final converter = $ServicesTable.$converterdata;
-      map['data'] = Variable<String>(converter.toSql(data));
+      map['data'] = Variable<String>($ServicesTable.$converterdata.toSql(data));
     }
     map['service'] = Variable<String>(service);
     if (!nullToAbsent || created != null) {
@@ -179,6 +177,16 @@ class Service extends DataClass implements Insertable<Service> {
         created: created.present ? created.value : this.created,
         updated: updated.present ? updated.value : this.updated,
       );
+  Service copyWithCompanion(ServicesCompanion data) {
+    return Service(
+      id: data.id.present ? data.id.value : this.id,
+      data: data.data.present ? data.data.value : this.data,
+      service: data.service.present ? data.service.value : this.service,
+      created: data.created.present ? data.created.value : this.created,
+      updated: data.updated.present ? data.updated.value : this.updated,
+    );
+  }
+
   @override
   String toString() {
     return (StringBuffer('Service(')
@@ -270,8 +278,8 @@ class ServicesCompanion extends UpdateCompanion<Service> {
       map['id'] = Variable<String>(id.value);
     }
     if (data.present) {
-      final converter = $ServicesTable.$converterdata;
-      map['data'] = Variable<String>(converter.toSql(data.value));
+      map['data'] =
+          Variable<String>($ServicesTable.$converterdata.toSql(data.value));
     }
     if (service.present) {
       map['service'] = Variable<String>(service.value);
@@ -304,8 +312,8 @@ class ServicesCompanion extends UpdateCompanion<Service> {
 
 class TextEntries extends Table
     with
-        TableInfo<TextEntries, TextEntrie>,
-        VirtualTableInfo<TextEntries, TextEntrie> {
+        TableInfo<TextEntries, TextEntry>,
+        VirtualTableInfo<TextEntries, TextEntry> {
   @override
   final GeneratedDatabase attachedDatabase;
   final String? _alias;
@@ -319,11 +327,12 @@ class TextEntries extends Table
   @override
   List<GeneratedColumn> get $columns => [data];
   @override
-  String get aliasedName => _alias ?? 'text_entries';
+  String get aliasedName => _alias ?? actualTableName;
   @override
-  String get actualTableName => 'text_entries';
+  String get actualTableName => $name;
+  static const String $name = 'text_entries';
   @override
-  VerificationContext validateIntegrity(Insertable<TextEntrie> instance,
+  VerificationContext validateIntegrity(Insertable<TextEntry> instance,
       {bool isInserting = false}) {
     final context = VerificationContext();
     final data = instance.toColumns(true);
@@ -339,9 +348,9 @@ class TextEntries extends Table
   @override
   Set<GeneratedColumn> get $primaryKey => const {};
   @override
-  TextEntrie map(Map<String, dynamic> data, {String? tablePrefix}) {
+  TextEntry map(Map<String, dynamic> data, {String? tablePrefix}) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
-    return TextEntrie(
+    return TextEntry(
       data: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}data'])!,
     );
@@ -359,9 +368,9 @@ class TextEntries extends Table
       'fts5(data, content=services, content_rowid=rowid)';
 }
 
-class TextEntrie extends DataClass implements Insertable<TextEntrie> {
+class TextEntry extends DataClass implements Insertable<TextEntry> {
   final String data;
-  const TextEntrie({required this.data});
+  const TextEntry({required this.data});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -375,10 +384,10 @@ class TextEntrie extends DataClass implements Insertable<TextEntrie> {
     );
   }
 
-  factory TextEntrie.fromJson(Map<String, dynamic> json,
+  factory TextEntry.fromJson(Map<String, dynamic> json,
       {ValueSerializer? serializer}) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
-    return TextEntrie(
+    return TextEntry(
       data: serializer.fromJson<String>(json['data']),
     );
   }
@@ -390,12 +399,18 @@ class TextEntrie extends DataClass implements Insertable<TextEntrie> {
     };
   }
 
-  TextEntrie copyWith({String? data}) => TextEntrie(
+  TextEntry copyWith({String? data}) => TextEntry(
         data: data ?? this.data,
       );
+  TextEntry copyWithCompanion(TextEntriesCompanion data) {
+    return TextEntry(
+      data: data.data.present ? data.data.value : this.data,
+    );
+  }
+
   @override
   String toString() {
-    return (StringBuffer('TextEntrie(')
+    return (StringBuffer('TextEntry(')
           ..write('data: $data')
           ..write(')'))
         .toString();
@@ -405,11 +420,10 @@ class TextEntrie extends DataClass implements Insertable<TextEntrie> {
   int get hashCode => data.hashCode;
   @override
   bool operator ==(Object other) =>
-      identical(this, other) ||
-      (other is TextEntrie && other.data == this.data);
+      identical(this, other) || (other is TextEntry && other.data == this.data);
 }
 
-class TextEntriesCompanion extends UpdateCompanion<TextEntrie> {
+class TextEntriesCompanion extends UpdateCompanion<TextEntry> {
   final Value<String> data;
   final Value<int> rowid;
   const TextEntriesCompanion({
@@ -420,7 +434,7 @@ class TextEntriesCompanion extends UpdateCompanion<TextEntrie> {
     required String data,
     this.rowid = const Value.absent(),
   }) : data = Value(data);
-  static Insertable<TextEntrie> custom({
+  static Insertable<TextEntry> custom({
     Expression<String>? data,
     Expression<int>? rowid,
   }) {
@@ -516,9 +530,10 @@ class $BlobFilesTable extends BlobFiles
   List<GeneratedColumn> get $columns =>
       [id, recordId, filename, data, expiration, created, updated];
   @override
-  String get aliasedName => _alias ?? 'BlobFiles';
+  String get aliasedName => _alias ?? actualTableName;
   @override
-  String get actualTableName => 'BlobFiles';
+  String get actualTableName => $name;
+  static const String $name = 'BlobFiles';
   @override
   VerificationContext validateIntegrity(Insertable<BlobFile> instance,
       {bool isInserting = false}) {
@@ -688,6 +703,19 @@ class BlobFile extends DataClass implements Insertable<BlobFile> {
         created: created.present ? created.value : this.created,
         updated: updated.present ? updated.value : this.updated,
       );
+  BlobFile copyWithCompanion(BlobFilesCompanion data) {
+    return BlobFile(
+      id: data.id.present ? data.id.value : this.id,
+      recordId: data.recordId.present ? data.recordId.value : this.recordId,
+      filename: data.filename.present ? data.filename.value : this.filename,
+      data: data.data.present ? data.data.value : this.data,
+      expiration:
+          data.expiration.present ? data.expiration.value : this.expiration,
+      created: data.created.present ? data.created.value : this.created,
+      updated: data.updated.present ? data.updated.value : this.updated,
+    );
+  }
+
   @override
   String toString() {
     return (StringBuffer('BlobFile(')
@@ -829,7 +857,7 @@ class BlobFilesCompanion extends UpdateCompanion<BlobFile> {
 
 abstract class _$DataBase extends GeneratedDatabase {
   _$DataBase(QueryExecutor e) : super(e);
-  _$DataBase.connect(DatabaseConnection c) : super.connect(c);
+  $DataBaseManager get managers => $DataBaseManager(this);
   late final $ServicesTable services = $ServicesTable(this);
   late final TextEntries textEntries = TextEntries(this);
   late final Trigger servicesInsert = Trigger(
@@ -851,11 +879,9 @@ abstract class _$DataBase extends GeneratedDatabase {
         readsFrom: {
           textEntries,
           services,
-        }).asyncMap((QueryRow row) async {
-      return SearchResult(
-        record: await services.mapFromRow(row, tablePrefix: 'nested_0'),
-      );
-    });
+        }).asyncMap((QueryRow row) async => SearchResult(
+          record: await services.mapFromRow(row, tablePrefix: 'nested_0'),
+        ));
   }
 
   Selectable<SearchServiceResult> _searchService(String query, String service) {
@@ -868,11 +894,9 @@ abstract class _$DataBase extends GeneratedDatabase {
         readsFrom: {
           textEntries,
           services,
-        }).asyncMap((QueryRow row) async {
-      return SearchServiceResult(
-        record: await services.mapFromRow(row, tablePrefix: 'nested_0'),
-      );
-    });
+        }).asyncMap((QueryRow row) async => SearchServiceResult(
+          record: await services.mapFromRow(row, tablePrefix: 'nested_0'),
+        ));
   }
 
   @override
@@ -913,6 +937,670 @@ abstract class _$DataBase extends GeneratedDatabase {
           ),
         ],
       );
+}
+
+typedef $$ServicesTableCreateCompanionBuilder = ServicesCompanion Function({
+  Value<String> id,
+  required Map<String, dynamic> data,
+  required String service,
+  Value<String?> created,
+  Value<String?> updated,
+  Value<int> rowid,
+});
+typedef $$ServicesTableUpdateCompanionBuilder = ServicesCompanion Function({
+  Value<String> id,
+  Value<Map<String, dynamic>> data,
+  Value<String> service,
+  Value<String?> created,
+  Value<String?> updated,
+  Value<int> rowid,
+});
+
+final class $$ServicesTableReferences
+    extends BaseReferences<_$DataBase, $ServicesTable, Service> {
+  $$ServicesTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static MultiTypedResultKey<$BlobFilesTable, List<BlobFile>>
+      _blobFilesRefsTable(_$DataBase db) =>
+          MultiTypedResultKey.fromTable(db.blobFiles,
+              aliasName:
+                  $_aliasNameGenerator(db.services.id, db.blobFiles.recordId));
+
+  $$BlobFilesTableProcessedTableManager get blobFilesRefs {
+    final manager = $$BlobFilesTableTableManager($_db, $_db.blobFiles)
+        .filter((f) => f.recordId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_blobFilesRefsTable($_db));
+    return ProcessedTableManager(
+        manager.$state.copyWith(prefetchedData: cache));
+  }
+}
+
+class $$ServicesTableFilterComposer
+    extends Composer<_$DataBase, $ServicesTable> {
+  $$ServicesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnFilters(column));
+
+  ColumnWithTypeConverterFilters<Map<String, dynamic>, Map<String, dynamic>,
+          String>
+      get data => $composableBuilder(
+          column: $table.data,
+          builder: (column) => ColumnWithTypeConverterFilters(column));
+
+  ColumnFilters<String> get service => $composableBuilder(
+      column: $table.service, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get created => $composableBuilder(
+      column: $table.created, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get updated => $composableBuilder(
+      column: $table.updated, builder: (column) => ColumnFilters(column));
+
+  Expression<bool> blobFilesRefs(
+      Expression<bool> Function($$BlobFilesTableFilterComposer f) f) {
+    final $$BlobFilesTableFilterComposer composer = $composerBuilder(
+        composer: this,
+        getCurrentColumn: (t) => t.id,
+        referencedTable: $db.blobFiles,
+        getReferencedColumn: (t) => t.recordId,
+        builder: (joinBuilder,
+                {$addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer}) =>
+            $$BlobFilesTableFilterComposer(
+              $db: $db,
+              $table: $db.blobFiles,
+              $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+              joinBuilder: joinBuilder,
+              $removeJoinBuilderFromRootComposer:
+                  $removeJoinBuilderFromRootComposer,
+            ));
+    return f(composer);
+  }
+}
+
+class $$ServicesTableOrderingComposer
+    extends Composer<_$DataBase, $ServicesTable> {
+  $$ServicesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get data => $composableBuilder(
+      column: $table.data, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get service => $composableBuilder(
+      column: $table.service, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get created => $composableBuilder(
+      column: $table.created, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get updated => $composableBuilder(
+      column: $table.updated, builder: (column) => ColumnOrderings(column));
+}
+
+class $$ServicesTableAnnotationComposer
+    extends Composer<_$DataBase, $ServicesTable> {
+  $$ServicesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumnWithTypeConverter<Map<String, dynamic>, String> get data =>
+      $composableBuilder(column: $table.data, builder: (column) => column);
+
+  GeneratedColumn<String> get service =>
+      $composableBuilder(column: $table.service, builder: (column) => column);
+
+  GeneratedColumn<String> get created =>
+      $composableBuilder(column: $table.created, builder: (column) => column);
+
+  GeneratedColumn<String> get updated =>
+      $composableBuilder(column: $table.updated, builder: (column) => column);
+
+  Expression<T> blobFilesRefs<T extends Object>(
+      Expression<T> Function($$BlobFilesTableAnnotationComposer a) f) {
+    final $$BlobFilesTableAnnotationComposer composer = $composerBuilder(
+        composer: this,
+        getCurrentColumn: (t) => t.id,
+        referencedTable: $db.blobFiles,
+        getReferencedColumn: (t) => t.recordId,
+        builder: (joinBuilder,
+                {$addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer}) =>
+            $$BlobFilesTableAnnotationComposer(
+              $db: $db,
+              $table: $db.blobFiles,
+              $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+              joinBuilder: joinBuilder,
+              $removeJoinBuilderFromRootComposer:
+                  $removeJoinBuilderFromRootComposer,
+            ));
+    return f(composer);
+  }
+}
+
+class $$ServicesTableTableManager extends RootTableManager<
+    _$DataBase,
+    $ServicesTable,
+    Service,
+    $$ServicesTableFilterComposer,
+    $$ServicesTableOrderingComposer,
+    $$ServicesTableAnnotationComposer,
+    $$ServicesTableCreateCompanionBuilder,
+    $$ServicesTableUpdateCompanionBuilder,
+    (Service, $$ServicesTableReferences),
+    Service,
+    PrefetchHooks Function({bool blobFilesRefs})> {
+  $$ServicesTableTableManager(_$DataBase db, $ServicesTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ServicesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ServicesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$ServicesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<String> id = const Value.absent(),
+            Value<Map<String, dynamic>> data = const Value.absent(),
+            Value<String> service = const Value.absent(),
+            Value<String?> created = const Value.absent(),
+            Value<String?> updated = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              ServicesCompanion(
+            id: id,
+            data: data,
+            service: service,
+            created: created,
+            updated: updated,
+            rowid: rowid,
+          ),
+          createCompanionCallback: ({
+            Value<String> id = const Value.absent(),
+            required Map<String, dynamic> data,
+            required String service,
+            Value<String?> created = const Value.absent(),
+            Value<String?> updated = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              ServicesCompanion.insert(
+            id: id,
+            data: data,
+            service: service,
+            created: created,
+            updated: updated,
+            rowid: rowid,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) =>
+                  (e.readTable(table), $$ServicesTableReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: ({blobFilesRefs = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [if (blobFilesRefs) db.blobFiles],
+              addJoins: null,
+              getPrefetchedDataCallback: (items) async {
+                return [
+                  if (blobFilesRefs)
+                    await $_getPrefetchedData<Service, $ServicesTable,
+                            BlobFile>(
+                        currentTable: table,
+                        referencedTable:
+                            $$ServicesTableReferences._blobFilesRefsTable(db),
+                        managerFromTypedResult: (p0) =>
+                            $$ServicesTableReferences(db, table, p0)
+                                .blobFilesRefs,
+                        referencedItemsForCurrentItem: (item,
+                                referencedItems) =>
+                            referencedItems.where((e) => e.recordId == item.id),
+                        typedResults: items)
+                ];
+              },
+            );
+          },
+        ));
+}
+
+typedef $$ServicesTableProcessedTableManager = ProcessedTableManager<
+    _$DataBase,
+    $ServicesTable,
+    Service,
+    $$ServicesTableFilterComposer,
+    $$ServicesTableOrderingComposer,
+    $$ServicesTableAnnotationComposer,
+    $$ServicesTableCreateCompanionBuilder,
+    $$ServicesTableUpdateCompanionBuilder,
+    (Service, $$ServicesTableReferences),
+    Service,
+    PrefetchHooks Function({bool blobFilesRefs})>;
+typedef $TextEntriesCreateCompanionBuilder = TextEntriesCompanion Function({
+  required String data,
+  Value<int> rowid,
+});
+typedef $TextEntriesUpdateCompanionBuilder = TextEntriesCompanion Function({
+  Value<String> data,
+  Value<int> rowid,
+});
+
+class $TextEntriesFilterComposer extends Composer<_$DataBase, TextEntries> {
+  $TextEntriesFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get data => $composableBuilder(
+      column: $table.data, builder: (column) => ColumnFilters(column));
+}
+
+class $TextEntriesOrderingComposer extends Composer<_$DataBase, TextEntries> {
+  $TextEntriesOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get data => $composableBuilder(
+      column: $table.data, builder: (column) => ColumnOrderings(column));
+}
+
+class $TextEntriesAnnotationComposer extends Composer<_$DataBase, TextEntries> {
+  $TextEntriesAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get data =>
+      $composableBuilder(column: $table.data, builder: (column) => column);
+}
+
+class $TextEntriesTableManager extends RootTableManager<
+    _$DataBase,
+    TextEntries,
+    TextEntry,
+    $TextEntriesFilterComposer,
+    $TextEntriesOrderingComposer,
+    $TextEntriesAnnotationComposer,
+    $TextEntriesCreateCompanionBuilder,
+    $TextEntriesUpdateCompanionBuilder,
+    (TextEntry, BaseReferences<_$DataBase, TextEntries, TextEntry>),
+    TextEntry,
+    PrefetchHooks Function()> {
+  $TextEntriesTableManager(_$DataBase db, TextEntries table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $TextEntriesFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $TextEntriesOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $TextEntriesAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<String> data = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              TextEntriesCompanion(
+            data: data,
+            rowid: rowid,
+          ),
+          createCompanionCallback: ({
+            required String data,
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              TextEntriesCompanion.insert(
+            data: data,
+            rowid: rowid,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ));
+}
+
+typedef $TextEntriesProcessedTableManager = ProcessedTableManager<
+    _$DataBase,
+    TextEntries,
+    TextEntry,
+    $TextEntriesFilterComposer,
+    $TextEntriesOrderingComposer,
+    $TextEntriesAnnotationComposer,
+    $TextEntriesCreateCompanionBuilder,
+    $TextEntriesUpdateCompanionBuilder,
+    (TextEntry, BaseReferences<_$DataBase, TextEntries, TextEntry>),
+    TextEntry,
+    PrefetchHooks Function()>;
+typedef $$BlobFilesTableCreateCompanionBuilder = BlobFilesCompanion Function({
+  Value<int> id,
+  required String recordId,
+  required String filename,
+  required Uint8List data,
+  Value<DateTime?> expiration,
+  Value<String?> created,
+  Value<String?> updated,
+});
+typedef $$BlobFilesTableUpdateCompanionBuilder = BlobFilesCompanion Function({
+  Value<int> id,
+  Value<String> recordId,
+  Value<String> filename,
+  Value<Uint8List> data,
+  Value<DateTime?> expiration,
+  Value<String?> created,
+  Value<String?> updated,
+});
+
+final class $$BlobFilesTableReferences
+    extends BaseReferences<_$DataBase, $BlobFilesTable, BlobFile> {
+  $$BlobFilesTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $ServicesTable _recordIdTable(_$DataBase db) => db.services
+      .createAlias($_aliasNameGenerator(db.blobFiles.recordId, db.services.id));
+
+  $$ServicesTableProcessedTableManager get recordId {
+    final $_column = $_itemColumn<String>('recordId')!;
+
+    final manager = $$ServicesTableTableManager($_db, $_db.services)
+        .filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_recordIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+        manager.$state.copyWith(prefetchedData: [item]));
+  }
+}
+
+class $$BlobFilesTableFilterComposer
+    extends Composer<_$DataBase, $BlobFilesTable> {
+  $$BlobFilesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get filename => $composableBuilder(
+      column: $table.filename, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<Uint8List> get data => $composableBuilder(
+      column: $table.data, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get expiration => $composableBuilder(
+      column: $table.expiration, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get created => $composableBuilder(
+      column: $table.created, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get updated => $composableBuilder(
+      column: $table.updated, builder: (column) => ColumnFilters(column));
+
+  $$ServicesTableFilterComposer get recordId {
+    final $$ServicesTableFilterComposer composer = $composerBuilder(
+        composer: this,
+        getCurrentColumn: (t) => t.recordId,
+        referencedTable: $db.services,
+        getReferencedColumn: (t) => t.id,
+        builder: (joinBuilder,
+                {$addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer}) =>
+            $$ServicesTableFilterComposer(
+              $db: $db,
+              $table: $db.services,
+              $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+              joinBuilder: joinBuilder,
+              $removeJoinBuilderFromRootComposer:
+                  $removeJoinBuilderFromRootComposer,
+            ));
+    return composer;
+  }
+}
+
+class $$BlobFilesTableOrderingComposer
+    extends Composer<_$DataBase, $BlobFilesTable> {
+  $$BlobFilesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get filename => $composableBuilder(
+      column: $table.filename, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<Uint8List> get data => $composableBuilder(
+      column: $table.data, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get expiration => $composableBuilder(
+      column: $table.expiration, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get created => $composableBuilder(
+      column: $table.created, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get updated => $composableBuilder(
+      column: $table.updated, builder: (column) => ColumnOrderings(column));
+
+  $$ServicesTableOrderingComposer get recordId {
+    final $$ServicesTableOrderingComposer composer = $composerBuilder(
+        composer: this,
+        getCurrentColumn: (t) => t.recordId,
+        referencedTable: $db.services,
+        getReferencedColumn: (t) => t.id,
+        builder: (joinBuilder,
+                {$addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer}) =>
+            $$ServicesTableOrderingComposer(
+              $db: $db,
+              $table: $db.services,
+              $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+              joinBuilder: joinBuilder,
+              $removeJoinBuilderFromRootComposer:
+                  $removeJoinBuilderFromRootComposer,
+            ));
+    return composer;
+  }
+}
+
+class $$BlobFilesTableAnnotationComposer
+    extends Composer<_$DataBase, $BlobFilesTable> {
+  $$BlobFilesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get filename =>
+      $composableBuilder(column: $table.filename, builder: (column) => column);
+
+  GeneratedColumn<Uint8List> get data =>
+      $composableBuilder(column: $table.data, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get expiration => $composableBuilder(
+      column: $table.expiration, builder: (column) => column);
+
+  GeneratedColumn<String> get created =>
+      $composableBuilder(column: $table.created, builder: (column) => column);
+
+  GeneratedColumn<String> get updated =>
+      $composableBuilder(column: $table.updated, builder: (column) => column);
+
+  $$ServicesTableAnnotationComposer get recordId {
+    final $$ServicesTableAnnotationComposer composer = $composerBuilder(
+        composer: this,
+        getCurrentColumn: (t) => t.recordId,
+        referencedTable: $db.services,
+        getReferencedColumn: (t) => t.id,
+        builder: (joinBuilder,
+                {$addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer}) =>
+            $$ServicesTableAnnotationComposer(
+              $db: $db,
+              $table: $db.services,
+              $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+              joinBuilder: joinBuilder,
+              $removeJoinBuilderFromRootComposer:
+                  $removeJoinBuilderFromRootComposer,
+            ));
+    return composer;
+  }
+}
+
+class $$BlobFilesTableTableManager extends RootTableManager<
+    _$DataBase,
+    $BlobFilesTable,
+    BlobFile,
+    $$BlobFilesTableFilterComposer,
+    $$BlobFilesTableOrderingComposer,
+    $$BlobFilesTableAnnotationComposer,
+    $$BlobFilesTableCreateCompanionBuilder,
+    $$BlobFilesTableUpdateCompanionBuilder,
+    (BlobFile, $$BlobFilesTableReferences),
+    BlobFile,
+    PrefetchHooks Function({bool recordId})> {
+  $$BlobFilesTableTableManager(_$DataBase db, $BlobFilesTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$BlobFilesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$BlobFilesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$BlobFilesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            Value<String> recordId = const Value.absent(),
+            Value<String> filename = const Value.absent(),
+            Value<Uint8List> data = const Value.absent(),
+            Value<DateTime?> expiration = const Value.absent(),
+            Value<String?> created = const Value.absent(),
+            Value<String?> updated = const Value.absent(),
+          }) =>
+              BlobFilesCompanion(
+            id: id,
+            recordId: recordId,
+            filename: filename,
+            data: data,
+            expiration: expiration,
+            created: created,
+            updated: updated,
+          ),
+          createCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            required String recordId,
+            required String filename,
+            required Uint8List data,
+            Value<DateTime?> expiration = const Value.absent(),
+            Value<String?> created = const Value.absent(),
+            Value<String?> updated = const Value.absent(),
+          }) =>
+              BlobFilesCompanion.insert(
+            id: id,
+            recordId: recordId,
+            filename: filename,
+            data: data,
+            expiration: expiration,
+            created: created,
+            updated: updated,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (
+                    e.readTable(table),
+                    $$BlobFilesTableReferences(db, table, e)
+                  ))
+              .toList(),
+          prefetchHooksCallback: ({recordId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins: <
+                  T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic>>(state) {
+                if (recordId) {
+                  state = state.withJoin(
+                    currentTable: table,
+                    currentColumn: table.recordId,
+                    referencedTable:
+                        $$BlobFilesTableReferences._recordIdTable(db),
+                    referencedColumn:
+                        $$BlobFilesTableReferences._recordIdTable(db).id,
+                  ) as T;
+                }
+
+                return state;
+              },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ));
+}
+
+typedef $$BlobFilesTableProcessedTableManager = ProcessedTableManager<
+    _$DataBase,
+    $BlobFilesTable,
+    BlobFile,
+    $$BlobFilesTableFilterComposer,
+    $$BlobFilesTableOrderingComposer,
+    $$BlobFilesTableAnnotationComposer,
+    $$BlobFilesTableCreateCompanionBuilder,
+    $$BlobFilesTableUpdateCompanionBuilder,
+    (BlobFile, $$BlobFilesTableReferences),
+    BlobFile,
+    PrefetchHooks Function({bool recordId})>;
+
+class $DataBaseManager {
+  final _$DataBase _db;
+  $DataBaseManager(this._db);
+  $$ServicesTableTableManager get services =>
+      $$ServicesTableTableManager(_db, _db.services);
+  $TextEntriesTableManager get textEntries =>
+      $TextEntriesTableManager(_db, _db.textEntries);
+  $$BlobFilesTableTableManager get blobFiles =>
+      $$BlobFilesTableTableManager(_db, _db.blobFiles);
 }
 
 class SearchResult {

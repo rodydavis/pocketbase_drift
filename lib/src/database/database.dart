@@ -1,8 +1,9 @@
 import 'dart:convert';
 
 import 'package:drift/drift.dart';
-import 'package:flutter/foundation.dart';
+import 'package:logging/logging.dart';
 import 'package:pocketbase/pocketbase.dart';
+import 'package:pocketbase_drift/src/database/filter_parser.dart';
 
 import 'tables.dart';
 
@@ -13,7 +14,11 @@ part 'database.g.dart';
   include: {'sql/search.drift'},
 )
 class DataBase extends _$DataBase {
-  DataBase(super.connection) : super.connect();
+  DataBase(super.e) {
+    logger = Logger('PocketBaseDrift.db');
+  }
+
+  late final Logger logger;
 
   @override
   int get schemaVersion => 2;
@@ -40,8 +45,6 @@ class DataBase extends _$DataBase {
     }
   }
 
-  String generateId() => newId();
-
   String queryBuilder(
     String service, {
     String? fields,
@@ -50,11 +53,11 @@ class DataBase extends _$DataBase {
     int? offset,
     int? limit,
   }) {
-    final baseFields = <String>[
+    final baseFields = <String>{
       "id",
       "created",
       "updated",
-    ];
+    };
 
     String fixField(
       String field, {
@@ -86,51 +89,14 @@ class DataBase extends _$DataBase {
     }
     sb.write(' FROM services');
     sb.write(" WHERE service = '$service'");
+
     if (filter != null && filter.isNotEmpty) {
-      // Replace && and || with AND and OR
-      if (filter.startsWith('(') && filter.endsWith(')')) {
-        filter = filter.substring(1, filter.length - 1);
-      }
-      filter = filter.replaceAll('&&', 'AND').replaceAll('||', 'OR');
-      // Replace fields with json_extract
-      // = Equal
-      // != NOT equal
-      // > Greater than
-      // >= Greater than or equal
-      // < Less than
-      // <= Less than or equal
-      // ~ Like/Contains (if not specified auto wraps the right string OPERAND in a "%" for wildcard match)
-      // !~ NOT Like/Contains (if not specified auto wraps the right string OPERAND in a "%" for wildcard match)
-      // ?= Any/At least one of Equal
-      // ?!= Any/At least one of NOT equal
-      // ?> Any/At least one of Greater than
-      // ?>= Any/At least one of Greater than or equal
-      // ?< Any/At least one of Less than
-      // ?<= Any/At least one of Less than or equal
-      // ?~ Any/At least one of Like/Contains (if not specified auto wraps the right string OPERAND in a "%" for wildcard match)
-      // ?!~ Any/At least one of NOT Like/Contains (if not specified auto wraps the right string OPERAND in a "%" for wildcard match)
-      final parts = filter
-          .replaceAll('(', '')
-          .replaceAll(')', '')
-          .multiSplit([' AND ', ' OR ']);
-
-      final processedFields = <String>{}; // To keep track of processed fields.
-      for (final part in parts) {
-        final words = part.split(' ');
-        final field = words[0].trim();
-
-        // Check if the field has already been processed.
-        if (!processedFields.contains(field)) {
-          filter = filter!.replaceAll(
-            field,
-            fixField(field, alias: false),
-          );
-          processedFields.add(field); // Mark the field as processed.
-        }
-      }
-
-      sb.write(' AND ($filter)');
+      // Delegate all filter parsing to the new robust parser.
+      final parser = FilterParser(filter, baseFields: baseFields);
+      final whereClause = parser.parse();
+      sb.write(' AND ($whereClause)');
     }
+
     if (sort != null && sort.isNotEmpty) {
       // Example: -created,id
       // - DESC, + ASC
@@ -140,13 +106,14 @@ class DataBase extends _$DataBase {
         for (var i = 0; i < parts.length; i++) {
           final part = parts[i];
           if (part.startsWith('-')) {
-            sb.write(part.substring(1));
+            sb.write(fixField(part.substring(1).trim(),
+                alias: false)); // Apply fixField for sorting
             sb.write(' DESC');
           } else if (part.startsWith('+')) {
-            sb.write(part.substring(1));
+            sb.write(fixField(part.substring(1).trim(), alias: false));
             sb.write(' ASC');
           } else {
-            sb.write(part);
+            sb.write(fixField(part.trim(), alias: false));
             sb.write(' ASC');
           }
           if (i < parts.length - 1) {
@@ -192,78 +159,122 @@ class DataBase extends _$DataBase {
       offset: offset,
       limit: limit,
     );
-    debugPrint('query: $query');
+    logger.finer('query: $query');
     return customSelect(
       query,
       readsFrom: {services},
     ).asyncMap((r) async {
       final record = parseRow(r);
-      if (expand != null && expand.isNotEmpty) {
-        record['expand'] = {};
-        final targets = expand.split(',').map((e) => e.trim()).toList();
-        for (final target in targets) {
-          final levels = target.split('.');
-          // Max 6 levels supported
-          if (levels.length > 6) {
-            throw Exception('Max 6 levels expand supported');
-          }
+      return record; // Return early if no expand is needed
+    }).asyncMap((initialRecords) async {
+      // --- BATCHED EXPAND LOGIC ---
+      if (expand == null || expand.isEmpty) {
+        return initialRecords;
+      }
 
-          final nestedExpand =
-              levels.length == 1 ? null : levels.skip(1).join('.');
-          final targetField = levels.first;
+      final records = [initialRecords]; // Process as a list
+      final targets = expand.split(',').map((e) => e.trim()).toList();
+      final allCollections = await $collections().get();
 
-          // check for indirect expand=comments(post).user
-          if (targetField.contains('(') && targetField.contains(')')) {
-            // final tCollection = targetField.substring(
-            //   0,
-            //   targetField.indexOf('('),
-            // );
-            // final tField = targetField.substring(
-            //   targetField.indexOf('(') + 1,
-            //   targetField.indexOf(')'),
-            // );
-            // row.data['expand']['$tCollection($tField)'] = [];
-            throw UnimplementedError('Indirect expand not supported yet');
-          }
+      // 1. COLLECT all relation data and IDs needed
+      final relationsToFetch =
+          <String, Set<String>>{}; // eg: 'relation_field' -> {'id1', 'id2'}
+      final relationMeta =
+          <String, ({String collectionName, String nestedExpand})>{};
 
-          // Match field to relation
-          final collections = await $collections().get();
-          final c = collections.firstWhere((e) => e.name == service);
-          final schemaField = c.fields.firstWhere(
-            (e) => e.name == targetField,
-          );
-          final targetCollection = collections.firstWhere(
-            (e) => e.id == schemaField.data['collectionId'],
-          );
-          final isSingle = schemaField.data['maxSelect'] == 1;
-          final id = record[targetField] as String?;
-          final results = <Map<String, dynamic>>[];
-          if (id != null) {
-            final query = $query(
-              targetCollection.name,
-              expand: nestedExpand ?? '',
-              filter: "id = '$id'",
-            );
-            if (isSingle) {
-              final result = await query.getSingleOrNull();
-              if (result != null) {
-                results.add(result);
-              }
-            } else {
-              final result = await query.get();
-              var items = result.toList();
-              if (schemaField.data['maxSelect'] != null) {
-                final maxCount = schemaField.data['maxSelect'] as int;
-                items = items.take(maxCount).toList();
-              }
-              results.addAll(items);
+      for (final target in targets) {
+        final levels = target.split('.');
+        final targetField = levels.first;
+        if (targetField.contains('(') && targetField.contains(')')) {
+          throw UnimplementedError('Indirect expand not supported yet');
+        }
+        if (levels.length > 6) throw Exception('Max 6 levels expand supported');
+
+        // Get metadata for this relation
+        final currentCollectionSchema =
+            allCollections.firstWhere((c) => c.name == service);
+        final schemaField = currentCollectionSchema.fields
+            .firstWhere((f) => f.name == targetField);
+        final targetCollectionId = schemaField.data['collectionId'] as String?;
+        if (targetCollectionId == null) continue;
+        final targetCollection =
+            allCollections.firstWhere((c) => c.id == targetCollectionId);
+
+        relationMeta[targetField] = (
+          collectionName: targetCollection.name,
+          nestedExpand: levels.length > 1 ? levels.skip(1).join('.') : '',
+        );
+        relationsToFetch.putIfAbsent(targetField, () => <String>{});
+
+        // Collect all unique IDs for this relation from all records
+        for (final record in records) {
+          final dynamic relatedIdsRaw = record[targetField];
+          if (relatedIdsRaw is String && relatedIdsRaw.isNotEmpty) {
+            relationsToFetch[targetField]!.add(relatedIdsRaw);
+          } else if (relatedIdsRaw is List) {
+            for (final id in relatedIdsRaw
+                .whereType<String>()
+                .where((id) => id.isNotEmpty)) {
+              relationsToFetch[targetField]!.add(id);
             }
           }
-          record['expand'][targetField] = results;
         }
       }
-      return record;
-    });
+
+      // 2. FETCH all related records in batches
+      final fetchedRelations = <String,
+          Map<
+              String,
+              Map<String,
+                  dynamic>>>{}; // 'relation_field' -> {'id1' -> {record_data}}
+      for (final entry in relationsToFetch.entries) {
+        final relationName = entry.key;
+        final ids = entry.value;
+        if (ids.isEmpty) continue;
+
+        final meta = relationMeta[relationName]!;
+        final idFilter = "(${ids.map((id) => "id = '$id'").join(' OR ')})";
+
+        final relatedRecords = await $query(
+          meta.collectionName,
+          expand: meta.nestedExpand,
+          filter: idFilter,
+        ).get();
+
+        fetchedRelations.putIfAbsent(relationName, () => {});
+        for (final relatedRecord in relatedRecords) {
+          fetchedRelations[relationName]![relatedRecord['id'] as String] =
+              relatedRecord;
+        }
+      }
+
+      // 3. ATTACH fetched records to the main records
+      for (final record in records) {
+        record['expand'] = <String, List<Map<String, dynamic>>>{};
+        for (final relationName in targets.map((t) => t.split('.').first)) {
+          final results = <Map<String, dynamic>>[];
+          final dynamic relatedIdsRaw = record[relationName];
+          final fetchedData = fetchedRelations[relationName] ?? {};
+
+          if (relatedIdsRaw is String && relatedIdsRaw.isNotEmpty) {
+            if (fetchedData.containsKey(relatedIdsRaw)) {
+              results.add(fetchedData[relatedIdsRaw]!);
+            }
+          } else if (relatedIdsRaw is List) {
+            for (final id in relatedIdsRaw
+                .whereType<String>()
+                .where((id) => id.isNotEmpty)) {
+              if (fetchedData.containsKey(id)) {
+                results.add(fetchedData[id]!);
+              }
+            }
+          }
+          record['expand'][relationName] = results;
+        }
+      }
+
+      return records.first;
+    }); // Use .first since we are mapping from a single record
   }
 
   Future<int> $count(String service) async {
@@ -310,58 +321,93 @@ class DataBase extends _$DataBase {
   /// Returns true if data is valid
   bool validateData(CollectionModel collection, Map<String, dynamic> data) {
     for (final field in collection.fields) {
+      // System fields are handled by Drift/PocketBase, not user input.
+      if (field.system) continue;
+
       final value = data[field.name];
-      if (field.required && value == null) {
+
+      // Check for required fields
+      if (field.required &&
+          (value == null || (value is String && value.isEmpty))) {
         throw Exception('Field ${field.name} is required');
       }
-      if (field.type == 'number') {
-        if (value != null && num.tryParse(value) == null) {
-          throw Exception('Field ${field.name} must be a valid number');
-        }
-      }
-      if (field.type == 'bool') {
-        if (value != null && value != true && value != false) {
-          throw Exception('Field ${field.name} must be a valid boolean');
-        }
-      }
-      if (field.type == 'date') {
-        if (value != null && DateTime.tryParse(value) == null) {
-          throw Exception('Field ${field.name} must be a valid date');
-        }
-      }
-      if (field.type == 'text' || field.type == 'editor') {
-        if (value != null && value is! String) {
-          throw Exception('Field ${field.name} must be a valid string');
-        }
-      }
-      if (field.type == 'url') {
-        if (value != null && Uri.tryParse(value) == null) {
-          throw Exception('Field ${field.name} must be a valid url');
-        }
-      }
-      if (field.type == 'email') {
-        if (value != null) {
+
+      // If the field is not required and has no value, skip further checks.
+      if (value == null) continue;
+
+      // Type-specific validation
+      switch (field.type) {
+        case 'number':
+          if (value is! num) {
+            throw Exception(
+                'Field ${field.name} must be a number, but got ${value.runtimeType}');
+          }
+          break;
+        case 'bool':
+          if (value is! bool) {
+            throw Exception(
+                'Field ${field.name} must be a boolean, but got ${value.runtimeType}');
+          }
+          break;
+        case 'date':
+          // Allow empty string for non-required date fields
+          if (value is String && value.isEmpty && !field.required) {
+            break;
+          }
+          if (value is! String || DateTime.tryParse(value) == null) {
+            throw Exception(
+                'Field ${field.name} must be a valid ISO 8601 date string, but got "$value"');
+          }
+          break;
+        case 'text':
+        case 'editor':
           if (value is! String) {
-            throw Exception('Field ${field.name} must be a valid email');
+            throw Exception(
+                'Field ${field.name} must be a string, but got ${value.runtimeType}');
           }
-          final pattern =
+          break;
+        case 'url':
+          // Allow empty string for non-required date fields
+          if (value is String && value.isEmpty && !field.required) {
+            break;
+          }
+          if (value is! String || Uri.tryParse(value) == null) {
+            throw Exception(
+                'Field ${field.name} must be a valid URL string, but got "$value"');
+          }
+          break;
+        case 'email':
+          // Allow empty string for non-required email fields
+          if (value is String && value.isEmpty && !field.required) {
+            break;
+          }
+          if (value is! String) {
+            throw Exception(
+                'Field ${field.name} must be a valid email string, but got ${value.runtimeType}');
+          }
+          const pattern =
               r'^(([^<>()[\]\\.,;:\s@\"]+(\.[^<>()[\]\\.,;:\s@\"]+)*)|(\".+\"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$';
-          final isEmail = RegExp(pattern).hasMatch(value);
-          if (!isEmail) {
+          if (!RegExp(pattern).hasMatch(value)) {
             throw Exception('Field ${field.name} must be a valid email');
           }
-        }
-      }
-      if (field.type == 'select' ||
-          field.type == 'file' ||
-          field.type == 'relation') {
-        if (value != null && field.data['maxSelect'] != null) {
-          if (field.data['maxSelect'] == 1 && value is! String) {
-            throw Exception('Field ${field.name} must be a valid string');
-          } else if (field.data['maxSelect'] != 1 && value is! List) {
-            throw Exception('Field ${field.name} must be a valid list');
+          break;
+        case 'select':
+        case 'file':
+        case 'relation':
+          final maxSelect = field.data['maxSelect'];
+          if (maxSelect == 1) {
+            if (value is! String) {
+              throw Exception(
+                  'Field ${field.name} (single-select) must be a string, but got ${value.runtimeType}');
+            }
+          } else {
+            if (value is! List) {
+              throw Exception(
+                  'Field ${field.name} (multi-select) must be a list, but got ${value.runtimeType}');
+            }
           }
-        }
+          break;
+        // 'json' type is not validated for structure.
       }
     }
     return true;
@@ -370,20 +416,22 @@ class DataBase extends _$DataBase {
   Future<Map<String, dynamic>> $create(
     String service,
     Map<String, dynamic> data, {
-    bool? synced,
-    bool? deleted = false,
-    bool? isNew,
-    bool? local,
-    bool validate = false,
+    bool validate = true,
   }) async {
     if (data['id'] == '') data.remove('id');
     final id = data['id'] as String?;
-    data.remove('id');
 
-    if (validate) {
-      assert(service != 'schema', 'Cannot validate collections');
-      final collection = await $collections(service: service).getSingle();
-      validateData(collection, data);
+    final mutableData = Map<String, dynamic>.from(data);
+    mutableData.remove('id');
+
+    if (validate && service != 'schema') {
+      final collection = await $collections(service: service).getSingleOrNull();
+      if (collection == null) {
+        throw Exception(
+          'Failed to validate data for service "$service": Collection schema not found in local database. Ensure schemas are loaded before creating/updating records.',
+        );
+      }
+      validateData(collection, mutableData);
     }
 
     String date(String key) {
@@ -398,55 +446,38 @@ class DataBase extends _$DataBase {
     final item = ServicesCompanion.insert(
       id: id != null ? Value(id) : const Value.absent(),
       service: service,
-      data: {
-        ...data,
-        'synced': synced,
-        'deleted': deleted,
-        if (isNew != null) 'new': isNew,
-        if (local != null) 'local': local,
-      },
+      data: data,
       created: Value(created),
       updated: Value(updated),
     );
 
-    // if (id != null) {
-    //   final existing = await (select(services)
-    //         ..where((r) => r.service.equals(service))
-    //         ..where((r) => r.id.equals(id)))
-    //       .getSingleOrNull();
-    //   if (existing != null) {
-    //     await (update(services)
-    //           ..where((r) => r.id.equals(id))
-    //           ..where((r) => r.service.equals(service)))
-    //         .write(item);
-    //     return $query(service, filter: "id = '$id'").getSingle();
-    //   }
-    // }
-
-    final result = await into(services).insertReturning(
+    // The insertReturning method gives us the final state of the row.
+    // We can use it directly instead of re-querying the database.
+    final insertedService = await into(services).insertReturning(
       item,
       onConflict: DoUpdate((old) => item),
     );
-    return $query(service, filter: "id = '${result.id}'").getSingle();
+
+    // Manually construct the final map, which is what `parseRow` and `$query`
+    // would have done. This is more efficient and avoids the race condition.
+    final finalData = <String, dynamic>{
+      ...insertedService.data,
+      'id': insertedService.id,
+      'created': insertedService.created,
+      'updated': insertedService.updated,
+    };
+    return finalData;
   }
 
   Future<Map<String, dynamic>> $update(
     String service,
     String id,
     Map<String, dynamic> data, {
-    bool? synced,
-    bool? deleted = false,
-    bool? isNew,
-    bool? local,
-    bool validate = false,
+    bool validate = true,
   }) {
     return $create(
       service,
       {...data, 'id': id},
-      synced: synced,
-      deleted: deleted,
-      isNew: isNew,
-      local: local,
       validate: validate,
     );
   }
@@ -456,17 +487,54 @@ class DataBase extends _$DataBase {
     String id, {
     Batch? batch,
   }) async {
-    if (batch == null) {
-      await (delete(services)
-            ..where((r) => r.service.equals(service))
-            ..where((r) => r.id.equals(id)))
-          .go();
-    } else {
+    // If a batch is provided, we can't perform the file lookup and delete here.
+    // This is a limitation of batching; file cleanup will only happen for non-batched deletes.
+    // For most app logic (like sync), deletes are not batched, so this is acceptable.
+    if (batch != null) {
       batch.deleteWhere(
         services,
         (r) => r.service.equals(service) & r.id.equals(id),
       );
+      return;
     }
+
+    // Use a transaction to ensure both record and its files are deleted atomically.
+    await transaction(() async {
+      // 1. Find the record to get its data before deleting.
+      final recordToDelete = await (select(services)
+            ..where((r) => r.service.equals(service))
+            ..where((r) => r.id.equals(id)))
+          .getSingleOrNull();
+
+      if (recordToDelete != null) {
+        // 2. Get the collection schema to identify file fields.
+        final collection =
+            await $collections(service: service).getSingleOrNull();
+        if (collection != null) {
+          final fileFields = collection.fields.where((f) => f.type == 'file');
+
+          for (final field in fileFields) {
+            final dynamic filenames = recordToDelete.data[field.name];
+            if (filenames == null) continue;
+
+            // 3. Delete each file from the blobFiles table.
+            if (filenames is String && filenames.isNotEmpty) {
+              await deleteFile(id, filenames);
+            } else if (filenames is List) {
+              for (final filename in filenames.whereType<String>()) {
+                await deleteFile(id, filename);
+              }
+            }
+          }
+        }
+      }
+
+      // 4. Delete the main record itself.
+      await (delete(services)
+            ..where((r) => r.service.equals(service))
+            ..where((r) => r.id.equals(id)))
+          .go();
+    });
   }
 
   Future<void> deleteAll(
@@ -490,7 +558,6 @@ class DataBase extends _$DataBase {
     List<Map<String, dynamic>> items, {
     bool removeAll = true,
   }) async {
-    // Remove existing
     if (removeAll) {
       await (delete(services)..where((r) => r.service.equals(service))).go();
     }
@@ -498,20 +565,29 @@ class DataBase extends _$DataBase {
     // Add all
     await batch((b) async {
       for (final item in items) {
-        // if (!removeAll) {
-        //   b.deleteWhere(
-        //     services,
-        //     (r) => r.service.equals(service) & r.id.equals(item['id'] as String),
-        //   );
-        // }
+        // A record without an ID is invalid and cannot be stored.
+        final id = item['id'] as String?;
+        if (id == null || id.isEmpty) {
+          logger.warning(
+              'Skipping record in setLocal for service "$service" due to missing ID: $item');
+          continue;
+        }
+
+        final createdStr = item['created'] as String?;
+        final updatedStr = item['updated'] as String?;
+
         final row = ServicesCompanion.insert(
-          id: Value(item['id']),
+          id: Value(id),
           data: item,
           service: service,
-          created: Value((DateTime.tryParse(item['created']) ?? DateTime.now())
-              .toIso8601String()),
-          updated: Value((DateTime.tryParse(item['updated']) ?? DateTime.now())
-              .toIso8601String()),
+          created: Value((createdStr != null
+                  ? DateTime.tryParse(createdStr)
+                  : DateTime.now())
+              ?.toIso8601String()),
+          updated: Value((updatedStr != null
+                  ? DateTime.tryParse(updatedStr)
+                  : DateTime.now())
+              ?.toIso8601String()),
         );
         b.insert(
           services,
@@ -523,7 +599,8 @@ class DataBase extends _$DataBase {
     // Get all
     final query = select(services)..where((tbl) => tbl.service.equals(service));
     final results = await query.get();
-    debugPrint('$service: ${results.length}');
+    logger.fine(
+        'setLocal for "$service" complete. Total items: ${results.length}');
   }
 
   Future<void> setSchema(List<Map<String, dynamic>> items) =>
@@ -569,10 +646,105 @@ class DataBase extends _$DataBase {
           tbl.recordId.equals(recordId) & tbl.filename.equals(filename));
     await q.go();
   }
+
+  /// Intelligently merges a list of items into the local database for a given service.
+  ///
+  /// This method is more efficient than `setLocal` for list updates because it
+  /// only writes records that are new or have a more recent 'updated' timestamp
+  /// than their local counterparts.
+  Future<void> mergeLocal(
+    String service,
+    List<Map<String, dynamic>> items,
+  ) async {
+    if (items.isEmpty) return;
+
+    // 1. Get IDs of incoming items
+    final itemIds =
+        items.map((i) => i['id'] as String?).whereType<String>().toList();
+    if (itemIds.isEmpty) return;
+
+    // 2. Fetch existing local records for these IDs
+    final localRecordsMap = <String, Map<String, dynamic>>{};
+    const chunkSize =
+        100; // SQLite can handle about this many variables in a query.
+    for (var i = 0; i < itemIds.length; i += chunkSize) {
+      final chunk = itemIds.sublist(
+          i, i + chunkSize > itemIds.length ? itemIds.length : i + chunkSize);
+      if (chunk.isEmpty) continue;
+
+      final idFilter = "(${chunk.map((id) => "id = '$id'").join(' OR ')})";
+      final localRecords =
+          await $query(service, filter: idFilter, fields: 'id, updated').get();
+      for (final r in localRecords) {
+        localRecordsMap[r['id'] as String] = r;
+      }
+    }
+
+    // 3. Identify records to be inserted or updated
+    final recordsToWrite = <Map<String, dynamic>>[];
+    for (final item in items) {
+      final itemId = item['id'] as String?;
+      if (itemId == null) continue;
+
+      final localRecord = localRecordsMap[itemId];
+      if (localRecord == null) {
+        // It's a new record, so add it.
+        recordsToWrite.add(item);
+      } else {
+        // It's an existing record, check if it's updated.
+        final networkUpdated =
+            DateTime.tryParse(item['updated'] as String? ?? '');
+        final localUpdated =
+            DateTime.tryParse(localRecord['updated'] as String? ?? '');
+
+        if (networkUpdated != null &&
+            localUpdated != null &&
+            networkUpdated.isAfter(localUpdated)) {
+          // The network version is newer.
+          recordsToWrite.add(item);
+        } else if (networkUpdated != null && localUpdated == null) {
+          // Local record has no timestamp, so update it.
+          recordsToWrite.add(item);
+        }
+      }
+    }
+
+    if (recordsToWrite.isEmpty) {
+      logger.fine(
+          'mergeLocal for "$service": No new or updated records to write.');
+      return;
+    }
+    logger.fine(
+        'mergeLocal for "$service": Writing ${recordsToWrite.length} new/updated records.');
+
+    // 4. Batch write only the necessary records using an upsert.
+    await batch((b) {
+      for (final item in recordsToWrite) {
+        final id = item['id'] as String;
+        final createdStr = item['created'] as String?;
+        final updatedStr = item['updated'] as String?;
+
+        final row = ServicesCompanion.insert(
+          id: Value(id),
+          data: item,
+          service: service,
+          created: Value((createdStr != null
+                  ? DateTime.tryParse(createdStr)
+                  : DateTime.now())
+              ?.toIso8601String()),
+          updated: Value((updatedStr != null
+                  ? DateTime.tryParse(updatedStr)
+                  : DateTime.now())
+              ?.toIso8601String()),
+        );
+        b.insert(services, row, onConflict: DoUpdate((old) => row));
+      }
+    });
+  }
 }
 
-extension StringUtils on String {
-  List<String> multiSplit(Iterable<String> delimiters) => delimiters.isEmpty
-      ? [this]
-      : split(RegExp(delimiters.map(RegExp.escape).join('|')));
-}
+// extension StringUtils on String {
+//   List<String> multiSplit(Iterable<String> delimiters) => delimiters.isEmpty
+//       ? [this]
+//       : split(RegExp(delimiters.map(RegExp.escape).join('|')));
+// }
