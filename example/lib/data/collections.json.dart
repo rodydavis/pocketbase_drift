@@ -1,3 +1,4 @@
+// pocketbase_drift/example/lib/data/collections.json.dart
 final offlineCollections = [
   {
     "id": "_pb_users_auth_",
