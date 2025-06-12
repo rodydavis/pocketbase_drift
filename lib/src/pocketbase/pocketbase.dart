@@ -40,7 +40,10 @@ class $PocketBase extends PocketBase {
   final ConnectivityService connectivity;
   final Logger logger = Logger('PocketBaseDrift.client');
 
-  set logging(bool enable) => logger.level = enable ? Level.ALL : Level.OFF;
+  set logging(bool enable) {
+    hierarchicalLoggingEnabled = true;
+    logger.level = enable ? Level.ALL : Level.OFF;
+  }
 
   StreamSubscription? _connectivitySubscription;
 

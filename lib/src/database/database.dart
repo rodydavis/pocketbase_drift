@@ -371,7 +371,8 @@ class DataBase extends _$DataBase {
           if (value is String && value.isEmpty && !field.required) {
             break;
           }
-          if (value is! String || Uri.tryParse(value) == null) {
+          final uri = Uri.tryParse(value);
+          if (value is! String || uri == null || !uri.isAbsolute) {
             throw Exception(
                 'Field ${field.name} must be a valid URL string, but got "$value"');
           }
@@ -395,7 +396,7 @@ class DataBase extends _$DataBase {
         case 'file':
         case 'relation':
           final maxSelect = field.data['maxSelect'];
-          if (maxSelect == 1) {
+          if (maxSelect != null && maxSelect == 1) {
             if (value is! String) {
               throw Exception(
                   'Field ${field.name} (single-select) must be a string, but got ${value.runtimeType}');

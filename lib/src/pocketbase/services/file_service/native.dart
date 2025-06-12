@@ -39,6 +39,7 @@ class $FileService extends FileService {
 
     if (requestPolicy.isNetwork) {
       final bytes = await getFileBytes(record, filename);
+      // Save to cache after a successful network download if policy allows
       if (requestPolicy.isCache) {
         await client.db.setFile(record.id, filename, bytes,
             expires:

@@ -1,3 +1,4 @@
+export 'image.dart';
 export 'src/database/connection/connection.dart';
 export 'src/database/database.dart';
 export 'src/database/filter_parser.dart';

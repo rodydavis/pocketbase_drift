@@ -41,8 +41,11 @@ class FilterParser {
   /// and nested [FilterParser] instances for parenthesized groups. This tokenizer
   /// correctly handles operators inside quoted strings and nested parentheses.
   void _tokenize() {
+    // Use word boundaries (\b) to ensure 'AND' and 'OR' are matched as whole words
+    // and not as parts of other words (e.g., the 'or' in 'priority').
     final logicalRegex =
-        RegExp(r'\s*(&&|\|\||AND|OR)\s*', caseSensitive: false);
+        RegExp(r'\s*(&&|\|\||\bAND\b|\bOR\b)\s*', caseSensitive: false);
+
     // This regex is now more complex. It has two main parts connected by a `|` (OR):
     // 1. The original part for `field operator value`
     // 2. A new part for `field IS (NOT) NULL`

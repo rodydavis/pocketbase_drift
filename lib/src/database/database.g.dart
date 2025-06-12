@@ -867,7 +867,7 @@ abstract class _$DataBase extends GeneratedDatabase {
       'CREATE TRIGGER services_delete AFTER DELETE ON services BEGIN INSERT INTO text_entries (text_entries, "rowid", data) VALUES (\'delete\', old."rowid", old.data);END',
       'services_delete');
   late final Trigger servicesUpdate = Trigger(
-      'CREATE TRIGGER services_update AFTER UPDATE ON services BEGIN INSERT INTO text_entries (text_entries, "rowid", data) VALUES (\'delete\', new."rowid", new.data);INSERT INTO text_entries ("rowid", data) VALUES (new."rowid", new.data);END',
+      'CREATE TRIGGER services_update AFTER UPDATE ON services BEGIN INSERT INTO text_entries (text_entries, "rowid", data) VALUES (\'delete\', old."rowid", old.data);INSERT INTO text_entries ("rowid", data) VALUES (new."rowid", new.data);END',
       'services_update');
   late final $BlobFilesTable blobFiles = $BlobFilesTable(this);
   Selectable<SearchResult> _search(String query) {

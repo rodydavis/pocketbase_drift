@@ -62,10 +62,15 @@ For web, you need to follow the instructions for [Drift on the Web](https://drif
 
 The `RequestPolicy` enum is central to this library and controls how requests are handled.
 
--   `RequestPolicy.cacheAndNetwork` (Default):
-    1.  Tries to fetch fresh data from the remote PocketBase server.
-    2.  If successful, it updates the local cache with the new data and returns it.
-    3.  If the network fails (or the device is offline), it seamlessly falls back to returning data from the local cache.
+-   `RequestPolicy.cacheAndNetwork` (Default): Provides a seamless online/offline experience.
+    - For one-time fetches (e.g., getFullList):
+      - Tries to fetch fresh data from the remote PocketBase server.
+      - If successful, it updates the local cache with the new data and returns it.
+      - If the network fails (or the device is offline), it seamlessly falls back to returning data from the local cache without throwing an error.
+    - For reactive streams (e.g., watchRecords):
+      - The stream immediately emits the data currently in the local cache, making the UI feel instant.
+      - A network request is then triggered in the background.
+      - If the network data is different, the local cache is updated, and the stream automatically emits the new, fresh data.
 
 -   `RequestPolicy.cacheOnly`:
     -   Only ever reads data from the local cache.

@@ -46,7 +46,7 @@ class PocketBaseImageProvider extends ImageProvider<PocketBaseImageProvider> {
           '${key.filename} is empty and cannot be loaded as an image.');
     }
 
-    return decode(bytes);
+    return decode(await ui.ImmutableBuffer.fromUint8List(bytes));
   }
 
   static Color getFilterColor(color) {
