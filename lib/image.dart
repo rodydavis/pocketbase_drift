@@ -39,7 +39,8 @@ class PocketBaseImageProvider extends ImageProvider<PocketBaseImageProvider> {
   ImageStreamCompleter loadImage(
       PocketBaseImageProvider key, ImageDecoderCallback decode) {
     return MultiFrameImageStreamCompleter(
-      codec: _loadAsync(key, decode), // Asynchronously loads and decodes the image.
+      codec: _loadAsync(
+          key, decode), // Asynchronously loads and decodes the image.
       scale: key.scale ?? 1.0,
       debugLabel: 'PocketBaseImageProvider(${key.filename})',
     );
