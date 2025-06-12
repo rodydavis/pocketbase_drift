@@ -29,11 +29,6 @@ Add the following packages to your `pubspec.yaml`:
 ```yaml
 dependencies:
   pocketbase_drift: ^0.1.0 # Use the latest version
-  # Add other drift dependencies for your platform
-  drift: ^2.26.1
-  sqlite3_flutter_libs: ^0.5.32 # For native platforms
-  path_provider: ^2.1.4
-  path: ^1.9.1
 ```
 
 ### 2. Initialize the Client
@@ -50,11 +45,11 @@ Replace a standard `PocketBase` client with a `$PocketBase.database` client. It'
 
 ### 3. Web Setup
 
-For web, you need to follow the instructions for [Drift on the Web](https://drift.simonbinder.eu/web/#drift-wasm) to copy the `sqlite3.wasm` binary into your `web/` directory.
+For web, you need to follow the instructions for [Drift on the Web](https://drift.simonbinder.eu/web/#drift-wasm) to copy the `sqlite3.wasm` binary and `drift_worker.js` file into your `web/` directory.
 
-1.  Download the latest `sqlite3.wasm` from the [sqlite3.dart releases](https://github.com/simolus3/sqlite3.dart/releases).
-2.  Place the `sqlite3.wasm` file inside your project's `web/` folder.
-3.  Ensure your `build.yaml` is configured to handle Drift's web worker as described in their documentation.
+1.  Download the latest `sqlite3.wasm` from the [sqlite3.dart releases](https://github.com/simolus3/sqlite3.dart/releases) and the latest `drift_worker.js` from the [drift releases](https://github.com/simolus3/drift/releases).
+2.  Place the each file inside your project's `web/` folder.
+3.  Rename `drift_worker.js` to `drift_worker.dart.js`.
 
 ## Core Concepts
 
@@ -141,7 +136,7 @@ Image(
   image: PocketBaseImageProvider(
     client: client,
     record: postRecord, // The RecordModel containing the file
-    filename: postRecord.data['my_image_field'], // The filename
+    filename: postRecord.get('my_image_field'), // The filename
   ),
 );
 

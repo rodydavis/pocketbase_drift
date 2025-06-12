@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:logging/logging.dart';
 import 'package:pocketbase_drift/pocketbase_drift.dart';
@@ -17,12 +18,16 @@ void main() {
     setUpAll(() async {
       // Basic logging setup for debugging in the browser console.
       hierarchicalLoggingEnabled = true;
-      
+
       Logger.root.level = Level.ALL;
       Logger.root.onRecord.listen((record) {
         // ignore: avoid_print
         print('${record.level.name}: ${record.time}: ${record.message}');
       });
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+              const MethodChannel('dev.fluttercommunity.plus/connectivity'),
+              (MethodCall methodCall) async => ['wifi']);
 
       // Initialize the database client FOR WEB.
       // We don't need a real URL or auth for this test, as we're only
