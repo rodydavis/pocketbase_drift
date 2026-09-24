@@ -306,3 +306,9 @@ if (noSync) {
   print('Local-only record, will never sync');
 }
 ```
+
+> **Note:** Offline-deleted records are stored as local tombstones and are hidden from all
+> reads (`getOne`, `getFullList`, `watchRecords`, `search`, `$count`). To inspect them
+> (diagnostics, pending-queue screens), query the database directly with
+> `client.db.$query(collection, includeDeleted: true)`. A record created offline and
+> deleted before ever syncing is purged locally during sync — it never hits the server.

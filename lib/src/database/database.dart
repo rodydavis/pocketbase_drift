@@ -69,6 +69,7 @@ class DataBase extends _$DataBase {
     String? sort,
     int? offset,
     int? limit,
+    bool includeDeleted = false,
   }) {
     final baseFields = <String>{
       "id",
@@ -109,6 +110,13 @@ class DataBase extends _$DataBase {
     sb.write(' FROM services');
     sb.write(" WHERE service = ?");
     variables.add(Variable.withString(service));
+
+    if (!includeDeleted) {
+      // Tombstones (records deleted offline that still await server sync)
+      // must never surface in regular reads.
+      sb.write(
+          " AND (json_extract(services.data, '\$.deleted') IS NULL OR json_extract(services.data, '\$.deleted') = 0)");
+    }
 
     if (filter != null && filter.isNotEmpty) {
       // Delegate all filter parsing to the new robust parser.
@@ -170,6 +178,11 @@ class DataBase extends _$DataBase {
     }
   }
 
+  /// Queries records for a service.
+  ///
+  /// By default records that were deleted offline and still await server
+  /// sync (tombstones, `deleted: true`) are excluded. Internal callers that
+  /// operate on the pending-sync queue pass [includeDeleted]: true.
   Selectable<Map<String, dynamic>> $query(
     String service, {
     String? expand,
@@ -178,6 +191,7 @@ class DataBase extends _$DataBase {
     String? sort,
     int? offset,
     int? limit,
+    bool includeDeleted = false,
   }) {
     final (query, variables) = queryBuilder(
       service,
@@ -186,6 +200,7 @@ class DataBase extends _$DataBase {
       sort: sort,
       offset: offset,
       limit: limit,
+      includeDeleted: includeDeleted,
     );
     logger.finer('query: $query, variables: $variables');
     return customSelect(
@@ -644,6 +659,7 @@ class DataBase extends _$DataBase {
         service,
         filter: 'id = "$id"',
         limit: 1,
+        includeDeleted: true,
       ).get();
 
       if (existingRecords.isNotEmpty) {
@@ -886,8 +902,12 @@ class DataBase extends _$DataBase {
       if (chunk.isEmpty) continue;
 
       final idFilter = "(${chunk.map((id) => "id = '$id'").join(' OR ')})";
-      final localRecords =
-          await $query(service, filter: idFilter, fields: 'id, updated').get();
+      final localRecords = await $query(
+        service,
+        filter: idFilter,
+        fields: 'id, updated, deleted',
+        includeDeleted: true,
+      ).get();
       for (final r in localRecords) {
         localRecordsMap[r['id'] as String] = r;
       }
@@ -900,6 +920,18 @@ class DataBase extends _$DataBase {
       if (itemId == null) continue;
 
       final localRecord = localRecordsMap[itemId];
+      // json_extract returns SQLite integers for JSON booleans when a fields
+      // projection is used, so accept both true and 1.
+      final localDeleted =
+          localRecord != null && (localRecord['deleted'] == true || localRecord['deleted'] == 1);
+      if (localDeleted) {
+        // The record was deleted offline and the deletion is still pending
+        // sync. Keep the tombstone; the sync engine will propagate the
+        // deletion. Otherwise stale server data would resurrect the record.
+        logger.finer(
+            'mergeLocal for "$service": Keeping pending-delete tombstone $itemId');
+        continue;
+      }
       if (localRecord == null) {
         // It's a new record, so add it.
         recordsToWrite.add(item);
@@ -1010,6 +1042,7 @@ class DataBase extends _$DataBase {
     final localRecords = await $query(
       service,
       filter: filter,
+      includeDeleted: true,
     ).get();
 
     // 5. Find records to delete:

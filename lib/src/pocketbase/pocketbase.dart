@@ -16,11 +16,23 @@ class $PocketBase extends PocketBase with WidgetsBindingObserver {
     this.cacheTtl = const Duration(days: 60),
     this.requestPolicy = RequestPolicy.cacheAndNetwork,
     this.localSyncRetryCount = 5,
+    Duration connectivityProbeTimeout = const Duration(seconds: 5),
+    Duration connectivityOnlineProbeInterval = const Duration(seconds: 60),
+    Duration connectivityOfflineBackoffMin = const Duration(seconds: 5),
+    Duration connectivityOfflineBackoffMax = const Duration(seconds: 60),
     super.lang,
     super.authStore,
     super.httpClientFactory,
-  }) : connectivity = ConnectivityService() {
+  }) {
+    connectivity = ConnectivityService(
+      probe: _probeServer,
+      probeTimeout: connectivityProbeTimeout,
+      onlineProbeInterval: connectivityOnlineProbeInterval,
+      offlineBackoffMin: connectivityOfflineBackoffMin,
+      offlineBackoffMax: connectivityOfflineBackoffMax,
+    );
     WidgetsBinding.instance.addObserver(this);
+    connectivity.start();
     _listenForConnectivityChanges();
   }
 
@@ -35,6 +47,10 @@ class $PocketBase extends PocketBase with WidgetsBindingObserver {
     RequestPolicy requestPolicy = RequestPolicy.cacheAndNetwork,
     Client Function()? httpClientFactory,
     int localSyncRetryCount = 5,
+    Duration connectivityProbeTimeout = const Duration(seconds: 5),
+    Duration connectivityOnlineProbeInterval = const Duration(seconds: 60),
+    Duration connectivityOfflineBackoffMin = const Duration(seconds: 5),
+    Duration connectivityOfflineBackoffMax = const Duration(seconds: 60),
   }) {
     final db = DataBase(
       connection ?? connect(dbName, inMemory: inMemory),
@@ -48,12 +64,16 @@ class $PocketBase extends PocketBase with WidgetsBindingObserver {
       authStore: authStore?..db = db,
       httpClientFactory: httpClientFactory,
       localSyncRetryCount: localSyncRetryCount,
+      connectivityProbeTimeout: connectivityProbeTimeout,
+      connectivityOnlineProbeInterval: connectivityOnlineProbeInterval,
+      connectivityOfflineBackoffMin: connectivityOfflineBackoffMin,
+      connectivityOfflineBackoffMax: connectivityOfflineBackoffMax,
     );
     return client;
   }
 
   final DataBase db;
-  final ConnectivityService connectivity;
+  late final ConnectivityService connectivity;
   final Logger logger = Logger('PocketBaseDrift.client');
 
   /// The time-to-live duration for cached records and responses.
@@ -190,6 +210,20 @@ class $PocketBase extends PocketBase with WidgetsBindingObserver {
     }
 
     return result;
+  }
+
+  /// Lightweight reachability probe against this server's health endpoint.
+  ///
+  /// Used by [connectivity] as the source of truth: `connectivity_plus`
+  /// reports interface events instantly, but only a request to the actual
+  /// server confirms it is reachable.
+  Future<bool> _probeServer() async {
+    try {
+      await health.check().timeout(connectivity.probeTimeout);
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   void _listenForConnectivityChanges() {
@@ -464,6 +498,7 @@ class $PocketBase extends PocketBase with WidgetsBindingObserver {
   void close() {
     WidgetsBinding.instance.removeObserver(this);
     _connectivitySubscription?.cancel();
+    connectivity.dispose();
     _logSubscription?.cancel();
     db.close();
     super.close();

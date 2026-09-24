@@ -1,52 +1,79 @@
 import 'dart:async';
+import 'dart:math';
 
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
-import 'package:internet_connection_checker_plus/internet_connection_checker_plus.dart';
 import 'package:logging/logging.dart';
 
-/// A service that monitors the device's network connectivity status.
+/// Asynchronous probe that returns `true` when the PocketBase server can be
+/// reached.
+typedef ServerProbe = Future<bool> Function();
+
+/// Realtime connectivity monitor for a PocketBase server.
 ///
-/// This service uses a hybrid approach combining:
-/// 1. `internet_connection_checker_plus` for monitoring internet connectivity
-/// 2. Request-based detection: actual network request success/failure
+/// Unlike generic "internet checkers" that poll external hosts, this service
+/// tracks reachability of the *actual* PocketBase server by combining three
+/// signals:
 ///
-/// This is a singleton because we only need one global listener for internet access.
-/// Each `$PocketBase` client manages its own subscription
-/// to this singleton's [statusStream].
+/// 1. **Interface events** ([connectivity_plus]): the OS reports wifi/cellular/
+///    ethernet changes instantly. Losing the last interface marks the device
+///    offline immediately; regaining one triggers an immediate probe.
+/// 2. **Server probes**: a lightweight probe (usually `GET /api/health`)
+///    confirms the server is actually reachable. While online, probes run at a
+///    slow keepalive interval; while offline, they back off exponentially
+///    ([offlineBackoffMin] doubling up to [offlineBackoffMax]) so restoration
+///    is detected within seconds, not minutes.
+/// 3. **Request outcomes**: real CRUD traffic reports back through
+///    [reportNetworkSuccess] / [reportNetworkFailure] for instant state flips
+///    without waiting for the next probe.
+///
+/// Each `$PocketBase` client owns its own instance so that apps talking to
+/// multiple servers track each server independently.
 class ConnectivityService {
-  ConnectivityService._() {
-    _logger = Logger('ConnectivityService');
-    if (enableInternetChecker && !kIsWeb) {
-      _subscription =
-          InternetConnection().onStatusChange.listen(_onPlatformStatusChange);
-    }
-  }
+  ConnectivityService({
+    ServerProbe? probe,
+    this.probeTimeout = const Duration(seconds: 5),
+    this.onlineProbeInterval = const Duration(seconds: 60),
+    this.offlineBackoffMin = const Duration(seconds: 5),
+    this.offlineBackoffMax = const Duration(seconds: 60),
+  })  : _probe = probe,
+        _logger = Logger('ConnectivityService');
 
-  // Singleton instance - lives for the app's lifetime
-  static final ConnectivityService _instance = ConnectivityService._();
-
-  /// Factory constructor returns the singleton instance.
-  factory ConnectivityService() => _instance;
-
-  /// Global flag to disable the internet checker periodic timers.
-  /// Used primarily for testing.
+  /// Disables probes and interface listeners. Testing only.
   @visibleForTesting
-  static bool enableInternetChecker = true;
+  static bool enableProbes = true;
 
-  final _statusController = StreamController<bool>.broadcast();
-  StreamSubscription<InternetStatus>? _subscription;
-  late final Logger _logger;
-
-  /// Counter for consecutive network failures.
-  int _consecutiveFailures = 0;
-
-  /// Number of consecutive failures before marking as offline.
+  /// Number of consecutive request failures before marking as offline.
   static const _failureThreshold = 2;
 
-  /// A stream that emits `true` if the device is connected to a network,
-  /// and `false` otherwise. New listeners will immediately receive the current status.
+  final ServerProbe? _probe;
+  final Duration probeTimeout;
+  final Duration onlineProbeInterval;
+  final Duration offlineBackoffMin;
+  final Duration offlineBackoffMax;
+
+  final _statusController = StreamController<bool>.broadcast();
+  StreamSubscription<List<ConnectivityResult>>? _interfaceSubscription;
+  Timer? _probeTimer;
+  Future<void>? _inFlightProbe;
+  int _consecutiveFailures = 0;
+  int _backoffStep = 0;
+  bool _started = false;
+  bool _disposed = false;
+
+  late final Logger _logger;
+
+  /// Whether the OS currently reports a network interface (wifi/cellular/
+  /// ethernet). Treated as `true` when the platform plugin is unavailable.
+  bool _interfaceAvailable = true;
+
+  /// The current server connectivity status. Optimistic: `true` unless
+  /// proven otherwise, so UI banners don't flicker at app start.
+  bool isConnected = true;
+
+  /// A stream that emits `true` when the server is reachable and `false`
+  /// otherwise. New listeners immediately receive the current status.
   Stream<bool> get statusStream {
-    // Emit the current status to new listeners immediately.
     Timer.run(() {
       if (!_statusController.isClosed) {
         _statusController.add(isConnected);
@@ -55,43 +82,154 @@ class ConnectivityService {
     return _statusController.stream;
   }
 
-  /// The current network connectivity status.
-  bool isConnected = true;
-
-  /// Whether the platform reports a network interface is available.
-  bool _platformReportsConnected = true;
-
   /// Whether a network request should be attempted.
   ///
-  /// Returns `true` if the platform reports a network interface is available,
-  /// regardless of whether recent requests have succeeded. This allows discovery
-  /// of connectivity restoration by actually trying a request.
+  /// `true` while any network interface is available, regardless of whether
+  /// recent requests have succeeded. This allows discovery of server
+  /// recovery by actually trying a request.
   ///
   /// Use this to decide whether to TRY a network request.
   /// Use [isConnected] for UI display or queuing decisions.
-  bool get shouldAttemptNetwork => _platformReportsConnected;
+  bool get shouldAttemptNetwork => _interfaceAvailable;
 
-  /// Checks the current connectivity and updates the status.
-  /// When called explicitly, trusts the platform status for both directions.
-  Future<void> checkConnectivity() async {
-    if (!enableInternetChecker || kIsWeb) return;
-    final platformConnected = await InternetConnection().hasInternetAccess;
-
-    // For explicit checks, trust the platform status
-    _setConnected(platformConnected);
+  /// Starts monitoring. Idempotent; called by the owning `$PocketBase` client.
+  void start() {
+    if (_started || _disposed) return;
+    _started = true;
+    if (!enableProbes) return;
+    _listenInterface();
+    if (_canProbe) {
+      _logger.info('Connectivity monitoring started. Probing server...');
+      _scheduleProbe(Duration.zero);
+    }
   }
 
-  /// Called when the platform connectivity status changes.
-  void _onPlatformStatusChange(InternetStatus status) {
-    final platformConnected = status == InternetStatus.connected;
-    _platformReportsConnected = platformConnected;
+  bool get _canProbe => _probe != null;
 
-    if (!platformConnected) {
-      // Definitely offline - no network interface
-      _setConnected(false);
+  void _listenInterface() {
+    try {
+      _interfaceSubscription ??= Connectivity()
+          .onConnectivityChanged
+          .listen(_onInterfaceChange, onError: (Object e) {
+        _logger.fine('Interface events unavailable: $e');
+      });
+    } catch (e) {
+      // Platform without the plugin (tests, unsupported platforms):
+      // fall back to probe- and request-based detection only.
+      _logger.fine('Interface events unavailable: $e');
     }
-    // Note: We don't automatically set connected=true here.
-    // We wait for an actual request to succeed to confirm connectivity.
+  }
+
+  /// Re-arms interface listeners and probes an immediate server check.
+  ///
+  /// Useful when the app resumes from background, where OS plugins may have
+  /// dropped events while suspended.
+  void resetSubscription() {
+    if (_disposed) return;
+    _logger.info('Resetting connectivity listeners.');
+    _interfaceSubscription?.cancel();
+    _interfaceSubscription = null;
+    if (!enableProbes) return;
+    _listenInterface();
+    if (_canProbe) {
+      _scheduleProbe(Duration.zero);
+    }
+  }
+
+  /// Runs an immediate server probe and updates the status from its result.
+  Future<void> checkConnectivity() async {
+    if (!_canProbe || _disposed || !enableProbes) return;
+    await _runProbe();
+  }
+
+  /// Releases listeners and timers. The service cannot be restarted.
+  void dispose() {
+    if (_disposed) return;
+    _disposed = true;
+    _started = true;
+    _cancelProbeTimer();
+    _interfaceSubscription?.cancel();
+    _interfaceSubscription = null;
+    _statusController.close();
+  }
+
+  Future<void> _onInterfaceChange(List<ConnectivityResult> results) async {
+    final available = results.isNotEmpty &&
+        results.any((r) => r != ConnectivityResult.none);
+    if (available == _interfaceAvailable) {
+      // Interface switched identity (e.g. wifi -> cellular). If we are
+      // currently offline, verify the new network reaches the server.
+      if (available && !isConnected) {
+        _scheduleProbe(Duration.zero);
+      }
+      return;
+    }
+    _interfaceAvailable = available;
+    if (!available) {
+      _logger.info('Network interface lost. Marking as offline.');
+      _cancelProbeTimer();
+      _setConnected(false);
+    } else {
+      _logger.fine('Network interface available. Probing server...');
+      _scheduleProbe(Duration.zero);
+    }
+  }
+
+  void _scheduleProbe(Duration delay) {
+    if (!_canProbe || _disposed || !enableProbes) return;
+    _cancelProbeTimer();
+    _probeTimer = Timer(delay, _runProbe);
+  }
+
+  Future<void> _runProbe() async {
+    if (!_canProbe || _disposed || !enableProbes) return;
+    final inFlight = _inFlightProbe;
+    if (inFlight != null) {
+      // A probe is already running; it will schedule the next one.
+      await inFlight;
+      return;
+    }
+    final done = Completer<void>();
+    _inFlightProbe = done.future;
+    try {
+      var reachable = false;
+      try {
+        reachable = await _probe!().timeout(probeTimeout);
+      } catch (e) {
+        _logger.fine('Server probe failed: $e');
+        reachable = false;
+      }
+
+      if (reachable) {
+        _backoffStep = 0;
+        if (!isConnected) {
+          _logger
+              .info('Server probe succeeded - connectivity restored.');
+        }
+        _setConnected(true);
+        _scheduleProbe(onlineProbeInterval);
+      } else {
+        if (isConnected) {
+          _logger.info('Server probe failed - marking as offline.');
+        }
+        _setConnected(false);
+        // Schedule with the current step first (== offlineBackoffMin on the
+        // first failure), then grow for subsequent failures.
+        _scheduleProbe(_currentBackoff());
+        _backoffStep = min(_backoffStep + 1, 20);
+      }
+    } finally {
+      _inFlightProbe = null;
+      done.complete();
+    }
+  }
+
+  Duration _currentBackoff() {
+    // Millisecond math so sub-second floors don't collapse to zero.
+    final base = offlineBackoffMin.inMilliseconds;
+    final shifted = base << min(_backoffStep, 16);
+    final capped = min(max(shifted, base), offlineBackoffMax.inMilliseconds);
+    return Duration(milliseconds: capped);
   }
 
   /// Report that a network request failed.
@@ -104,17 +242,21 @@ class ConnectivityService {
     if (_consecutiveFailures >= _failureThreshold && isConnected) {
       _logger.info('Multiple network failures detected, marking as offline.');
       _setConnected(false);
+      // Verify recovery on the regular backoff schedule.
+      _scheduleProbe(_currentBackoff());
     }
   }
 
   /// Report that a network request succeeded.
-  /// This confirms connectivity is working and resets failure counter.
+  /// This confirms connectivity is working and resets failure counters.
   void reportNetworkSuccess() {
     _consecutiveFailures = 0;
+    _backoffStep = 0;
 
-    if (!isConnected && _platformReportsConnected) {
+    if (!isConnected) {
       _logger.info('Network request succeeded - connectivity restored.');
       _setConnected(true);
+      _scheduleProbe(onlineProbeInterval);
     }
   }
 
@@ -129,22 +271,15 @@ class ConnectivityService {
     }
   }
 
-  /// Resets the connectivity stream subscription.
-  /// Useful when the app resumes from background or after a hot restart.
-  void resetSubscription() {
-    _logger.info('Resetting connectivity stream subscription.');
-    _subscription?.cancel();
-    if (enableInternetChecker && !kIsWeb) {
-      _subscription =
-          InternetConnection().onStatusChange.listen(_onPlatformStatusChange);
-      checkConnectivity();
-    }
+  void _cancelProbeTimer() {
+    _probeTimer?.cancel();
+    _probeTimer = null;
   }
 
   /// Directly set the connectivity status. Only use for testing.
   @visibleForTesting
   void setConnectivityStatus(bool status) {
-    _platformReportsConnected = status;
+    _interfaceAvailable = status;
     _setConnected(status);
   }
 }

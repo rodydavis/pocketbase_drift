@@ -60,7 +60,7 @@ void main() {
     const String dummyFilename = 'test_image.gif';
 
     setUpAll(() {
-      ConnectivityService.enableInternetChecker = false;
+      ConnectivityService.enableProbes = false;
     });
 
     // Use setUp to ensure a fresh, consistent database for each test.

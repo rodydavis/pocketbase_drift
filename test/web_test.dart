@@ -16,6 +16,7 @@ void main() {
         .toList();
 
     setUpAll(() async {
+      ConnectivityService.enableProbes = false;
       // Basic logging setup for debugging in the browser console.
       hierarchicalLoggingEnabled = true;
 
@@ -91,11 +92,20 @@ void main() {
       // Delete it
       await todoService.delete(item.id, requestPolicy: RequestPolicy.cacheOnly);
 
-      // Verify it is marked as deleted locally
-      final deletedItem = await todoService.getOne(item.id,
+      // Verify it is hidden from reads but tombstoned locally
+      final deletedItem = await todoService.getOneOrNull(item.id,
           requestPolicy: RequestPolicy.cacheOnly);
-      expect(deletedItem, isNotNull);
-      expect(deletedItem.data['deleted'], isTrue,
+      expect(deletedItem, isNull,
+          reason: "Deleted records must be hidden from local reads.");
+      final resultsAfter =
+          await todoService.getFullList(requestPolicy: RequestPolicy.cacheOnly);
+      expect(resultsAfter.any((r) => r.id == item.id), isFalse);
+
+      final tombstones = await client.db
+          .$query(todoService.service,
+              filter: "id = '${item.id}'", includeDeleted: true)
+          .get();
+      expect(tombstones.first['deleted'], isTrue,
           reason: "The record should be marked as deleted locally.");
     });
   });

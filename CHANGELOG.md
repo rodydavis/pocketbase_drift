@@ -1,3 +1,25 @@
+## 0.6.0
+
+### Connectivity: Custom Realtime Server Monitor
+
+- **Replaced `internet_connection_checker_plus` with a purpose-built realtime monitor.** The new `ConnectivityService` tracks reachability of *your actual PocketBase server* instead of polling third-party hosts:
+  - **Interface events** (`connectivity_plus`): losing the last network interface marks the app offline instantly; regaining one triggers an immediate probe. Works on web (`navigator.onLine`), mobile and desktop.
+  - **Server health probes**: a lightweight `GET /api/health` probe is the source of truth. While online a slow keepalive probe runs (`connectivityOnlineProbeInterval`, default 60s); while offline, probes back off exponentially (`connectivityOfflineBackoffMin` 5s doubling to `connectivityOfflineBackoffMax` 60s) so restoration is detected within seconds.
+  - **Request outcomes**: successful CRUD requests flip the status online instantly; consecutive failures (2) mark it offline.
+  - **Connectivity restoration now always triggers the pending-sync retry.** Previously the "connected" platform event did not flip the status, so queued changes could sit unsynced until an unrelated request happened to succeed.
+  - `ConnectivityService` is now a per-client instance (not a singleton) with a `dispose()` — no more leaked 10s check timers in widget tests. The test flag `enableInternetChecker` was renamed to `enableProbes`.
+
+### Sync Engine: Limbo & Tombstone Fixes
+
+- **Fixed offline-delete limbo**: a record created offline and deleted before ever syncing (`isNew: true` + `deleted: true`) made the sync engine attempt a doomed server delete (404) on every sync round forever. It is now purged locally, and server 404s on delete/update retries purge the local copy instead of looping (handles deletions that raced another device).
+- **Offline-deleted records no longer appear in local reads.** Tombstoned records (`deleted: true` awaiting server sync) were previously returned by `getFullList`, `getOne`, `watchRecords`, `search` and `$count`, so deletes appeared to "do nothing" in the UI. They are now excluded everywhere while remaining in the pending queue; `client.db.$query(..., includeDeleted: true)` opts back in for internal/diagnostic reads.
+- **`mergeLocal` no longer resurrects pending deletes**: a background list fetch landing before the sync engine can no longer overwrite a tombstone with stale server data.
+- **`cacheFirst` deletes now queue properly**: the old implementation hard-deleted the local row and fired a best-effort background delete — if that failed (e.g. offline), the deletion was silently lost and the record resurrected on the next fetch. It now writes a syncable tombstone first.
+
+### Housekeeping
+
+- Bumped minimum example/tests to run against a live PocketBase; added regression tests for the limbo purge, tombstone filtering, merge protection, watch-stream removal, and connectivity state machine (probe/backoff/request-signal).
+
 ## 0.5.0
 
 ### New Features & Examples

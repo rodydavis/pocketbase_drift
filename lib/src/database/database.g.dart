@@ -1121,30 +1121,30 @@ abstract class _$DataBase extends GeneratedDatabase {
       $CachedResponsesTable(this);
   Selectable<SearchResult> _search(String query) {
     return customSelect(
-        'SELECT"record"."id" AS "nested_0.id", "record"."data" AS "nested_0.data", "record"."service" AS "nested_0.service", "record"."created" AS "nested_0.created", "record"."updated" AS "nested_0.updated" FROM text_entries INNER JOIN services AS record ON record."rowid" = text_entries."rowid" WHERE text_entries MATCH ?1 ORDER BY rank',
+        'SELECT"record"."id" AS "nested_0.id", "record"."data" AS "nested_0.data", "record"."service" AS "nested_0.service", "record"."created" AS "nested_0.created", "record"."updated" AS "nested_0.updated" FROM text_entries INNER JOIN services AS record ON record."rowid" = text_entries."rowid" WHERE text_entries MATCH ?1 AND(json_extract(record.data, \'\$.deleted\') IS NULL OR json_extract(record.data, \'\$.deleted\') = 0)ORDER BY rank',
         variables: [
           Variable<String>(query)
         ],
         readsFrom: {
-          textEntries,
-          services,
+          this.textEntries,
+          this.services,
         }).asyncMap((QueryRow row) async => SearchResult(
-          record: await services.mapFromRow(row, tablePrefix: 'nested_0'),
+          record: await this.services.mapFromRow(row, tablePrefix: 'nested_0'),
         ));
   }
 
   Selectable<SearchServiceResult> _searchService(String query, String service) {
     return customSelect(
-        'SELECT"record"."id" AS "nested_0.id", "record"."data" AS "nested_0.data", "record"."service" AS "nested_0.service", "record"."created" AS "nested_0.created", "record"."updated" AS "nested_0.updated" FROM text_entries INNER JOIN services AS record ON record."rowid" = text_entries."rowid" WHERE text_entries MATCH ?1 AND record.service = ?2 ORDER BY rank',
+        'SELECT"record"."id" AS "nested_0.id", "record"."data" AS "nested_0.data", "record"."service" AS "nested_0.service", "record"."created" AS "nested_0.created", "record"."updated" AS "nested_0.updated" FROM text_entries INNER JOIN services AS record ON record."rowid" = text_entries."rowid" WHERE text_entries MATCH ?1 AND record.service = ?2 AND(json_extract(record.data, \'\$.deleted\') IS NULL OR json_extract(record.data, \'\$.deleted\') = 0)ORDER BY rank',
         variables: [
           Variable<String>(query),
           Variable<String>(service)
         ],
         readsFrom: {
-          textEntries,
-          services,
+          this.textEntries,
+          this.services,
         }).asyncMap((QueryRow row) async => SearchServiceResult(
-          record: await services.mapFromRow(row, tablePrefix: 'nested_0'),
+          record: await this.services.mapFromRow(row, tablePrefix: 'nested_0'),
         ));
   }
 
@@ -1213,8 +1213,7 @@ final class $$ServicesTableReferences
   static MultiTypedResultKey<$BlobFilesTable, List<BlobFile>>
       _blobFilesRefsTable(_$DataBase db) =>
           MultiTypedResultKey.fromTable(db.blobFiles,
-              aliasName:
-                  $_aliasNameGenerator(db.services.id, db.blobFiles.recordId));
+              aliasName: 'Services__id__BlobFiles__recordId');
 
   $$BlobFilesTableProcessedTableManager get blobFilesRefs {
     final manager = $$BlobFilesTableTableManager($_db, $_db.blobFiles)
@@ -1401,8 +1400,10 @@ class $$ServicesTableTableManager extends RootTableManager<
             rowid: rowid,
           ),
           withReferenceMapper: (p0) => p0
-              .map((e) =>
-                  (e.readTable(table), $$ServicesTableReferences(db, table, e)))
+              .map((e) => (
+                    e.readTable<$ServicesTable, Service>(table),
+                    $$ServicesTableReferences(db, table, e)
+                  ))
               .toList(),
           prefetchHooksCallback: ({blobFilesRefs = false}) {
             return PrefetchHooks(
@@ -1527,7 +1528,11 @@ class $TextEntriesTableManager extends RootTableManager<
             rowid: rowid,
           ),
           withReferenceMapper: (p0) => p0
-              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .map((e) => (
+                    e.readTable<TextEntries, TextEntry>(table),
+                    BaseReferences<_$DataBase, TextEntries, TextEntry>(
+                        db, table, e)
+                  ))
               .toList(),
           prefetchHooksCallback: null,
         ));
@@ -1568,8 +1573,8 @@ final class $$BlobFilesTableReferences
     extends BaseReferences<_$DataBase, $BlobFilesTable, BlobFile> {
   $$BlobFilesTableReferences(super.$_db, super.$_table, super.$_typedResult);
 
-  static $ServicesTable _recordIdTable(_$DataBase db) => db.services
-      .createAlias($_aliasNameGenerator(db.blobFiles.recordId, db.services.id));
+  static $ServicesTable _recordIdTable(_$DataBase db) =>
+      db.services.createAlias('BlobFiles__recordId__Services__id');
 
   $$ServicesTableProcessedTableManager get recordId {
     final $_column = $_itemColumn<String>('recordId')!;
@@ -1787,7 +1792,7 @@ class $$BlobFilesTableTableManager extends RootTableManager<
           ),
           withReferenceMapper: (p0) => p0
               .map((e) => (
-                    e.readTable(table),
+                    e.readTable<$BlobFilesTable, BlobFile>(table),
                     $$BlobFilesTableReferences(db, table, e)
                   ))
               .toList(),
@@ -1964,7 +1969,11 @@ class $$CachedResponsesTableTableManager extends RootTableManager<
             rowid: rowid,
           ),
           withReferenceMapper: (p0) => p0
-              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .map((e) => (
+                    e.readTable<$CachedResponsesTable, CachedResponse>(table),
+                    BaseReferences<_$DataBase, $CachedResponsesTable,
+                        CachedResponse>(db, table, e)
+                  ))
               .toList(),
           prefetchHooksCallback: null,
         ));

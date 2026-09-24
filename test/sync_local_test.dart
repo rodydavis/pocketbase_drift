@@ -223,10 +223,17 @@ void main() {
       // Act: Sync with empty server response
       await client.db.syncLocal('posts', []);
 
-      // Assert: The pending-delete post should still exist (will be handled by retry)
+      // Assert: The pending-delete post should still exist (will be handled
+      // by retry), but only visible when explicitly including tombstones.
+      final tombstones = await client.db
+          .$query('posts', includeDeleted: true)
+          .get();
+      expect(tombstones.length, 1);
+      expect(tombstones.first['id'], 'pending_delete_post');
+
+      // Regular reads must not surface the tombstone.
       final localPosts = await client.db.$query('posts').get();
-      expect(localPosts.length, 1);
-      expect(localPosts.first['id'], 'pending_delete_post');
+      expect(localPosts, isEmpty);
     });
 
     test(

@@ -20,6 +20,7 @@ void main() {
         .toList();
 
     setUpAll(() async {
+      ConnectivityService.enableProbes = false;
       hierarchicalLoggingEnabled = true;
       Logger.root.level = Level.ALL;
       Logger.root.onRecord.listen((record) {
@@ -64,8 +65,7 @@ void main() {
           isA<RecordModel>()
               .having((r) => r.data['name'], 'name', 'I Am Watched'),
           // 3. Third event: null after the record is deleted
-          isA<RecordModel>()
-              .having((r) => r.data['deleted'], 'deleted', isTrue),
+          isNull,
         ]),
       );
 

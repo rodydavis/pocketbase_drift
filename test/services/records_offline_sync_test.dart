@@ -22,7 +22,7 @@ void main() {
 
     // Test helper to control the mock connectivity status
     Future<void> setConnectivity(bool isOnline) async {
-      ConnectivityService.enableInternetChecker = false;
+      ConnectivityService.enableProbes = false;
       client.connectivity.setConnectivityStatus(isOnline);
     }
 
@@ -33,7 +33,7 @@ void main() {
         // ignore: avoid_print
         print('${record.level.name}: ${record.time}: ${record.message}');
       });
-      ConnectivityService.enableInternetChecker = false;
+      ConnectivityService.enableProbes = false;
 
       client = $PocketBase.database(
         url,
@@ -158,10 +158,14 @@ void main() {
       await todoCollection.delete(initialRecord.id,
           requestPolicy: RequestPolicy.cacheAndNetwork);
 
-      final deletedLocal = await todoCollection.getOne(initialRecord.id,
+      // The tombstone is hidden from reads but kept for the sync queue.
+      final deletedLocal = await todoCollection.getOneOrNull(initialRecord.id,
           requestPolicy: RequestPolicy.cacheOnly);
-      expect(deletedLocal.data['deleted'], true);
-      expect(deletedLocal.data['synced'], false);
+      expect(deletedLocal, isNull,
+          reason: "Offline-deleted records must be hidden from local reads.");
+      final pendingAfterDelete = await todoCollection.pending().get();
+      expect(pendingAfterDelete.map((r) => r.id), contains(initialRecord.id),
+          reason: "The deletion must remain queued for sync.");
 
       await setConnectivity(true);
       await Future.delayed(Duration.zero);
@@ -283,6 +287,215 @@ void main() {
       // Clean up
       await serverUltimate.delete(offlineRecord.id);
       await client.db.deleteAll('ultimate');
+    });
+
+    test(
+        'should purge a record that was created and deleted offline (no sync limbo)',
+        () async {
+      final todoCollection = client.collection('todo');
+      final recordName = 'limbo_purge_${DateTime.now().millisecondsSinceEpoch}';
+
+      await setConnectivity(false);
+
+      final offlineRecord = await todoCollection.create(
+        body: {'name': recordName},
+        requestPolicy: RequestPolicy.cacheAndNetwork,
+      );
+      await todoCollection.delete(offlineRecord.id,
+          requestPolicy: RequestPolicy.cacheAndNetwork);
+
+      // The record never reached the server.
+      final serverListBefore = await serverClient.collection('todo').getFullList(
+        filter: "name = '$recordName'",
+      );
+      expect(serverListBefore, isEmpty,
+          reason: 'Record was created offline; server must not know it.');
+
+      // The deletion stays queued.
+      final pendingBefore = await todoCollection.pending().get();
+      expect(pendingBefore.map((r) => r.id), contains(offlineRecord.id));
+
+      await setConnectivity(true);
+      await Future.delayed(Duration.zero);
+      await client.syncCompleted;
+
+      // Queue drained and the local row purged entirely - not stuck as a
+      // tombstone retrying a doomed server delete forever.
+      final pendingAfter = await todoCollection.pending().get();
+      expect(pendingAfter.map((r) => r.id), isNot(contains(offlineRecord.id)),
+          reason: 'Pending queue should be drained after sync.');
+
+      final row = await client.db
+          .$query('todo',
+              filter: "id = '${offlineRecord.id}'", includeDeleted: true)
+          .getSingleOrNull();
+      expect(row, isNull,
+          reason:
+              'Locally-created deleted record must be purged, not left in limbo.');
+
+      final serverListAfter =
+          await serverClient.collection('todo').getFullList(
+                filter: "name = '$recordName'",
+              );
+      expect(serverListAfter, isEmpty,
+          reason: 'Nothing should have been created on the server.');
+    });
+
+    test('should purge a tombstone when the server no longer has the record',
+        () async {
+      final todoCollection = client.collection('todo');
+      final todoServer = serverClient.collection('todo');
+
+      final record = await todoCollection.create(
+        body: {'name': 'tombstone_404_${DateTime.now().millisecondsSinceEpoch}'},
+        requestPolicy: RequestPolicy.cacheAndNetwork,
+      );
+
+      await setConnectivity(false);
+      await todoCollection.delete(record.id,
+          requestPolicy: RequestPolicy.cacheAndNetwork);
+
+      // Another device deletes the record on the server while we are offline.
+      await todoServer.delete(record.id);
+
+      await setConnectivity(true);
+      await Future.delayed(Duration.zero);
+      await client.syncCompleted;
+
+      expect((await todoCollection.pending().get()), isEmpty,
+          reason: 'Queue should not retry the 404 delete forever.');
+
+      final row = await client.db
+          .$query('todo', filter: "id = '${record.id}'", includeDeleted: true)
+          .getSingleOrNull();
+      expect(row, isNull,
+          reason: 'Tombstone should be dropped when the server is already '
+              'missing the record.');
+    });
+
+    test(
+        'should hide tombstones from cacheOnly reads, counts and search while keeping them pending',
+        () async {
+      final todoCollection = client.collection('todo');
+      final recordName =
+          'tombstone_hidden_${DateTime.now().millisecondsSinceEpoch}';
+
+      final record = await todoCollection.create(
+        body: {'name': recordName},
+        requestPolicy: RequestPolicy.cacheAndNetwork,
+      );
+
+      await setConnectivity(false);
+      await todoCollection.delete(record.id,
+          requestPolicy: RequestPolicy.cacheAndNetwork);
+
+      final visible =
+          await todoCollection.getFullList(requestPolicy: RequestPolicy.cacheOnly);
+      expect(visible.map((r) => r.id), isNot(contains(record.id)),
+          reason: 'getFullList must exclude offline-deleted records.');
+
+      final oneOrNull = await todoCollection.getOneOrNull(record.id,
+          requestPolicy: RequestPolicy.cacheOnly);
+      expect(oneOrNull, isNull,
+          reason: 'getOneOrNull must not surface offline-deleted records.');
+
+      final count = await client.db.$count('todo');
+      expect(
+        count,
+        0,
+        reason: 'Counts must exclude offline-deleted records.',
+      );
+
+      final hits = await client.db.search(recordName, service: 'todo').get();
+      expect(hits, isEmpty,
+          reason: 'Search must exclude offline-deleted records.');
+
+      final pending = await todoCollection.pending().get();
+      expect(pending.map((r) => r.id), contains(record.id),
+          reason: 'The deletion must remain queued for sync.');
+    });
+
+    test('mergeLocal must not resurrect a pending-delete tombstone', () async {
+      final todoCollection = client.collection('todo');
+
+      final record = await todoCollection.create(
+        body: {'name': 'no_resurrect_${DateTime.now().millisecondsSinceEpoch}'},
+        requestPolicy: RequestPolicy.cacheAndNetwork,
+      );
+
+      await setConnectivity(false);
+      await todoCollection.delete(record.id,
+          requestPolicy: RequestPolicy.cacheAndNetwork);
+
+      // A background list fetch lands while the deletion is still pending:
+      // the server still returns the record, but mergeLocal must keep the
+      // tombstone instead of writing the stale server copy over it.
+      await client.db.mergeLocal('todo', [
+        {'id': record.id, 'name': 'stale_server_copy', 'updated': DateTime.now().toUtc().toIso8601String()},
+      ]);
+
+      final visible =
+          await todoCollection.getFullList(requestPolicy: RequestPolicy.cacheOnly);
+      expect(visible.map((r) => r.id), isNot(contains(record.id)),
+          reason: 'Server data must not resurrect the pending delete.');
+
+      final pending = await todoCollection.pending().get();
+      expect(pending.map((r) => r.id), contains(record.id),
+          reason: 'The tombstone must survive the merge.');
+
+      // Sync still completes normally afterwards.
+      await setConnectivity(true);
+      await Future.delayed(Duration.zero);
+      await client.syncCompleted;
+
+      final row = await client.db
+          .$query('todo', filter: "id = '${record.id}'", includeDeleted: true)
+          .getSingleOrNull();
+      expect(row, isNull);
+    });
+
+    test('offline delete removes the record from watchRecords streams',
+        () async {
+      final todoCollection = client.collection('todo');
+      final recordName =
+          'watch_delete_${DateTime.now().millisecondsSinceEpoch}';
+
+      final record = await todoCollection.create(
+        body: {'name': recordName},
+        requestPolicy: RequestPolicy.cacheAndNetwork,
+      );
+      expect(
+        (await todoCollection
+                .getFullList(requestPolicy: RequestPolicy.cacheOnly))
+            .map((r) => r.id),
+        contains(record.id),
+        reason: 'Record is visible before the offline delete.',
+      );
+
+      // Warm the stream BEFORE the delete so it observes both states.
+      final emissions = <List<RecordModel>>[];
+      final subscription = todoCollection
+          .watchRecords(
+            filter: "name = '$recordName'",
+            requestPolicy: RequestPolicy.cacheOnly,
+          )
+          .listen(emissions.add);
+      // Give the cold stream a moment to produce its initial snapshot.
+      await Future<void>.delayed(const Duration(milliseconds: 150));
+
+      await setConnectivity(false);
+      await todoCollection.delete(record.id,
+          requestPolicy: RequestPolicy.cacheAndNetwork);
+      await setConnectivity(true);
+      await Future.delayed(Duration.zero);
+      await client.syncCompleted;
+      // Allow the drift watch to flush its re-emission.
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      await subscription.cancel();
+
+      expect(emissions, isNotEmpty, reason: 'The stream must emit.');
+      expect(emissions.last, isEmpty,
+          reason: 'The tombstone must not surface in the stream.');
     });
   });
 }

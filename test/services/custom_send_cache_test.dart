@@ -33,8 +33,7 @@ void main() {
     });
 
     setUp(() async {
-      ConnectivityService.enableInternetChecker = false;
-      ConnectivityService().setConnectivityStatus(true);
+      ConnectivityService.enableProbes = false;
     });
 
     test(

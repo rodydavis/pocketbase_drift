@@ -80,7 +80,7 @@ Add the following packages to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  pocketbase_drift: ^0.5.0 # Use the latest version
+  pocketbase_drift: ^0.6.0 # Use the latest version
 ```
 
 ### 2. Initialize the Client
@@ -233,6 +233,41 @@ When using `cacheAndNetwork` or `cacheFirst` policies for write operations, the 
     - `cacheAndNetwork`: Operation is applied to local cache and marked as "pending sync"
     - `cacheFirst`: Operation succeeds locally, background sync is attempted
     - In both cases, the UI responds instantly and the change will automatically sync when connectivity is restored
+
+Offline deletions are stored as local *tombstones* (`deleted: true`) until the server confirms them. Tombstones are invisible to all local reads (`getFullList`, `getOne`, `watchRecords`, `search`, counts) but remain in the pending queue until synced. A record that was created offline and deleted before ever syncing is purged locally during sync — no doomed server round-trip.
+
+### Connectivity Monitoring
+
+The client ships with a realtime connectivity monitor tuned for PocketBase — not a generic "internet checker" polling external hosts. `ConnectivityService` combines three signals:
+
+1.  **Interface events** (`connectivity_plus`): losing the last network interface marks the app offline instantly; regaining one triggers an immediate probe.
+2.  **Server health probes**: the actual PocketBase server is probed (`/api/health`). While online, a slow keepalive probe runs; while offline, probes back off exponentially (5s doubling to 60s by default) so restoration is detected within seconds. **A successful probe or request triggers the pending-sync retry automatically.**
+3.  **Request outcomes**: real CRUD traffic reports success/failure for instant state flips.
+
+```dart
+// Current status and reactive stream
+final isOnline = client.connectivity.isConnected;
+client.connectivity.statusStream.listen((online) {
+  if (online) print('Back online - pending changes will sync');
+});
+
+// Whether writes should attempt the network
+client.connectivity.shouldAttemptNetwork;
+```
+
+Tuning (per client):
+
+```dart
+final client = $PocketBase.database(
+  'https://your-pb.example.com',
+  connectivityProbeTimeout: const Duration(seconds: 5),
+  connectivityOnlineProbeInterval: const Duration(seconds: 60),
+  connectivityOfflineBackoffMin: const Duration(seconds: 5),
+  connectivityOfflineBackoffMax: const Duration(seconds: 60),
+);
+```
+
+Works on all platforms, including web (probes are plain HTTP to your own server, so no CORS issues with third-party check endpoints).
 
 ## Usage Examples
 

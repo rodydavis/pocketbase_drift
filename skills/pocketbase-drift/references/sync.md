@@ -183,20 +183,44 @@ class SyncStatusBanner extends ConsumerWidget {
 
 ## Connectivity Service
 
-Access connectivity status:
+Each client owns a realtime connectivity monitor tuned for PocketBase. It combines three signals: OS interface events (instant triggers), server health probes (`/api/health`) with exponential backoff while offline, and actual request outcomes. When connectivity is restored, the pending-sync retry fires automatically — no app code needed.
 
 ```dart
 // Current status
 final isConnected = client.connectivity.isConnected;
 
+// Whether writes should attempt the network
+final canTry = client.connectivity.shouldAttemptNetwork;
+
 // Stream of connectivity changes
 client.connectivity.statusStream.listen((isConnected) {
   if (isConnected) {
-    print('Now online');
+    print('Now online - pending changes will sync');
   } else {
     print('Now offline');
   }
 });
+```
+
+Tuning per client (all optional):
+
+```dart
+final client = $PocketBase.database(
+  'https://your-pb.example.com',
+  connectivityProbeTimeout: const Duration(seconds: 5),
+  connectivityOnlineProbeInterval: const Duration(seconds: 60),
+  connectivityOfflineBackoffMin: const Duration(seconds: 5),
+  connectivityOfflineBackoffMax: const Duration(seconds: 60),
+);
+```
+
+## Deleted Records (Tombstones)
+
+Offline deletes write a local tombstone (`deleted: true`) that stays invisible to all reads (`getFullList`, `getOne`, `watchRecords`, `search`, `$count`) until the sync engine confirms the server deletion. Records created offline and deleted before syncing are purged locally. Raw database access can opt back in:
+
+```dart
+// Include tombstones (diagnostics, pending queue views)
+await client.db.$query('posts', includeDeleted: true).get();
 ```
 
 ## Conflict Handling

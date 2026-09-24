@@ -35,3 +35,5 @@ db
 # Web SQLite & Drift WASM binaries
 *.wasm
 drift_worker*.js
+# Private working logs (decision logs, external issues, follow-ups)
+docs/

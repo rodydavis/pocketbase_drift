@@ -208,8 +208,9 @@ void main() {
       expect(results.first.status, 204);
 
       // Record should be marked as deleted
-      final posts =
-          await client.db.$query('posts', filter: "id = 'delete_me'").get();
+      final posts = await client.db
+          .$query('posts', filter: "id = 'delete_me'", includeDeleted: true)
+          .get();
       expect(posts.first['deleted'], true);
     });
 
@@ -364,7 +365,9 @@ void main() {
 
       // Verify final state
       final posts = await client.db.$query('posts').get();
-      final comments = await client.db.$query('comments').get();
+      final comments = await client.db
+          .$query('comments', includeDeleted: true)
+          .get();
       final tags = await client.db.$query('tags').get();
 
       expect(posts.length, 2); // Original + new

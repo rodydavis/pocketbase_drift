@@ -61,10 +61,11 @@ class $RecordService extends RecordService with ServiceMixin<RecordModel> {
   }
 
   Selectable<RecordModel> pending() {
-    // This query now correctly fetches only records that are unsynced
-    // AND are NOT marked as local-only.
+    // Fetches records that are unsynced AND are NOT marked as local-only.
+    // Tombstones (offline deletes) are included so retryLocal can sync them.
     return client.db
         .$query(service,
+            includeDeleted: true,
             filter: "synced = false && (noSync = null || noSync = false)")
         .map(itemFactoryFunc);
   }
@@ -102,13 +103,34 @@ class $RecordService extends RecordService with ServiceMixin<RecordModel> {
 
         // The record was marked for deletion while offline.
         if (item.data['deleted'] == true) {
-          await delete(
-            tempId,
-            requestPolicy: RequestPolicy.networkFirst,
-            query: query,
-            headers: headers,
-          );
-          client.logger.fine('Successfully synced deletion for item $tempId');
+          if (item.data['isNew'] == true) {
+            // Created offline and deleted before it ever reached the server:
+            // there is nothing on the server to delete, so purge locally.
+            await client.db.$delete(service, tempId);
+            client.logger.fine(
+                'Purged item $tempId that was created and deleted offline (never synced)');
+          } else {
+            try {
+              await delete(
+                tempId,
+                requestPolicy: RequestPolicy.networkFirst,
+                query: query,
+                headers: headers,
+              );
+              client.logger.fine('Successfully synced deletion for item $tempId');
+            } on ClientException catch (e) {
+              if (e.statusCode == 404) {
+                // Already gone on the server (e.g. deleted from another
+                // device). Drop the local tombstone instead of retrying 404s
+                // forever.
+                await client.db.$delete(service, tempId);
+                client.logger.fine(
+                    'Item $tempId already deleted on server; removed local tombstone');
+              } else {
+                rethrow;
+              }
+            }
+          }
 
           // The record was newly created offline.
         } else if (item.data['isNew'] == true) {
@@ -157,16 +179,30 @@ class $RecordService extends RecordService with ServiceMixin<RecordModel> {
             updateBody.remove(fieldName);
           }
 
-          await update(
-            tempId,
-            body: updateBody,
-            files: files,
-            requestPolicy: RequestPolicy.networkFirst,
-            query: query,
-            headers: headers,
-          );
-          client.logger.fine(
-              'Successfully synced update for item $tempId (${files.length} files)');
+          try {
+            await update(
+              tempId,
+              body: updateBody,
+              files: files,
+              requestPolicy: RequestPolicy.networkFirst,
+              query: query,
+              headers: headers,
+            );
+            client.logger.fine(
+                'Successfully synced update for item $tempId (${files.length} files)');
+          } on ClientException catch (e) {
+            if (e.statusCode == 404) {
+              // The record no longer exists on the server (deleted from
+              // another device while we were offline). Recreating it would
+              // be wrong, so drop the stale local copy instead of retrying
+              // 404s forever.
+              await client.db.$delete(service, tempId);
+              client.logger.warning(
+                  'Item $tempId no longer exists on server; removed stale local copy');
+            } else {
+              rethrow;
+            }
+          }
         }
       } on ClientException catch (e) {
         // Handle 400 Bad Request errors specifically (Validation errors, Orphans, etc.)
@@ -193,7 +229,8 @@ class $RecordService extends RecordService with ServiceMixin<RecordModel> {
 
           // Verify if record still exists before updating to avoid race conditions
           final exists = await client.db
-              .$query(service, filter: "id = '${item.id}'")
+              .$query(service,
+                  filter: "id = '${item.id}'", includeDeleted: true)
               .getSingleOrNull();
           if (exists != null) {
             client.logger.warning(

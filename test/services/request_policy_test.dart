@@ -35,7 +35,7 @@ void main() {
 
   /// Helper to control mock connectivity status
   Future<void> setConnectivity(bool isOnline) async {
-    ConnectivityService.enableInternetChecker = false;
+    ConnectivityService.enableProbes = false;
     client.connectivity.setConnectivityStatus(isOnline);
   }
 
@@ -46,7 +46,7 @@ void main() {
         // ignore: avoid_print
         .listen((record) => print('${record.level.name}: ${record.message}'));
 
-    ConnectivityService.enableInternetChecker = false;
+    ConnectivityService.enableProbes = false;
 
     SharedPreferences.setMockInitialValues({});
     client = $PocketBase.database(

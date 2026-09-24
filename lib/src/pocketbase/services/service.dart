@@ -1230,16 +1230,35 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
     Map<String, dynamic> query,
     Map<String, String> headers,
   ) async {
-    // Delete from cache first
-    await client.db.$delete(service, id);
+    // Mark as a tombstone first so the deletion survives until the server
+    // confirms it. A hard local delete would lose the pending change when
+    // the background server delete fails (e.g. offline).
+    final existing = await client.db
+        .$query(service, filter: "id = '$id'", includeDeleted: true)
+        .getSingleOrNull();
+    if (existing != null) {
+      await client.db.$update(
+        service,
+        id,
+        {
+          ...body,
+          'deleted': true,
+          'synced': false,
+          'isNew': existing['isNew'] == true,
+          'noSync': false,
+        },
+      );
+    }
 
-    // Try server in background
+    // Try server in background; on success drop the local row entirely.
     if (client.connectivity.shouldAttemptNetwork) {
       super
           .delete(id, body: body, query: query, headers: headers)
+          .then((_) => client.db.$delete(service, id))
           .catchError((e) {
         client.logger.warning(
-            'Background delete for $service/$id failed, will retry later.', e);
+            'Background delete for $service/$id failed, will retry when connectivity returns.',
+            e);
       });
     }
   }
@@ -1294,18 +1313,28 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
     if (saved) {
       await client.db.$delete(service, id);
     } else {
-      await _updateCacheAndNetwork(
-        id,
-        {
-          ...body,
-          'deleted': true,
-        },
-        query,
-        [],
-        headers,
-        null,
-        null,
-      );
+      // Mark as a tombstone so the deletion survives until the server can
+      // confirm it. isNew is preserved so retryLocal can purge locally
+      // created records without a doomed server round-trip.
+      final existing = await client.db
+          .$query(service, filter: "id = '$id'", includeDeleted: true)
+          .getSingleOrNull();
+      if (existing != null) {
+        await client.db.$update(
+          service,
+          id,
+          {
+            ...body,
+            'deleted': true,
+            'synced': false,
+            'isNew': existing['isNew'] == true,
+            'noSync': false,
+          },
+        );
+      } else {
+        client.logger.warning(
+            'Cannot delete $service/$id while offline: record is not cached locally.');
+      }
     }
   }
 }

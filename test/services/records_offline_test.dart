@@ -118,11 +118,16 @@ void main() {
           );
           await todoService.delete(item.id, requestPolicy: requestPolicy);
           if (requestPolicy == RequestPolicy.cacheOnly) {
+            // Tombstones are hidden from reads but tracked for completeness.
             final deletedCacheItem = await todoService.getOneOrNull(item.id,
                 requestPolicy: RequestPolicy.cacheOnly);
-            expect(deletedCacheItem, isNotNull);
-            expect(deletedCacheItem!.data['deleted'], isTrue);
-            expect(deletedCacheItem.data['noSync'], isTrue);
+            expect(deletedCacheItem, isNull);
+            final tombstones = await client.db
+                .$query('todo',
+                    filter: "id = '${item.id}'", includeDeleted: true)
+                .get();
+            expect(tombstones.first['deleted'], isTrue);
+            expect(tombstones.first['noSync'], isTrue);
           } else {
             final cacheDeletedItem = await todoService.getOneOrNull(item.id,
                 requestPolicy: RequestPolicy.cacheOnly);

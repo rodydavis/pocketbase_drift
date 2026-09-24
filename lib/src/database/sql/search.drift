@@ -21,15 +21,18 @@ CREATE TRIGGER services_update AFTER UPDATE ON services BEGIN
   INSERT INTO text_entries(rowid, data) VALUES (new.rowid, new.data);
 END;
 
--- Full text search query.
-_search: 
+-- Full text search query. Tombstones (offline deletes pending sync) are
+-- excluded so deleted records never surface in search results.
+_search:
     SELECT record.** FROM text_entries
     INNER JOIN services record ON record.rowid = text_entries.rowid
     WHERE text_entries MATCH :query
+    AND (json_extract(record.data, '$.deleted') IS NULL OR json_extract(record.data, '$.deleted') = 0)
     ORDER BY rank;
-_searchService: 
+_searchService:
     SELECT record.** FROM text_entries
     INNER JOIN services record ON record.rowid = text_entries.rowid
     WHERE text_entries MATCH :query
     AND record.service = :service
+    AND (json_extract(record.data, '$.deleted') IS NULL OR json_extract(record.data, '$.deleted') = 0)
     ORDER BY rank;
