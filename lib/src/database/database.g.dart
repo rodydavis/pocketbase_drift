@@ -38,8 +38,15 @@ class $ServicesTable extends Services with TableInfo<$ServicesTable, Service> {
   late final GeneratedColumn<String> updated = GeneratedColumn<String>(
       'updated', aliasedName, true,
       type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _cachedAtMeta =
+      const VerificationMeta('cachedAt');
   @override
-  List<GeneratedColumn> get $columns => [id, data, service, created, updated];
+  late final GeneratedColumn<DateTime> cachedAt = GeneratedColumn<DateTime>(
+      'cachedAt', aliasedName, true,
+      type: DriftSqlType.dateTime, requiredDuringInsert: false);
+  @override
+  List<GeneratedColumn> get $columns =>
+      [id, data, service, created, updated, cachedAt];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -67,6 +74,10 @@ class $ServicesTable extends Services with TableInfo<$ServicesTable, Service> {
       context.handle(_updatedMeta,
           updated.isAcceptableOrUnknown(data['updated']!, _updatedMeta));
     }
+    if (data.containsKey('cachedAt')) {
+      context.handle(_cachedAtMeta,
+          cachedAt.isAcceptableOrUnknown(data['cachedAt']!, _cachedAtMeta));
+    }
     return context;
   }
 
@@ -86,6 +97,8 @@ class $ServicesTable extends Services with TableInfo<$ServicesTable, Service> {
           .read(DriftSqlType.string, data['${effectivePrefix}created']),
       updated: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}updated']),
+      cachedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}cachedAt']),
     );
   }
 
@@ -104,12 +117,18 @@ class Service extends DataClass implements Insertable<Service> {
   final String service;
   final String? created;
   final String? updated;
+
+  /// When the row was last written from the server or by a local change.
+  /// Cache TTL maintenance expires rows by this time, not by the server's
+  /// `updated` value (which can be old for data that is fetched daily).
+  final DateTime? cachedAt;
   const Service(
       {required this.id,
       required this.data,
       required this.service,
       this.created,
-      this.updated});
+      this.updated,
+      this.cachedAt});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -123,6 +142,9 @@ class Service extends DataClass implements Insertable<Service> {
     }
     if (!nullToAbsent || updated != null) {
       map['updated'] = Variable<String>(updated);
+    }
+    if (!nullToAbsent || cachedAt != null) {
+      map['cachedAt'] = Variable<DateTime>(cachedAt);
     }
     return map;
   }
@@ -138,6 +160,9 @@ class Service extends DataClass implements Insertable<Service> {
       updated: updated == null && nullToAbsent
           ? const Value.absent()
           : Value(updated),
+      cachedAt: cachedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(cachedAt),
     );
   }
 
@@ -150,6 +175,7 @@ class Service extends DataClass implements Insertable<Service> {
       service: serializer.fromJson<String>(json['service']),
       created: serializer.fromJson<String?>(json['created']),
       updated: serializer.fromJson<String?>(json['updated']),
+      cachedAt: serializer.fromJson<DateTime?>(json['cachedAt']),
     );
   }
   @override
@@ -161,6 +187,7 @@ class Service extends DataClass implements Insertable<Service> {
       'service': serializer.toJson<String>(service),
       'created': serializer.toJson<String?>(created),
       'updated': serializer.toJson<String?>(updated),
+      'cachedAt': serializer.toJson<DateTime?>(cachedAt),
     };
   }
 
@@ -169,13 +196,15 @@ class Service extends DataClass implements Insertable<Service> {
           Map<String, dynamic>? data,
           String? service,
           Value<String?> created = const Value.absent(),
-          Value<String?> updated = const Value.absent()}) =>
+          Value<String?> updated = const Value.absent(),
+          Value<DateTime?> cachedAt = const Value.absent()}) =>
       Service(
         id: id ?? this.id,
         data: data ?? this.data,
         service: service ?? this.service,
         created: created.present ? created.value : this.created,
         updated: updated.present ? updated.value : this.updated,
+        cachedAt: cachedAt.present ? cachedAt.value : this.cachedAt,
       );
   Service copyWithCompanion(ServicesCompanion data) {
     return Service(
@@ -184,6 +213,7 @@ class Service extends DataClass implements Insertable<Service> {
       service: data.service.present ? data.service.value : this.service,
       created: data.created.present ? data.created.value : this.created,
       updated: data.updated.present ? data.updated.value : this.updated,
+      cachedAt: data.cachedAt.present ? data.cachedAt.value : this.cachedAt,
     );
   }
 
@@ -194,13 +224,15 @@ class Service extends DataClass implements Insertable<Service> {
           ..write('data: $data, ')
           ..write('service: $service, ')
           ..write('created: $created, ')
-          ..write('updated: $updated')
+          ..write('updated: $updated, ')
+          ..write('cachedAt: $cachedAt')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, data, service, created, updated);
+  int get hashCode =>
+      Object.hash(id, data, service, created, updated, cachedAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -209,7 +241,8 @@ class Service extends DataClass implements Insertable<Service> {
           other.data == this.data &&
           other.service == this.service &&
           other.created == this.created &&
-          other.updated == this.updated);
+          other.updated == this.updated &&
+          other.cachedAt == this.cachedAt);
 }
 
 class ServicesCompanion extends UpdateCompanion<Service> {
@@ -218,6 +251,7 @@ class ServicesCompanion extends UpdateCompanion<Service> {
   final Value<String> service;
   final Value<String?> created;
   final Value<String?> updated;
+  final Value<DateTime?> cachedAt;
   final Value<int> rowid;
   const ServicesCompanion({
     this.id = const Value.absent(),
@@ -225,6 +259,7 @@ class ServicesCompanion extends UpdateCompanion<Service> {
     this.service = const Value.absent(),
     this.created = const Value.absent(),
     this.updated = const Value.absent(),
+    this.cachedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   ServicesCompanion.insert({
@@ -233,6 +268,7 @@ class ServicesCompanion extends UpdateCompanion<Service> {
     required String service,
     this.created = const Value.absent(),
     this.updated = const Value.absent(),
+    this.cachedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   })  : data = Value(data),
         service = Value(service);
@@ -242,6 +278,7 @@ class ServicesCompanion extends UpdateCompanion<Service> {
     Expression<String>? service,
     Expression<String>? created,
     Expression<String>? updated,
+    Expression<DateTime>? cachedAt,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -250,6 +287,7 @@ class ServicesCompanion extends UpdateCompanion<Service> {
       if (service != null) 'service': service,
       if (created != null) 'created': created,
       if (updated != null) 'updated': updated,
+      if (cachedAt != null) 'cachedAt': cachedAt,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -260,6 +298,7 @@ class ServicesCompanion extends UpdateCompanion<Service> {
       Value<String>? service,
       Value<String?>? created,
       Value<String?>? updated,
+      Value<DateTime?>? cachedAt,
       Value<int>? rowid}) {
     return ServicesCompanion(
       id: id ?? this.id,
@@ -267,6 +306,7 @@ class ServicesCompanion extends UpdateCompanion<Service> {
       service: service ?? this.service,
       created: created ?? this.created,
       updated: updated ?? this.updated,
+      cachedAt: cachedAt ?? this.cachedAt,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -290,6 +330,9 @@ class ServicesCompanion extends UpdateCompanion<Service> {
     if (updated.present) {
       map['updated'] = Variable<String>(updated.value);
     }
+    if (cachedAt.present) {
+      map['cachedAt'] = Variable<DateTime>(cachedAt.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -304,6 +347,7 @@ class ServicesCompanion extends UpdateCompanion<Service> {
           ..write('service: $service, ')
           ..write('created: $created, ')
           ..write('updated: $updated, ')
+          ..write('cachedAt: $cachedAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -1114,16 +1158,21 @@ abstract class _$DataBase extends GeneratedDatabase {
       'CREATE TRIGGER services_delete AFTER DELETE ON services BEGIN INSERT INTO text_entries (text_entries, "rowid", data) VALUES (\'delete\', old."rowid", old.data);END',
       'services_delete');
   late final Trigger servicesUpdate = Trigger(
-      'CREATE TRIGGER services_update AFTER UPDATE ON services BEGIN INSERT INTO text_entries (text_entries, "rowid", data) VALUES (\'delete\', old."rowid", old.data);INSERT INTO text_entries ("rowid", data) VALUES (new."rowid", new.data);END',
+      'CREATE TRIGGER services_update AFTER UPDATE OF data ON services BEGIN INSERT INTO text_entries (text_entries, "rowid", data) VALUES (\'delete\', old."rowid", old.data);INSERT INTO text_entries ("rowid", data) VALUES (new."rowid", new.data);END',
       'services_update');
   late final $BlobFilesTable blobFiles = $BlobFilesTable(this);
   late final $CachedResponsesTable cachedResponses =
       $CachedResponsesTable(this);
-  Selectable<SearchResult> _search(String query) {
+  late final Index idxServicesService = Index('idx_services_service',
+      'CREATE INDEX idx_services_service ON Services (service)');
+  late final Index idxBlobFilesRecord = Index('idx_blob_files_record',
+      'CREATE INDEX idx_blob_files_record ON BlobFiles (recordId, filename)');
+  Selectable<SearchResult> _search(String query, String? owner) {
     return customSelect(
-        'SELECT"record"."id" AS "nested_0.id", "record"."data" AS "nested_0.data", "record"."service" AS "nested_0.service", "record"."created" AS "nested_0.created", "record"."updated" AS "nested_0.updated" FROM text_entries INNER JOIN services AS record ON record."rowid" = text_entries."rowid" WHERE text_entries MATCH ?1 AND(json_extract(record.data, \'\$.deleted\') IS NULL OR json_extract(record.data, \'\$.deleted\') = 0)ORDER BY rank',
+        'SELECT"record"."id" AS "nested_0.id", "record"."data" AS "nested_0.data", "record"."service" AS "nested_0.service", "record"."created" AS "nested_0.created", "record"."updated" AS "nested_0.updated", "record"."cachedAt" AS "nested_0.cachedAt" FROM text_entries INNER JOIN services AS record ON record."rowid" = text_entries."rowid" WHERE text_entries MATCH ?1 AND(json_extract(record.data, \'\$.deleted\') IS NULL OR json_extract(record.data, \'\$.deleted\') = 0)AND(json_extract(record.data, \'\$.pendingOwner\') IS NULL OR json_extract(record.data, \'\$.pendingOwner\') = ?2)ORDER BY rank',
         variables: [
-          Variable<String>(query)
+          Variable<String>(query),
+          Variable<String>(owner)
         ],
         readsFrom: {
           this.textEntries,
@@ -1133,12 +1182,14 @@ abstract class _$DataBase extends GeneratedDatabase {
         ));
   }
 
-  Selectable<SearchServiceResult> _searchService(String query, String service) {
+  Selectable<SearchServiceResult> _searchService(
+      String query, String service, String? owner) {
     return customSelect(
-        'SELECT"record"."id" AS "nested_0.id", "record"."data" AS "nested_0.data", "record"."service" AS "nested_0.service", "record"."created" AS "nested_0.created", "record"."updated" AS "nested_0.updated" FROM text_entries INNER JOIN services AS record ON record."rowid" = text_entries."rowid" WHERE text_entries MATCH ?1 AND record.service = ?2 AND(json_extract(record.data, \'\$.deleted\') IS NULL OR json_extract(record.data, \'\$.deleted\') = 0)ORDER BY rank',
+        'SELECT"record"."id" AS "nested_0.id", "record"."data" AS "nested_0.data", "record"."service" AS "nested_0.service", "record"."created" AS "nested_0.created", "record"."updated" AS "nested_0.updated", "record"."cachedAt" AS "nested_0.cachedAt" FROM text_entries INNER JOIN services AS record ON record."rowid" = text_entries."rowid" WHERE text_entries MATCH ?1 AND record.service = ?2 AND(json_extract(record.data, \'\$.deleted\') IS NULL OR json_extract(record.data, \'\$.deleted\') = 0)AND(json_extract(record.data, \'\$.pendingOwner\') IS NULL OR json_extract(record.data, \'\$.pendingOwner\') = ?3)ORDER BY rank',
         variables: [
           Variable<String>(query),
-          Variable<String>(service)
+          Variable<String>(service),
+          Variable<String>(owner)
         ],
         readsFrom: {
           this.textEntries,
@@ -1159,7 +1210,9 @@ abstract class _$DataBase extends GeneratedDatabase {
         servicesDelete,
         servicesUpdate,
         blobFiles,
-        cachedResponses
+        cachedResponses,
+        idxServicesService,
+        idxBlobFilesRecord
       ];
   @override
   StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules(
@@ -1195,6 +1248,7 @@ typedef $$ServicesTableCreateCompanionBuilder = ServicesCompanion Function({
   required String service,
   Value<String?> created,
   Value<String?> updated,
+  Value<DateTime?> cachedAt,
   Value<int> rowid,
 });
 typedef $$ServicesTableUpdateCompanionBuilder = ServicesCompanion Function({
@@ -1203,6 +1257,7 @@ typedef $$ServicesTableUpdateCompanionBuilder = ServicesCompanion Function({
   Value<String> service,
   Value<String?> created,
   Value<String?> updated,
+  Value<DateTime?> cachedAt,
   Value<int> rowid,
 });
 
@@ -1252,6 +1307,9 @@ class $$ServicesTableFilterComposer
   ColumnFilters<String> get updated => $composableBuilder(
       column: $table.updated, builder: (column) => ColumnFilters(column));
 
+  ColumnFilters<DateTime> get cachedAt => $composableBuilder(
+      column: $table.cachedAt, builder: (column) => ColumnFilters(column));
+
   Expression<bool> blobFilesRefs(
       Expression<bool> Function($$BlobFilesTableFilterComposer f) f) {
     final $$BlobFilesTableFilterComposer composer = $composerBuilder(
@@ -1297,6 +1355,9 @@ class $$ServicesTableOrderingComposer
 
   ColumnOrderings<String> get updated => $composableBuilder(
       column: $table.updated, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get cachedAt => $composableBuilder(
+      column: $table.cachedAt, builder: (column) => ColumnOrderings(column));
 }
 
 class $$ServicesTableAnnotationComposer
@@ -1322,6 +1383,9 @@ class $$ServicesTableAnnotationComposer
 
   GeneratedColumn<String> get updated =>
       $composableBuilder(column: $table.updated, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get cachedAt =>
+      $composableBuilder(column: $table.cachedAt, builder: (column) => column);
 
   Expression<T> blobFilesRefs<T extends Object>(
       Expression<T> Function($$BlobFilesTableAnnotationComposer a) f) {
@@ -1373,6 +1437,7 @@ class $$ServicesTableTableManager extends RootTableManager<
             Value<String> service = const Value.absent(),
             Value<String?> created = const Value.absent(),
             Value<String?> updated = const Value.absent(),
+            Value<DateTime?> cachedAt = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               ServicesCompanion(
@@ -1381,6 +1446,7 @@ class $$ServicesTableTableManager extends RootTableManager<
             service: service,
             created: created,
             updated: updated,
+            cachedAt: cachedAt,
             rowid: rowid,
           ),
           createCompanionCallback: ({
@@ -1389,6 +1455,7 @@ class $$ServicesTableTableManager extends RootTableManager<
             required String service,
             Value<String?> created = const Value.absent(),
             Value<String?> updated = const Value.absent(),
+            Value<DateTime?> cachedAt = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               ServicesCompanion.insert(
@@ -1397,6 +1464,7 @@ class $$ServicesTableTableManager extends RootTableManager<
             service: service,
             created: created,
             updated: updated,
+            cachedAt: cachedAt,
             rowid: rowid,
           ),
           withReferenceMapper: (p0) => p0

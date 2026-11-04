@@ -1,7 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pocketbase_drift/pocketbase_drift.dart';
 
-import '../../../core/constants/app_constants.dart';
 import '../../../shared/providers/pocketbase_provider.dart';
 
 class PendingRecordInfo {
@@ -18,34 +17,20 @@ class PendingRecordInfo {
   final bool isDeleted;
 }
 
-/// Stream provider for pending unsynced items in SQLite.
+/// Stream provider for records with unsynced local changes.
 final pendingSyncItemsProvider =
     StreamProvider.autoDispose<List<PendingRecordInfo>>((ref) {
   final client = ref.watch(pocketBaseProvider);
 
-  // Watch the services table for unsynced or pending-deletion records
-  final query = client.db.select(client.db.services);
-
-  return query.watch().map((rows) {
-    final list = <PendingRecordInfo>[];
-    for (final row in rows) {
-      if (row.service == 'schema') continue;
-      final data = row.data;
-      final isSynced = data['synced'] == true || data['synced'] == 1;
-      final isDeleted = data['deleted'] == true || data['deleted'] == 1;
-      final isNoSync = data['noSync'] == true || data['noSync'] == 1;
-
-      if ((!isSynced && !isNoSync) || isDeleted) {
-        list.add(PendingRecordInfo(
-          service: row.service,
-          id: row.id,
-          data: data,
-          isDeleted: isDeleted,
-        ));
-      }
-    }
-    return list;
-  });
+  return client.db.pendingRecords().watch().map((rows) => [
+        for (final row in rows)
+          PendingRecordInfo(
+            service: row.service,
+            id: row.id,
+            data: row.data,
+            isDeleted: row.data['deleted'] == true,
+          ),
+      ]);
 });
 
 /// Count of pending items awaiting sync.
@@ -64,24 +49,11 @@ class SyncController {
 
   final $PocketBase _client;
 
-  Future<void> syncNow() async {
-    final services = [
-      _client.collection(AppConstants.collectionProjects),
-      _client.collection(AppConstants.collectionTasks),
-    ];
+  /// Pushes every pending local change to the server. Joins a sync that is
+  /// already running instead of starting a second one.
+  Future<void> syncNow() => _client.syncPendingChanges();
 
-    for (final s in services) {
-      try {
-        await s.retryLocal().last;
-      } catch (e) {
-        _client.logger.warning('Manual sync error for ${s.service}', e);
-      }
-    }
-  }
-
-  Future<void> clearCache() async {
-    await _client.db.customStatement('DELETE FROM services;');
-    await _client.db.customStatement('DELETE FROM cached_responses;');
-    await _client.db.customStatement('DELETE FROM blob_files;');
-  }
+  /// Deletes all cached data, cached responses and files, including
+  /// unsynced local changes. The cached schema is kept.
+  Future<void> clearCache() => _client.db.clearCache(keepPending: false);
 }

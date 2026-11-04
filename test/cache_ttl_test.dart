@@ -9,6 +9,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'test_data/collections.json.dart';
 
+/// Sets when the row [id] was cached; TTL maintenance expires rows by it.
+Future<void> age(DataBase db, String id, DateTime cachedAt) async {
+  await (db.update(db.services)..where((r) => r.id.equals(id)))
+      .write(ServicesCompanion(cachedAt: Value(cachedAt)));
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   // Suppress warnings about multiple database instances in tests
@@ -83,6 +89,7 @@ void main() {
         'deleted': false,
         'updated': oldDate.toIso8601String(),
       });
+      await age(client.db, 'old_synced', oldDate);
 
       // Create a recent synced record (should NOT be deleted)
       await client.db.$create('todo', {
@@ -92,6 +99,7 @@ void main() {
         'deleted': false,
         'updated': recentDate.toIso8601String(),
       });
+      await age(client.db, 'recent_synced', recentDate);
 
       // Run maintenance with 60-day TTL
       final cutoff = DateTime.now().subtract(const Duration(days: 60));
@@ -125,6 +133,7 @@ void main() {
         'deleted': false,
         'updated': oldDate.toIso8601String(),
       });
+      await age(client.db, 'old_unsynced', oldDate);
 
       // Run maintenance
       final cutoff = DateTime.now().subtract(const Duration(days: 60));
@@ -152,6 +161,7 @@ void main() {
         'deleted': false,
         'updated': oldDate.toIso8601String(),
       });
+      await age(client.db, 'old_local_only', oldDate);
 
       // Run maintenance
       final cutoff = DateTime.now().subtract(const Duration(days: 60));
@@ -210,6 +220,7 @@ void main() {
         'deleted': false,
         'updated': threeDaysAgo.toIso8601String(),
       });
+      await age(client.db, 'three_days_old', threeDaysAgo);
 
       // Run maintenance with 60-day TTL (should NOT delete)
       var result = await client.runMaintenance();
@@ -243,6 +254,7 @@ void main() {
         'deleted': false,
         'updated': tenDaysAgo.toIso8601String(),
       });
+      await age(shortTtlClient.db, 'ten_days_old', tenDaysAgo);
 
       // Run maintenance with default (7-day) TTL - should delete
       final result = await shortTtlClient.runMaintenance();
@@ -269,6 +281,8 @@ void main() {
         'deleted': false,
         'updated': oldDate.toIso8601String(),
       });
+      await age(client.db, 'old1', oldDate);
+      await age(client.db, 'old2', oldDate);
 
       // Create 1 old cached response
       await client.db.into(client.db.cachedResponses).insert(
@@ -314,6 +328,9 @@ void main() {
         'deleted': false,
         'updated': oldDate.toIso8601String(),
       });
+      for (final id in ['old_todo_1', 'old_todo_2', 'old_todo_3']) {
+        await age(client.db, id, oldDate);
+      }
 
       final cutoff = DateTime.now().subtract(const Duration(days: 60));
       final deleted = await client.db.cleanupExpiredRecords(cutoffDate: cutoff);
@@ -344,6 +361,7 @@ void main() {
         'deleted': false,
         'updated': oldDate.toIso8601String(),
       });
+      await age(noTtlClient.db, 'ancient_record', oldDate);
 
       // Run maintenance (should skip)
       final result = await noTtlClient.runMaintenance();
@@ -358,6 +376,30 @@ void main() {
       expect(record, isNotNull);
 
       await noTtlClient.db.clearAllData();
+    });
+
+    test('expiry follows when a record was cached, not its updated time',
+        () async {
+      // Fetched today, last edited on the server long ago: keep it.
+      await client.db.upsertServerRecords('todo', [
+        {
+          'id': 'fetched_today',
+          'name': 'Fetched Today',
+          'updated': '2020-01-01 00:00:00.000Z',
+        },
+      ]);
+      // Cached long ago by a list fetch (no `synced` key in the payload).
+      await client.db.mergeLocal('todo', [
+        {'id': 'cached_long_ago', 'name': 'Cached Long Ago'},
+      ]);
+      await age(client.db, 'cached_long_ago',
+          DateTime.now().subtract(const Duration(days: 90)));
+
+      final result = await client.runMaintenance();
+
+      expect(result.deletedRecords, 1);
+      expect(await client.db.rowById('todo', 'fetched_today'), isNotNull);
+      expect(await client.db.rowById('todo', 'cached_long_ago'), isNull);
     });
   });
 }

@@ -8,6 +8,9 @@ pocketbase_drift automatically caches files for offline access:
 - Files are stored as blobs in the local SQLite database
 - Cached files are available when offline
 - File caching works with create, update, and fetch operations
+- Thumbs (`thumb: '100x100'`) are cached separately from the original file
+- Concurrent requests for the same file and thumb share one download (`client.files` is one instance per client)
+- Downloads time out after 30 seconds by default (`timeout`)
 
 ## Uploading Files
 
@@ -85,9 +88,18 @@ await client.collection('posts').update(
 );
 ```
 
+Files are sent to the server one time. Later edits of the record do not upload the file again.
+
+`requestTimeout` does not apply to writes with file uploads.
+
 ## PocketBaseImageProvider
 
-Display cached images with automatic offline support:
+Display cached images with automatic offline support. The provider loads bytes through `client.files.getFileBytes`, so it uses the same blob cache and `RequestPolicy`.
+
+- The constructor is `const`.
+- Two providers with the same client, record, file, `thumb`, `scale` and decode size are equal. Flutter's `ImageCache` keeps one entry for them.
+- A failed load is removed from the `ImageCache`. The next build tries the load again.
+- The provider has no `color` parameter and no `getFilterColor` method. Use `Image.color` and `Image.colorBlendMode` to tint an image.
 
 ```dart
 import 'package:pocketbase_drift/pocketbase_drift.dart';
@@ -139,7 +151,7 @@ Image(
 
 ### With Thumbnail
 
-For performance, use thumbnail parameter:
+For performance, use the `thumb` parameter. The server sends a resized image. The thumb is cached separately from the original file.
 
 ```dart
 Image(
@@ -153,17 +165,69 @@ Image(
 )
 ```
 
+### Decode Size
+
+Set a decode size to limit memory:
+
+```dart
+Image(
+  image: PocketBaseImageProvider(
+    client: client,
+    recordId: record.id,
+    recordCollectionName: record.collectionName,
+    filename: record.get<String>('image')!,
+    thumb: '400x0',
+    pixelWidth: 400, // Physical pixels
+    timeout: const Duration(seconds: 10),
+  ),
+)
+```
+
+The provider selects the decode size in this order:
+1. `pixelWidth` and/or `pixelHeight`: the smallest size that covers the box and keeps the aspect ratio. The image is never enlarged.
+2. `size` (logical pixels) multiplied by the device pixel ratio.
+3. No value: the full image size.
+
 ## Get File Bytes Directly
 
 ```dart
 final bytes = await client.files.getFileBytes(
   recordId: postRecord.id,
   recordCollectionName: postRecord.collectionName,
-  fileName: postRecord.get<String>('document')!,
+  filename: postRecord.get<String>('document')!,
   requestPolicy: RequestPolicy.cacheAndNetwork,
+  // Optional:
+  // thumb: '100x100',                   // Server-side thumb, cached separately
+  // timeout: const Duration(seconds: 30), // Default
+  // expireAfter: const Duration(days: 7), // Blob cache lifetime
 );
 
 // Use bytes (e.g., save to file, display PDF, etc.)
+```
+
+Behaviour:
+- A cached copy that is not expired is returned without a network request.
+- `RequestPolicy.cacheOnly` never downloads. It also returns an expired cached copy. Without a cached copy it throws `CacheMissException`.
+- All other policies download when there is no cached copy or the copy is expired.
+- If the download fails (also on timeout), an expired cached copy is returned. If no cached copy exists, the error is thrown.
+- When the server is unreachable (no connection, socket error, or no answer within `timeout`), the download throws `ClientException` with status 0. `originalError` holds the cause (for example the `TimeoutException`).
+- A server answer other than 200 throws the server's `ClientException` with the status code, URL and response.
+
+```dart
+try {
+  final bytes = await client.files.getFileBytes(
+    recordId: record.id,
+    recordCollectionName: record.collectionName,
+    filename: record.get<String>('document')!,
+  );
+} on ClientException catch (e) {
+  if (e.statusCode == 0) {
+    // Server unreachable or timeout, and no cached copy.
+  } else {
+    // Server answer, e.g. 404 (file not found) or 403 (no access).
+    print('Download failed: ${e.statusCode}');
+  }
+}
 ```
 
 ## Get File URL
@@ -250,20 +314,21 @@ PbImage(
 ### Create with Files (Offline)
 
 When creating a record with files while offline:
-1. Files are cached locally with original filenames
+1. Files are cached locally as blobs
 2. Record is created with `synced: false, isNew: true`
-3. When online, record syncs with files
+3. When the server is reachable, sync sends the record with the files as multipart parts, one time
 4. Server may rename files (adds unique suffix)
-5. Cache updates with server filenames
+5. Cache updates the blobs to the server filenames
 
 ### Cached File Retrieval
 
 ```dart
-// This works offline if the file was previously fetched
+// Returns the cached copy without a network request if it is not expired;
+// downloads it otherwise. Works offline if the file was fetched before.
 final bytes = await client.files.getFileBytes(
   recordId: recordId,
   recordCollectionName: 'posts',
-  fileName: 'image.jpg',
+  filename: 'image.jpg',
   requestPolicy: RequestPolicy.cacheFirst, // Try cache first
 );
 ```
@@ -311,9 +376,9 @@ await client.collection('posts').update(
 
 ## File Cache Cleanup
 
-File blobs are cleaned up during maintenance:
+File blobs are cleaned up during maintenance. Maintenance deletes blobs past their expiration and blobs of records that are no longer cached:
 
 ```dart
 final result = await client.runMaintenance();
-print('Cleaned ${result.deletedFiles} expired file blobs');
+print('Cleaned ${result.deletedFiles} expired or orphaned file blobs');
 ```

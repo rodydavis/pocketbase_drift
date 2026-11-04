@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:drift/drift.dart';
 import 'package:logging/logging.dart';
@@ -6,36 +8,147 @@ import 'package:pocketbase/pocketbase.dart';
 import 'package:pocketbase_drift/src/database/filter_parser.dart';
 
 import 'tables.dart';
+import '../pocketbase/services/sync_support.dart';
 
 part 'database.g.dart';
+
+/// Keys the package stores inside cached record JSON to track local state.
+///
+/// They are visible in `RecordModel.data` of cached records and are never
+/// sent to the server.
+abstract final class RecordMeta {
+  /// `true` once the server holds this version, `false` while a local change
+  /// is pending. Rows written by older versions may lack the key (= synced).
+  static const synced = 'synced';
+
+  /// The record was created locally and does not exist on the server yet.
+  static const isNew = 'isNew';
+
+  /// Tombstone: deleted locally, the deletion is not on the server yet.
+  static const deleted = 'deleted';
+
+  /// Local-only row (written with [RequestPolicy.cacheOnly]); never synced.
+  static const noSync = 'noSync';
+
+  /// Failed sync attempts that the server rejected.
+  static const retryCount = 'retryCount';
+
+  /// Names of the fields changed by pending local updates. Sync sends only
+  /// these fields, so other devices' changes to other fields survive.
+  static const pendingFields = 'pendingFields';
+
+  /// Files attached by pending local writes: `[{field, name}]`, where
+  /// `field` is the multipart key used (`images`, `images+`, ...) and `name`
+  /// the local blob name.
+  static const pendingFiles = 'pendingFiles';
+
+  /// Auth record id of the account that made the pending change. Changes
+  /// from another account are hidden and not synced until it logs in again.
+  static const pendingOwner = 'pendingOwner';
+
+  /// Increments with every local change, so a sync can tell whether the row
+  /// changed while its request was in flight.
+  static const pendingRev = 'pendingRev';
+
+  /// Set when the server rejected the change permanently; the row stays
+  /// pending (visible in `pendingRecords()`) but automatic sync skips it.
+  static const syncError = 'syncError';
+
+  static const keys = {
+    synced,
+    isNew,
+    deleted,
+    noSync,
+    retryCount,
+    pendingFields,
+    pendingFiles,
+    pendingOwner,
+    pendingRev,
+    syncError,
+  };
+
+  /// Record keys the server owns or that only exist in responses.
+  static const systemKeys = {
+    'id',
+    'created',
+    'updated',
+    'collectionId',
+    'collectionName',
+    'expand',
+  };
+
+  /// JSON booleans read through a `fields` projection come back as 0/1.
+  static bool flag(Object? value) => value == true || value == 1;
+
+  /// Whether [data] holds an unsynced local change (including tombstones).
+  static bool isPending(Map<String, dynamic> data) {
+    final s = data[synced];
+    return (s == false || s == 0) && !flag(data[noSync]);
+  }
+
+  /// A copy of [data] without the package's bookkeeping keys.
+  static Map<String, dynamic> strip(Map<String, dynamic> data) =>
+      Map<String, dynamic>.of(data)..removeWhere((k, _) => keys.contains(k));
+}
+
+/// SQL predicate for pending rows (see [RecordMeta.isPending]).
+const _pendingSql =
+    "(COALESCE(json_extract(data, '\$.synced'), 1) = 0 AND COALESCE(json_extract(data, '\$.noSync'), 0) = 0)";
+
+/// SQL predicate hiding pending rows queued by another account; the single
+/// variable is the active owner (may be NULL).
+const _ownerVisibleSql =
+    "(json_extract(data, '\$.pendingOwner') IS NULL OR json_extract(data, '\$.pendingOwner') = ?)";
+
+const _notDeletedSql =
+    "(json_extract(data, '\$.deleted') IS NULL OR json_extract(data, '\$.deleted') = 0)";
+
+/// PocketBase timestamp format with millisecond precision:
+/// `2026-11-04 10:00:00.123Z`.
+String pbTimestamp([DateTime? time]) {
+  final t = (time ?? DateTime.now()).toUtc();
+  return DateTime.fromMillisecondsSinceEpoch(t.millisecondsSinceEpoch,
+          isUtc: true)
+      .toIso8601String()
+      .replaceFirst('T', ' ');
+}
 
 @DriftDatabase(
   tables: [Services, BlobFiles, CachedResponses],
   include: {'sql/search.drift'},
 )
 class DataBase extends _$DataBase {
-  DataBase(super.e) {
-    logger = Logger('PocketBaseDrift.db');
-  }
+  DataBase(super.e) : logger = Logger('PocketBaseDrift.db');
 
-  late final Logger logger;
+  final Logger logger;
 
-  /// Extracts the 'updated' timestamp from a record
+  /// Returns the auth record id of the logged-in account; `$PocketBase`
+  /// points it at its auth store.
+  ///
+  /// Pending rows carry the id of the account that wrote them; reads hide
+  /// pending rows of other accounts so data kept across a logout never shows
+  /// up for the next user.
+  String? Function() ownerResolver = _noOwner;
+
+  static String? _noOwner() => null;
+
+  /// The logged-in account's id, read at query time.
+  String? get activeOwner => ownerResolver();
+
   static String _getUpdatedTimestamp(Map<String, dynamic> data) {
     final updated = data['updated'];
     if (updated is String && updated.isNotEmpty) return updated;
-    return DateTime.now().toUtc().toIso8601String().replaceFirst('T', ' ');
+    return pbTimestamp();
   }
 
-  /// Extracts the 'created' timestamp from a record
   static String _getCreatedTimestamp(Map<String, dynamic> data) {
     final created = data['created'];
     if (created is String && created.isNotEmpty) return created;
-    return DateTime.now().toUtc().toIso8601String().replaceFirst('T', ' ');
+    return pbTimestamp();
   }
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration {
@@ -50,15 +163,95 @@ class DataBase extends _$DataBase {
         if (from < 3) {
           await m.createTable(cachedResponses);
         }
+        if (from < 4) {
+          // Re-index FTS only when the record JSON changes.
+          await m.drop(servicesUpdate);
+          await m.createTrigger(servicesUpdate);
+          await m.addColumn(services, services.cachedAt);
+          // Existing rows start their TTL at the upgrade.
+          await update(services)
+              .write(ServicesCompanion(cachedAt: Value(DateTime.now())));
+          await m.createIndex(idxServicesService);
+          await m.createIndex(idxBlobFilesRecord);
+        }
       },
     );
   }
 
+  static final _inTransaction = Object();
+
+  /// Marks the zone of [action], so code inside a transaction can tell.
+  @override
+  Future<T> transaction<T>(
+    Future<T> Function() action, {
+    bool requireNew = false,
+  }) =>
+      super.transaction(
+        () => runZoned(action, zoneValues: {_inTransaction: true}),
+        requireNew: requireNew,
+      );
+
+  // -- Schema cache --------------------------------------------------------
+
+  Future<void> _schemaWrite = Future.value();
+  ({
+    Map<String, CollectionModel> byName,
+    Map<String, CollectionModel> byId
+  })? _schema;
+  int _schemaGeneration = 0;
+
+  void _invalidateSchema(String service) {
+    if (service != 'schema') return;
+    _schema = null;
+    _schemaGeneration++;
+  }
+
+  Future<
+      ({
+        Map<String, CollectionModel> byName,
+        Map<String, CollectionModel> byId
+      })> _loadSchema() async {
+    // Inside a transaction a queued setSchema cannot run before this
+    // transaction ends (it needs the same lock), so waiting for it would
+    // deadlock; the transaction reads the schema as it is now.
+    if (Zone.current[_inTransaction] != true) await _schemaWrite;
+    while (true) {
+      final cached = _schema;
+      if (cached != null) return cached;
+      final generation = _schemaGeneration;
+      final rows = await (select(services)
+            ..where((t) => t.service.equals('schema')))
+          .get();
+      final list = rows
+          .map((r) => CollectionModel.fromJson({...r.data, 'id': r.id}))
+          .toList();
+      if (generation != _schemaGeneration) continue;
+      return _schema = (
+        byName: {for (final c in list) c.name: c},
+        byId: {for (final c in list) c.id: c},
+      );
+    }
+  }
+
+  /// Cached collection definition by name (waits for a pending [setSchema]).
+  Future<CollectionModel?> collectionByName(String name) async =>
+      (await _loadSchema()).byName[name];
+
+  /// Cached collection definition by id (waits for a pending [setSchema]).
+  Future<CollectionModel?> collectionById(String id) async =>
+      (await _loadSchema()).byId[id];
+
+  /// All cached collection definitions (waits for a pending [setSchema]).
+  Future<List<CollectionModel>> allCollections() async =>
+      (await _loadSchema()).byName.values.toList();
+
+  // -- Queries -------------------------------------------------------------
+
   Selectable<Service> search(String query, {String? service}) {
     if (service != null) {
-      return _searchService(query, service).map((p0) => p0.record);
+      return _searchService(query, service, activeOwner).map((p0) => p0.record);
     } else {
-      return _search(query).map((p0) => p0.record);
+      return _search(query, activeOwner).map((p0) => p0.record);
     }
   }
 
@@ -70,6 +263,7 @@ class DataBase extends _$DataBase {
     int? offset,
     int? limit,
     bool includeDeleted = false,
+    bool includeOtherOwners = false,
   }) {
     final baseFields = <String>{
       "id",
@@ -118,9 +312,14 @@ class DataBase extends _$DataBase {
           " AND (json_extract(services.data, '\$.deleted') IS NULL OR json_extract(services.data, '\$.deleted') = 0)");
     }
 
+    if (!includeOtherOwners) {
+      sb.write(" AND $_ownerVisibleSql");
+      variables.add(Variable<String>(activeOwner));
+    }
+
     if (filter != null && filter.isNotEmpty) {
-      // Delegate all filter parsing to the new robust parser.
-      final parser = FilterParser(filter, baseFields: baseFields);
+      final parser =
+          FilterParser(filter, baseFields: baseFields, authId: activeOwner);
       final whereClause = parser.parse();
       sb.write(' AND ($whereClause)');
     }
@@ -134,8 +333,7 @@ class DataBase extends _$DataBase {
         for (var i = 0; i < parts.length; i++) {
           final part = parts[i];
           if (part.startsWith('-')) {
-            sb.write(fixField(part.substring(1).trim(),
-                alias: false)); // Apply fixField for sorting
+            sb.write(fixField(part.substring(1).trim(), alias: false));
             sb.write(' DESC');
           } else if (part.startsWith('+')) {
             sb.write(fixField(part.substring(1).trim(), alias: false));
@@ -153,6 +351,9 @@ class DataBase extends _$DataBase {
     if (limit != null) {
       sb.write(' LIMIT ?');
       variables.add(Variable.withInt(limit));
+    } else if (offset != null) {
+      // SQLite needs a LIMIT before OFFSET.
+      sb.write(' LIMIT -1');
     }
     if (offset != null) {
       sb.write(' OFFSET ?');
@@ -168,11 +369,13 @@ class DataBase extends _$DataBase {
       final query = customSelect(
         "SELECT * FROM services WHERE service = 'schema' AND json_extract(services.data, '\$.name') = ?",
         variables: [Variable.withString(service)],
+        readsFrom: {services},
       ).map(parseRow);
       return query.map(CollectionModel.fromJson);
     } else {
       final query = customSelect(
         "SELECT * FROM services WHERE service = 'schema'",
+        readsFrom: {services},
       ).map(parseRow);
       return query.map(CollectionModel.fromJson);
     }
@@ -183,6 +386,9 @@ class DataBase extends _$DataBase {
   /// By default records that were deleted offline and still await server
   /// sync (tombstones, `deleted: true`) are excluded. Internal callers that
   /// operate on the pending-sync queue pass [includeDeleted]: true.
+  ///
+  /// [expand] is resolved from the cache for the whole result at once: one
+  /// query per relation field and nesting level, not per row.
   Selectable<Map<String, dynamic>> $query(
     String service, {
     String? expand,
@@ -192,6 +398,7 @@ class DataBase extends _$DataBase {
     int? offset,
     int? limit,
     bool includeDeleted = false,
+    bool includeOtherOwners = false,
   }) {
     final (query, variables) = queryBuilder(
       service,
@@ -201,147 +408,136 @@ class DataBase extends _$DataBase {
       offset: offset,
       limit: limit,
       includeDeleted: includeDeleted,
+      includeOtherOwners: includeOtherOwners,
     );
     logger.finer('query: $query, variables: $variables');
-    return customSelect(
+    final rows = customSelect(
       query,
       variables: variables,
       readsFrom: {services},
-    ).asyncMap((r) async {
-      final record = parseRow(r);
-      return record; // Return early if no expand is needed
-    }).asyncMap((initialRecords) async {
-      // --- BATCHED EXPAND LOGIC ---
-      if (expand == null || expand.isEmpty) {
-        return initialRecords;
-      }
-
-      final records = [initialRecords]; // Process as a list
-      final targets = expand.split(',').map((e) => e.trim()).toList();
-      final allCollections = await $collections().get();
-
-      // 1. COLLECT all relation data and IDs needed
-      final relationsToFetch =
-          <String, Set<String>>{}; // eg: 'relation_field' -> {'id1', 'id2'}
-      // Track metadata including whether this is a single relation (maxSelect == 1)
-      final relationMeta = <String,
-          ({String collectionName, String nestedExpand, bool isSingle})>{};
-
-      for (final target in targets) {
-        final levels = target.split('.');
-        final targetField = levels.first;
-        if (targetField.contains('(') && targetField.contains(')')) {
-          throw UnimplementedError('Indirect expand not supported yet');
-        }
-        if (levels.length > 6) throw Exception('Max 6 levels expand supported');
-
-        // Get metadata for this relation
-        final currentCollectionSchema =
-            allCollections.firstWhere((c) => c.name == service);
-        final schemaField = currentCollectionSchema.fields
-            .firstWhere((f) => f.name == targetField);
-        final targetCollectionId = schemaField.data['collectionId'] as String?;
-        if (targetCollectionId == null) continue;
-        final targetCollection =
-            allCollections.firstWhere((c) => c.id == targetCollectionId);
-
-        // Determine if this is a single relation (maxSelect <= 1 per PocketBase docs)
-        final maxSelect = schemaField.data['maxSelect'];
-        final isSingle = maxSelect == null || maxSelect <= 1;
-
-        relationMeta[targetField] = (
-          collectionName: targetCollection.name,
-          nestedExpand: levels.length > 1 ? levels.skip(1).join('.') : '',
-          isSingle: isSingle,
-        );
-        relationsToFetch.putIfAbsent(targetField, () => <String>{});
-
-        // Collect all unique IDs for this relation from all records
-        for (final record in records) {
-          final dynamic relatedIdsRaw = record[targetField];
-          if (relatedIdsRaw is String && relatedIdsRaw.isNotEmpty) {
-            relationsToFetch[targetField]!.add(relatedIdsRaw);
-          } else if (relatedIdsRaw is List) {
-            for (final id in relatedIdsRaw
-                .whereType<String>()
-                .where((id) => id.isNotEmpty)) {
-              relationsToFetch[targetField]!.add(id);
-            }
-          }
-        }
-      }
-
-      // 2. FETCH all related records in batches
-      final fetchedRelations = <String,
-          Map<
-              String,
-              Map<String,
-                  dynamic>>>{}; // 'relation_field' -> {'id1' -> {record_data}}
-      for (final entry in relationsToFetch.entries) {
-        final relationName = entry.key;
-        final ids = entry.value;
-        if (ids.isEmpty) continue;
-
-        final meta = relationMeta[relationName]!;
-        final idFilter = "(${ids.map((id) => "id = '$id'").join(' OR ')})";
-
-        final relatedRecords = await $query(
-          meta.collectionName,
-          expand: meta.nestedExpand,
-          filter: idFilter,
-        ).get();
-
-        fetchedRelations.putIfAbsent(relationName, () => {});
-        for (final relatedRecord in relatedRecords) {
-          fetchedRelations[relationName]![relatedRecord['id'] as String] =
-              relatedRecord;
-        }
-      }
-
-      // 3. ATTACH fetched records to the main records
-      // Use dynamic type for expand map to support both single objects and lists
-      for (final record in records) {
-        record['expand'] = <String, dynamic>{};
-        for (final relationName in targets.map((t) => t.split('.').first)) {
-          final results = <Map<String, dynamic>>[];
-          final dynamic relatedIdsRaw = record[relationName];
-          final fetchedData = fetchedRelations[relationName] ?? {};
-          final meta = relationMeta[relationName];
-
-          if (relatedIdsRaw is String && relatedIdsRaw.isNotEmpty) {
-            if (fetchedData.containsKey(relatedIdsRaw)) {
-              results.add(fetchedData[relatedIdsRaw]!);
-            }
-          } else if (relatedIdsRaw is List) {
-            for (final id in relatedIdsRaw
-                .whereType<String>()
-                .where((id) => id.isNotEmpty)) {
-              if (fetchedData.containsKey(id)) {
-                results.add(fetchedData[id]!);
-              }
-            }
-          }
-
-          // Match PocketBase SDK behavior:
-          // - Single relations (maxSelect == 1): return the object directly or null
-          // - Multi relations: return the list
-          if (meta != null && meta.isSingle) {
-            record['expand'][relationName] =
-                results.isEmpty ? null : results.first;
-          } else {
-            record['expand'][relationName] = results;
-          }
-        }
-      }
-
-      return records.first;
-    }); // Use .first since we are mapping from a single record
+    ).map(parseRow);
+    if (expand == null || expand.trim().isEmpty) return rows;
+    return _ExpandedSelectable(
+      rows,
+      (records) => _expandRecords(service, records, expand, 0),
+    );
   }
 
-  Future<int> $count(String service) async {
+  static Iterable<String> _relationIds(Object? raw) sync* {
+    if (raw is String && raw.isNotEmpty) {
+      yield raw;
+    } else if (raw is List) {
+      yield* raw.whereType<String>().where((id) => id.isNotEmpty);
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _expandRecords(
+    String service,
+    List<Map<String, dynamic>> records,
+    String expand,
+    int depth,
+  ) async {
+    if (records.isEmpty) return records;
+    if (depth >= 6) throw Exception('Max 6 levels expand supported');
+
+    // relation field -> nested expand paths
+    final targets = <String, List<String>>{};
+    for (final raw in expand.split(',')) {
+      final target = raw.trim();
+      if (target.isEmpty) continue;
+      final dot = target.indexOf('.');
+      final field = dot == -1 ? target : target.substring(0, dot);
+      if (field.contains('(')) {
+        throw UnimplementedError('Indirect expand not supported yet');
+      }
+      final nested = targets.putIfAbsent(field, () => []);
+      if (dot != -1) nested.add(target.substring(dot + 1));
+    }
+
+    final schema = await _loadSchema();
+    final collection = schema.byName[service];
+    if (collection == null) {
+      logger.fine('expand: no local schema for "$service"');
+      return records;
+    }
+
+    for (final record in records) {
+      record['expand'] = <String, dynamic>{};
+    }
+
+    for (final entry in targets.entries) {
+      final field =
+          collection.fields.where((f) => f.name == entry.key).firstOrNull;
+      if (field == null || field.type != 'relation') continue;
+      final target = schema.byId[field.data['collectionId']];
+      if (target == null) continue;
+      final maxSelect = field.data['maxSelect'];
+      final isSingle =
+          maxSelect == null || (maxSelect is num && maxSelect <= 1);
+
+      final ids = <String>{
+        for (final record in records) ..._relationIds(record[entry.key]),
+      };
+      final related = await _fetchByIds(
+        target.name,
+        ids,
+        nestedExpand: entry.value.join(','),
+        depth: depth + 1,
+      );
+
+      for (final record in records) {
+        final found = [
+          for (final id in _relationIds(record[entry.key]))
+            if (related[id] != null) related[id]!,
+        ];
+        (record['expand'] as Map<String, dynamic>)[entry.key] =
+            isSingle ? (found.isEmpty ? null : found.first) : found;
+      }
+    }
+    return records;
+  }
+
+  Future<Map<String, Map<String, dynamic>>> _fetchByIds(
+    String service,
+    Set<String> ids, {
+    String nestedExpand = '',
+    int depth = 0,
+  }) async {
+    final out = <String, Map<String, dynamic>>{};
+    if (ids.isEmpty) return out;
+    final list = ids.toList();
+    const chunkSize = 500;
+    for (var i = 0; i < list.length; i += chunkSize) {
+      final chunk = list.sublist(i, math.min(i + chunkSize, list.length));
+      final placeholders = List.filled(chunk.length, '?').join(', ');
+      final rows = await customSelect(
+        'SELECT * FROM services WHERE service = ? AND id IN ($placeholders) '
+        'AND $_notDeletedSql AND $_ownerVisibleSql',
+        variables: [
+          Variable.withString(service),
+          for (final id in chunk) Variable.withString(id),
+          Variable<String>(activeOwner),
+        ],
+        readsFrom: {services},
+      ).get();
+      for (final row in rows) {
+        final record = parseRow(row);
+        out[record['id'] as String] = record;
+      }
+    }
+    if (nestedExpand.isNotEmpty) {
+      await _expandRecords(service, out.values.toList(), nestedExpand, depth);
+    }
+    return out;
+  }
+
+  /// Number of (non-deleted, visible) records in [service] matching
+  /// [filter].
+  Future<int> $count(String service, {String? filter}) async {
     final (query, variables) = queryBuilder(
       service,
       fields: 'COUNT(*)',
+      filter: filter,
     );
     final result = await customSelect(
       query,
@@ -374,6 +570,44 @@ class DataBase extends _$DataBase {
     }
 
     return result;
+  }
+
+  /// The parsed row for [id], or null.
+  Future<Map<String, dynamic>?> rowById(String service, String id) async {
+    final row = await (select(services)
+          ..where((r) => r.service.equals(service) & r.id.equals(id)))
+        .getSingleOrNull();
+    if (row == null) return null;
+    return {
+      ...row.data,
+      'id': row.id,
+      'created': row.created,
+      'updated': row.updated,
+    };
+  }
+
+  Future<Map<String, Map<String, dynamic>>> _rowsByIds(
+    String service,
+    Iterable<String> ids,
+  ) async {
+    final out = <String, Map<String, dynamic>>{};
+    final list = ids.toSet().toList();
+    const chunkSize = 500;
+    for (var i = 0; i < list.length; i += chunkSize) {
+      final chunk = list.sublist(i, math.min(i + chunkSize, list.length));
+      final rows = await (select(services)
+            ..where((r) => r.service.equals(service) & r.id.isIn(chunk)))
+          .get();
+      for (final row in rows) {
+        out[row.id] = {
+          ...row.data,
+          'id': row.id,
+          'created': row.created,
+          'updated': row.updated,
+        };
+      }
+    }
+    return out;
   }
 
   /// Validates data against collection schema
@@ -480,156 +714,97 @@ class DataBase extends _$DataBase {
     return true;
   }
 
+  ServicesCompanion _row(String service, String id, Map<String, dynamic> data) {
+    return ServicesCompanion.insert(
+      id: Value(id),
+      service: service,
+      data: data,
+      created: Value(_getCreatedTimestamp(data)),
+      updated: Value(_getUpdatedTimestamp(data)),
+      cachedAt: Value(DateTime.now()),
+    );
+  }
+
+  /// Inserts or replaces a row. `expand` data is not stored with the row:
+  /// the expanded records are cached in their own collections and the
+  /// expansion is recomputed when querying with `expand`.
   Future<Map<String, dynamic>> $create(
     String service,
     Map<String, dynamic> data, {
     bool validate = true,
   }) async {
-    if (data['id'] == '') data.remove('id');
-    final id = data['id'] as String?;
+    final input = Map<String, dynamic>.of(data);
+    if (input['id'] == '') input.remove('id');
+    final id = input['id'] as String?;
 
-    final mutableData = Map<String, dynamic>.from(data);
-    mutableData.remove('id');
+    final mutableData = Map<String, dynamic>.from(input)..remove('id');
 
     if (validate && service != 'schema') {
-      final collection = await $collections(service: service).getSingleOrNull();
+      final collection = await collectionByName(service);
       if (collection == null) {
         throw Exception(
-          'Failed to validate data for service "$service": Collection schema not found in local database. Ensure schemas are loaded before creating/updating records.',
+          'Failed to validate data for service "$service": Collection schema not found in local database. Ensure schemas are loaded (await client.setSchema(...)) before creating/updating records.',
         );
       }
       validateData(collection, mutableData);
     }
 
-    final String created = _getCreatedTimestamp(data);
-    final String updated = _getUpdatedTimestamp(data);
-
+    final stored = Map<String, dynamic>.of(input)..remove('expand');
     final item = ServicesCompanion.insert(
       id: id != null ? Value(id) : const Value.absent(),
       service: service,
-      data: data,
-      created: Value(created),
-      updated: Value(updated),
+      data: stored,
+      created: Value(_getCreatedTimestamp(input)),
+      updated: Value(_getUpdatedTimestamp(input)),
+      cachedAt: Value(DateTime.now()),
     );
 
-    // The insertReturning method gives us the final state of the row.
-    // We can use it directly instead of re-querying the database.
     final insertedService = await into(services).insertReturning(
       item,
       onConflict: DoUpdate((old) => item),
     );
+    _invalidateSchema(service);
 
-    // Cache any expanded related records to their respective collections
-    // This ensures they're available when those collections are queried directly
-    await _cacheExpandedRecords(service, data);
+    await _cacheExpandedRecords(service, input);
 
-    // Manually construct the final map, which is what `parseRow` and `$query`
-    // would have done. This is more efficient and avoids the race condition.
-    final finalData = <String, dynamic>{
+    return <String, dynamic>{
       ...insertedService.data,
       'id': insertedService.id,
       'created': insertedService.created,
       'updated': insertedService.updated,
     };
-    return finalData;
   }
 
-  /// Recursively cache expanded records to their respective collection tables.
-  /// This ensures that when a record is fetched with expand, the related records
-  /// are also stored in the local database and can be queried independently.
+  /// Caches records embedded in `expand` into their own collections, so they
+  /// are available for local expansion and direct queries.
   Future<void> _cacheExpandedRecords(
     String parentService,
     Map<String, dynamic> data,
   ) async {
     final expand = data['expand'];
+    if (expand is! Map<String, dynamic> || expand.isEmpty) return;
 
-    if (expand == null || expand is! Map<String, dynamic>) return;
+    final schema = await _loadSchema();
+    final collection = schema.byName[parentService];
+    if (collection == null) return;
 
-    // Get the schema for the parent collection to find relation field metadata
-    final collection =
-        await $collections(service: parentService).getSingleOrNull();
-    if (collection == null) {
-      return;
-    }
-
-    // Build a map of relation field names to their target collection IDs
-    final relationFields = <String, String>{};
-    for (final field in collection.fields) {
-      if (field.type == 'relation') {
-        final targetCollectionId = field.data['collectionId'] as String?;
-        if (targetCollectionId != null) {
-          relationFields[field.name] = targetCollectionId;
-        }
-      }
-    }
-
-    // Get all collections to resolve collection IDs to names
-    final allCollections = await $collections().get();
-    final collectionIdToName = {
-      for (final c in allCollections) c.id: c.name,
-    };
-
-    // Process each expanded relation
     for (final entry in expand.entries) {
-      final relationName = entry.key;
-      final expandedData = entry.value;
+      final field =
+          collection.fields.where((f) => f.name == entry.key).firstOrNull;
+      if (field == null || field.type != 'relation') continue;
+      final target = schema.byId[field.data['collectionId']];
+      if (target == null) continue;
 
-      // Find the target collection for this relation
-      final targetCollectionId = relationFields[relationName];
-      if (targetCollectionId == null) continue;
-
-      final targetCollectionName = collectionIdToName[targetCollectionId];
-      if (targetCollectionName == null) continue;
-
-      // Handle both single object and list of objects
-      final recordsToCache = <Map<String, dynamic>>[];
-      if (expandedData is Map<String, dynamic>) {
-        recordsToCache.add(expandedData);
-      } else if (expandedData is List) {
-        for (final item in expandedData) {
-          if (item is Map<String, dynamic>) {
-            recordsToCache.add(item);
-          }
-        }
-      }
-
-      // Cache each expanded record to its collection
-      for (final record in recordsToCache) {
-        if (record['id'] == null) continue;
-
-        // Remove the expand field before saving to avoid storing stale expand data
-        // The expand will be re-computed when the record is queried with expand
-        final recordToSave = Map<String, dynamic>.from(record);
-        recordToSave.remove('expand');
-
-        try {
-          // Use internal insert to avoid validation (the data came from server)
-          final recordId = recordToSave['id'] as String?;
-          if (recordId == null) continue;
-
-          final created = _getCreatedTimestamp(recordToSave);
-          final updated = _getUpdatedTimestamp(recordToSave);
-
-          final item = ServicesCompanion.insert(
-            id: Value(recordId),
-            service: targetCollectionName,
-            data: recordToSave,
-            created: Value(created),
-            updated: Value(updated),
-          );
-
-          await into(services).insert(
-            item,
-            onConflict: DoUpdate((old) => item),
-          );
-
-          // Recursively cache any nested expanded records
-          if (record['expand'] != null) {
-            await _cacheExpandedRecords(targetCollectionName, record);
-          }
-        } catch (e) {
-          logger.fine('Error caching expanded record: $e');
-        }
+      final value = entry.value;
+      final related = <Map<String, dynamic>>[
+        if (value is Map<String, dynamic>) value,
+        if (value is List) ...value.whereType<Map<String, dynamic>>(),
+      ];
+      if (related.isEmpty) continue;
+      try {
+        await upsertServerRecords(target.name, related, onlyIfNewer: true);
+      } catch (e) {
+        logger.fine('Error caching expanded records of "$parentService": $e');
       }
     }
   }
@@ -651,58 +826,19 @@ class DataBase extends _$DataBase {
             'If you intended to create a new record, use \$create() instead.',
       );
     }
-    // For updates with validation enabled, we need to merge with existing data
-    // to ensure all required fields are present during validation
-    if (validate && service != 'schema') {
-      // Fetch the existing record
-      final existingRecords = await $query(
-        service,
-        filter: 'id = "$id"',
-        limit: 1,
-        includeDeleted: true,
-      ).get();
-
-      if (existingRecords.isNotEmpty) {
-        final existingData = existingRecords.first;
-        // Merge existing data with update data (update data takes precedence)
-        // This ensures required fields from the existing record are present
-        final mergedData = <String, dynamic>{
-          ...existingData,
-          ...data,
-          'id': id, // Ensure ID is always set
-        };
-
-        // If 'updated' field wasn't explicitly provided in the update,
-        // we generate a new one since this is a local mutation.
-        if (!data.containsKey('updated') ||
-            data['updated'] == null ||
-            data['updated'] == '') {
-          mergedData['updated'] =
-              DateTime.now().toUtc().toIso8601String().replaceFirst('T', ' ');
-        }
-
-        return $create(
-          service,
-          mergedData,
-          validate: validate,
-        );
-      }
-    }
-
-    // Fallback: If no existing record found or validation is disabled
-    final fallbackData = <String, dynamic>{...data, 'id': id};
+    final existing = await rowById(service, id);
+    final merged = <String, dynamic>{
+      ...?existing,
+      ...data,
+      'id': id,
+    };
+    // A local mutation without an explicit timestamp gets a new one.
     if (!data.containsKey('updated') ||
         data['updated'] == null ||
         data['updated'] == '') {
-      fallbackData['updated'] =
-          DateTime.now().toUtc().toIso8601String().replaceFirst('T', ' ');
+      merged['updated'] = pbTimestamp();
     }
-
-    return $create(
-      service,
-      fallbackData,
-      validate: validate,
-    );
+    return $create(service, merged, validate: validate);
   }
 
   Future<void> $delete(
@@ -710,9 +846,6 @@ class DataBase extends _$DataBase {
     String id, {
     Batch? batch,
   }) async {
-    // If a batch is provided, we can't perform the file lookup and delete here.
-    // This is a limitation of batching; file cleanup will only happen for non-batched deletes.
-    // For most app logic (like sync), deletes are not batched, so this is acceptable.
     if (batch != null) {
       batch.deleteWhere(
         services,
@@ -721,43 +854,15 @@ class DataBase extends _$DataBase {
       return;
     }
 
-    // Use a transaction to ensure both record and its files are deleted atomically.
     await transaction(() async {
-      // 1. Find the record to get its data before deleting.
-      final recordToDelete = await (select(services)
-            ..where((r) => r.service.equals(service))
-            ..where((r) => r.id.equals(id)))
-          .getSingleOrNull();
-
-      if (recordToDelete != null) {
-        // 2. Get the collection schema to identify file fields.
-        final collection =
-            await $collections(service: service).getSingleOrNull();
-        if (collection != null) {
-          final fileFields = collection.fields.where((f) => f.type == 'file');
-
-          for (final field in fileFields) {
-            final dynamic filenames = recordToDelete.data[field.name];
-            if (filenames == null) continue;
-
-            // 3. Delete each file from the blobFiles table.
-            if (filenames is String && filenames.isNotEmpty) {
-              await deleteFile(id, filenames);
-            } else if (filenames is List) {
-              for (final filename in filenames.whereType<String>()) {
-                await deleteFile(id, filename);
-              }
-            }
-          }
-        }
-      }
-
-      // 4. Delete the main record itself.
+      // Every blob of the record (all fields, thumbnails, pending uploads).
+      await (delete(blobFiles)..where((t) => t.recordId.equals(id))).go();
       await (delete(services)
             ..where((r) => r.service.equals(service))
             ..where((r) => r.id.equals(id)))
           .go();
     });
+    _invalidateSchema(service);
   }
 
   Future<void> deleteAll(
@@ -765,7 +870,7 @@ class DataBase extends _$DataBase {
     List<String>? ids,
   }) async {
     if (ids != null) {
-      return batch((b) async {
+      await batch((b) async {
         for (final id in ids) {
           await $delete(service, id, batch: b);
         }
@@ -774,6 +879,7 @@ class DataBase extends _$DataBase {
       final query = delete(services)..where((r) => r.service.equals(service));
       await query.go();
     }
+    _invalidateSchema(service);
   }
 
   Future<void> setLocal(
@@ -781,211 +887,158 @@ class DataBase extends _$DataBase {
     List<Map<String, dynamic>> items, {
     bool removeAll = true,
   }) async {
-    if (removeAll) {
-      await (delete(services)..where((r) => r.service.equals(service))).go();
-    }
+    await transaction(() async {
+      if (removeAll) {
+        await (delete(services)..where((r) => r.service.equals(service))).go();
+      }
+      await batch((b) {
+        for (final item in items) {
+          final id = item['id'] as String?;
+          if (id == null || id.isEmpty) {
+            logger.warning(
+                'Skipping record in setLocal for service "$service" due to missing ID: $item');
+            continue;
+          }
+          final row = _row(service, id, item);
+          b.insert(services, row, onConflict: DoUpdate((old) => row));
+        }
+      });
+    });
+    _invalidateSchema(service);
+    logger.fine('setLocal for "$service" complete (${items.length} items).');
+  }
 
-    // Add all
-    await batch((b) async {
-      for (final item in items) {
-        // A record without an ID is invalid and cannot be stored.
-        final id = item['id'] as String?;
-        if (id == null || id.isEmpty) {
-          logger.warning(
-              'Skipping record in setLocal for service "$service" due to missing ID: $item');
-          continue;
+  /// Replaces the cached collection definitions.
+  ///
+  /// Reads that need the schema (validation, expand, file fields) wait for
+  /// an in-flight [setSchema], so an un-awaited call at startup cannot race
+  /// the first writes.
+  Future<void> setSchema(List<Map<String, dynamic>> items) {
+    final op = _schemaWrite.then((_) => setLocal('schema', items));
+    _schemaWrite = op.then((_) {}, onError: (Object _) {});
+    return op;
+  }
+
+  // -- Server data ---------------------------------------------------------
+
+  static bool _isNewer(Object? server, Object? local) {
+    final s = server is String ? DateTime.tryParse(server) : null;
+    final l = local is String ? DateTime.tryParse(local) : null;
+    if (s == null || l == null) return true;
+    return s.isAfter(l);
+  }
+
+  static List<String>? _stringList(Object? value) =>
+      value is List ? value.whereType<String>().toList() : null;
+
+  /// Writes records returned by the server into the cache.
+  ///
+  /// Local changes win until they are synced:
+  /// - a pending update keeps the fields it changed ([RecordMeta.pendingFields])
+  ///   and takes the server values for every other field;
+  /// - pending creates, tombstones, local-only rows and pending rows written
+  ///   by older versions (no field tracking) are not overwritten.
+  ///
+  /// [onlyIfNewer] skips synced rows whose cached `updated` is not older than
+  /// the server's (list refreshes). [partial] means the items carry a
+  /// `fields` projection: they are merged into existing rows and never
+  /// inserted, so the cache never holds incomplete records.
+  ///
+  /// Returns the number of rows written.
+  Future<int> upsertServerRecords(
+    String service,
+    List<Map<String, dynamic>> items, {
+    bool onlyIfNewer = false,
+    bool partial = false,
+  }) =>
+      transaction(() async {
+        final valid = items
+            .where((i) => i['id'] is String && (i['id'] as String).isNotEmpty)
+            .toList();
+        if (valid.isEmpty) return 0;
+
+        final locals =
+            await _rowsByIds(service, valid.map((e) => e['id'] as String));
+        final rows = <ServicesCompanion>[];
+        final withExpand = <Map<String, dynamic>>[];
+
+        for (final item in valid) {
+          final id = item['id'] as String;
+          final local = locals[id];
+          final server = RecordMeta.strip(item)..remove('expand');
+          if (item['expand'] is Map && (item['expand'] as Map).isNotEmpty) {
+            withExpand.add(item);
+          }
+
+          Map<String, dynamic> next;
+          if (local != null && RecordMeta.flag(local[RecordMeta.noSync])) {
+            continue;
+          } else if (local != null && RecordMeta.isPending(local)) {
+            if (RecordMeta.flag(local[RecordMeta.deleted]) ||
+                RecordMeta.flag(local[RecordMeta.isNew])) {
+              continue;
+            }
+            final changed = _stringList(local[RecordMeta.pendingFields]);
+            if (changed == null) continue;
+            next = {
+              ...(partial ? local : const <String, dynamic>{}),
+              ...server
+            };
+            for (final field in changed) {
+              if (local.containsKey(field)) {
+                next[field] = local[field];
+              } else {
+                next.remove(field);
+              }
+            }
+            for (final key in RecordMeta.keys) {
+              if (local.containsKey(key)) next[key] = local[key];
+            }
+          } else {
+            if (partial && local == null) continue;
+            if (onlyIfNewer &&
+                local != null &&
+                !partial &&
+                !_isNewer(server['updated'], local['updated'])) {
+              continue;
+            }
+            next = partial && local != null ? {...local, ...server} : server;
+            next.removeWhere((k, _) => RecordMeta.keys.contains(k));
+            next[RecordMeta.synced] = true;
+          }
+          rows.add(_row(service, id, next));
         }
 
-        final createdStr = _getCreatedTimestamp(item);
-        final updatedStr = _getUpdatedTimestamp(item);
+        if (rows.isNotEmpty) {
+          await batch((b) {
+            for (final row in rows) {
+              b.insert(services, row, onConflict: DoUpdate((old) => row));
+            }
+          });
+          _invalidateSchema(service);
+        }
+        for (final item in withExpand) {
+          await _cacheExpandedRecords(service, item);
+        }
+        return rows.length;
+      });
 
-        final row = ServicesCompanion.insert(
-          id: Value(id),
-          data: item,
-          service: service,
-          created: Value(createdStr),
-          updated: Value(updatedStr),
-        );
-        b.insert(
-          services,
-          row,
-          onConflict: DoUpdate((old) => row),
-        );
-      }
-    });
-    // Get all
-    final query = select(services)..where((tbl) => tbl.service.equals(service));
-    final results = await query.get();
-    logger.fine(
-        'setLocal for "$service" complete. Total items: ${results.length}');
-  }
-
-  Future<void> setSchema(List<Map<String, dynamic>> items) =>
-      setLocal('schema', items);
-
-  // -- Files --
-
-  Selectable<BlobFile> getFile(String recordId, String filename) {
-    return select(blobFiles)
-      ..where((tbl) =>
-          tbl.recordId.equals(recordId) & tbl.filename.equals(filename));
-  }
-
-  Future<BlobFile> setFile(
-    String recordId,
-    String filename,
-    Uint8List data, {
-    DateTime? expires,
-  }) async {
-    final existing = await getFile(recordId, filename).get();
-    await batch((batch) {
-      for (final item in existing) {
-        batch.deleteWhere(blobFiles, (tbl) => tbl.rowId.equals(item.id));
-      }
-    });
-    final item = BlobFilesCompanion.insert(
-      filename: filename,
-      data: data,
-      recordId: recordId,
-      expiration: expires != null ? Value(expires) : const Value.absent(),
-      created: Value(DateTime.now().toUtc().toIso8601String()),
-      updated: Value(DateTime.now().toUtc().toIso8601String()),
-    );
-    return await into(blobFiles).insertReturning(
-      item,
-      onConflict: DoUpdate((old) => item),
-    );
-  }
-
-  Future<void> deleteFile(String recordId, String filename) async {
-    final q = delete(blobFiles)
-      ..where((tbl) =>
-          tbl.recordId.equals(recordId) & tbl.filename.equals(filename));
-    await q.go();
-  }
-
-  /// Returns all cached file blobs for a given record.
-  ///
-  /// This is useful for syncing files when a record created offline
-  /// needs to be uploaded to the server.
-  Selectable<BlobFile> getFilesForRecord(String recordId) {
-    return select(blobFiles)..where((tbl) => tbl.recordId.equals(recordId));
-  }
-
-  /// Intelligently merges a list of items into the local database for a given service.
-  ///
-  /// This method is more efficient than `setLocal` for list updates because it
-  /// only writes records that are new or have a more recent 'updated' timestamp
-  /// than their local counterparts.
-  ///
-  /// **Important**: This method does NOT delete records that exist locally but
-  /// are missing from the `items` list. Use [syncLocal] for full synchronization
-  /// that includes deletion of stale records.
+  /// Merges records from a list fetch into the cache (see
+  /// [upsertServerRecords]). It never deletes rows; use [syncLocal] after a
+  /// complete fetch to drop records the server no longer returns.
   Future<void> mergeLocal(
     String service,
-    List<Map<String, dynamic>> items,
-  ) async {
-    if (items.isEmpty) return;
-
-    // 1. Get IDs of incoming items
-    final itemIds =
-        items.map((i) => i['id'] as String?).whereType<String>().toList();
-    if (itemIds.isEmpty) return;
-
-    // 2. Fetch existing local records for these IDs
-    final localRecordsMap = <String, Map<String, dynamic>>{};
-    const chunkSize =
-        100; // SQLite can handle about this many variables in a query.
-    for (var i = 0; i < itemIds.length; i += chunkSize) {
-      final chunk = itemIds.sublist(
-          i, i + chunkSize > itemIds.length ? itemIds.length : i + chunkSize);
-      if (chunk.isEmpty) continue;
-
-      final idFilter = "(${chunk.map((id) => "id = '$id'").join(' OR ')})";
-      final localRecords = await $query(
-        service,
-        filter: idFilter,
-        fields: 'id, updated, deleted',
-        includeDeleted: true,
-      ).get();
-      for (final r in localRecords) {
-        localRecordsMap[r['id'] as String] = r;
-      }
-    }
-
-    // 3. Identify records to be inserted or updated
-    final recordsToWrite = <Map<String, dynamic>>[];
-    for (final item in items) {
-      final itemId = item['id'] as String?;
-      if (itemId == null) continue;
-
-      final localRecord = localRecordsMap[itemId];
-      // json_extract returns SQLite integers for JSON booleans when a fields
-      // projection is used, so accept both true and 1.
-      final localDeleted =
-          localRecord != null && (localRecord['deleted'] == true || localRecord['deleted'] == 1);
-      if (localDeleted) {
-        // The record was deleted offline and the deletion is still pending
-        // sync. Keep the tombstone; the sync engine will propagate the
-        // deletion. Otherwise stale server data would resurrect the record.
-        logger.finer(
-            'mergeLocal for "$service": Keeping pending-delete tombstone $itemId');
-        continue;
-      }
-      if (localRecord == null) {
-        // It's a new record, so add it.
-        recordsToWrite.add(item);
-      } else {
-        // It's an existing record, check if it's updated.
-        final networkUpdatedStr = _getUpdatedTimestamp(item);
-        final networkUpdated = DateTime.tryParse(networkUpdatedStr);
-        final localUpdated = DateTime.tryParse(localRecord['updated']);
-
-        if (networkUpdated != null &&
-            localUpdated != null &&
-            networkUpdated.isAfter(localUpdated)) {
-          // The network version is newer.
-          recordsToWrite.add(item);
-        } else if (networkUpdated != null && localUpdated == null) {
-          // Local record has no timestamp, so update it.
-          recordsToWrite.add(item);
-        }
-      }
-    }
-
-    if (recordsToWrite.isEmpty) {
-      logger.fine(
-          'mergeLocal for "$service": No new or updated records to write.');
-      return;
-    }
+    List<Map<String, dynamic>> items, {
+    bool partial = false,
+  }) async {
+    final written = await upsertServerRecords(
+      service,
+      items,
+      onlyIfNewer: true,
+      partial: partial,
+    );
     logger.fine(
-        'mergeLocal for "$service": Writing ${recordsToWrite.length} new/updated records.');
-
-    // 4. Batch write only the necessary records using an upsert.
-    await batch((b) {
-      for (final item in recordsToWrite) {
-        final id = item['id'] as String;
-        final createdStr = _getCreatedTimestamp(item);
-        final updatedStr = _getUpdatedTimestamp(item);
-
-        final row = ServicesCompanion.insert(
-          id: Value(id),
-          data: item,
-          service: service,
-          created: Value(createdStr),
-          updated: Value(updatedStr),
-        );
-        b.insert(services, row, onConflict: DoUpdate((old) => row));
-      }
-    });
-
-    // Cache any expanded related records to their respective collections
-    // This ensures they're available when those collections are queried directly
-    for (final item in recordsToWrite) {
-      if (item['expand'] != null) {
-        await _cacheExpandedRecords(service, item);
-      }
-    }
+        'mergeLocal for "$service": wrote $written of ${items.length} records.');
   }
 
   /// Synchronizes local database with server data, including deletion of stale records.
@@ -994,94 +1047,43 @@ class DataBase extends _$DataBase {
   /// 1. Merging incoming items (add new, update existing)
   /// 2. Deleting local records that match the filter but weren't in the server response
   ///
-  /// **Filter-Aware Deletion Logic:**
-  /// When a filter is provided, this method queries the local cache with the SAME filter
-  /// and only deletes records that:
-  /// - Match the filter locally (would have been returned if still valid)
-  /// - Were NOT in the server response
-  /// - Are NOT pending local changes (synced != false)
-  ///
-  /// This correctly handles scenarios like:
-  /// - Deleted posts in a community feed
-  /// - Removed items from a filtered list
-  /// - Records that no longer match filter criteria
+  /// Only synced rows are deleted: pending local changes, tombstones and
+  /// local-only (`noSync`) rows are kept.
   ///
   /// **Important:** This should only be called after fetching ALL pages of data
   /// (e.g., from getFullList), not for single-page paginated fetches.
-  ///
-  /// Example:
-  /// ```dart
-  /// // Sync all posts from community X - will delete stale posts for this community
-  /// await db.syncLocal('posts', serverPosts, filter: "community = 'communityX'");
-  ///
-  /// // Unfiltered sync - will delete any stale records in the collection
-  /// await db.syncLocal('todos', allTodosFromServer);
-  /// ```
   Future<void> syncLocal(
     String service,
     List<Map<String, dynamic>> items, {
     String? filter,
   }) async {
-    // 1. First, merge the incoming items (handles add/update)
     await mergeLocal(service, items);
 
-    // 2. Get the IDs of records returned by the server
     final incomingIds =
         items.map((i) => i['id'] as String?).whereType<String>().toSet();
 
-    // 3. Edge case: If server returned items but none had valid IDs, something's wrong
     if (incomingIds.isEmpty && items.isNotEmpty) {
       logger.warning(
           'syncLocal for "$service": No valid IDs in incoming items, skipping deletion phase');
       return;
     }
 
-    // 4. Query local records with the SAME filter
-    // This is the key insight: we only consider records that WOULD have been
-    // returned by the server if they still existed/matched the criteria
     final localRecords = await $query(
       service,
       filter: filter,
+      fields: 'id,synced,noSync,deleted',
       includeDeleted: true,
+      includeOtherOwners: true,
     ).get();
 
-    // 5. Find records to delete:
-    // - Match the filter (are in localRecords)
-    // - Were NOT returned by server (not in incomingIds)
-    // - Are synced (not pending local changes we haven't pushed yet)
-    // - Are not marked as local-only (noSync != true)
     final recordsToDelete = <String>[];
     for (final localRecord in localRecords) {
       final localId = localRecord['id'] as String?;
-      if (localId == null) continue;
-
-      // Skip if the record was in the server response
-      if (incomingIds.contains(localId)) continue;
-
-      // Skip records that haven't been synced yet (local creates/updates pending)
-      final synced = localRecord['synced'];
-      if (synced == false) {
-        logger.finer(
-            'syncLocal for "$service": Keeping unsynced record $localId');
-        continue;
-      }
-
-      // Skip local-only records
-      final noSync = localRecord['noSync'];
-      if (noSync == true) {
-        logger.finer(
-            'syncLocal for "$service": Keeping local-only record $localId');
-        continue;
-      }
-
-      // Skip records marked for local deletion (will be handled by retry)
-      final deleted = localRecord['deleted'];
-      if (deleted == true) {
-        logger.finer(
-            'syncLocal for "$service": Keeping pending-delete record $localId');
-        continue;
-      }
-
+      if (localId == null || incomingIds.contains(localId)) continue;
+      final synced = localRecord[RecordMeta.synced];
+      if (synced == false || synced == 0) continue;
+      if (RecordMeta.flag(localRecord[RecordMeta.noSync])) continue;
+      if (RecordMeta.flag(localRecord[RecordMeta.deleted])) continue;
       recordsToDelete.add(localId);
     }
 
@@ -1090,7 +1092,7 @@ class DataBase extends _$DataBase {
       return;
     }
 
-    // 6. Safety check: Don't delete everything if server returned empty
+    // Safety check: Don't delete everything if server returned empty
     // This protects against server errors causing mass data loss
     if (incomingIds.isEmpty && recordsToDelete.length > 10) {
       logger.warning(
@@ -1104,13 +1106,605 @@ class DataBase extends _$DataBase {
         'syncLocal for "$service": Deleting ${recordsToDelete.length} stale records '
         '(filter: ${filter ?? "none"})');
 
-    // 7. Delete the stale records
-    await batch((b) {
-      for (final id in recordsToDelete) {
-        $delete(service, id, batch: b);
+    await deleteSyncedRows(service, recordsToDelete);
+  }
+
+  // -- Local changes -------------------------------------------------------
+
+  /// Applies a PocketBase request body to [base] the way the server does:
+  /// plain keys replace; `field+` / `+field` append / prepend (multi-value
+  /// fields) or add (numbers); `field-` removes values or subtracts.
+  ///
+  /// Returns the new data and the plain names of the fields that changed.
+  static ({Map<String, dynamic> data, Set<String> changed}) applyRequestBody(
+    CollectionModel? collection,
+    Map<String, dynamic> base,
+    Map<String, dynamic> body,
+  ) {
+    final data = Map<String, dynamic>.of(base);
+    final changed = <String>{};
+    for (final entry in body.entries) {
+      final key = entry.key;
+      if (RecordMeta.keys.contains(key) || key == 'id') continue;
+      if (RecordMeta.systemKeys.contains(key)) continue;
+
+      var name = key;
+      var op = '=';
+      if (key.startsWith('+')) {
+        name = key.substring(1);
+        op = 'prepend';
+      } else if (key.endsWith('+')) {
+        name = key.substring(0, key.length - 1);
+        op = 'append';
+      } else if (key.endsWith('-')) {
+        name = key.substring(0, key.length - 1);
+        op = 'subtract';
+      }
+      final field = collection?.fields.where((f) => f.name == name).firstOrNull;
+      if (op != '=' && field == null && !data.containsKey(name)) {
+        // Not a modifier of a known field: keep the key as sent.
+        name = key;
+        op = '=';
+      }
+      changed.add(name);
+      if (op == '=') {
+        final value = entry.value;
+        final maxSelect = field?.data['maxSelect'];
+        final isSingleRef = field != null &&
+            const {'select', 'file', 'relation'}.contains(field.type) &&
+            !(maxSelect is num && maxSelect > 1);
+        // Uploads under a plain key arrive as a list; single-value fields
+        // keep the last one, like the server.
+        data[name] = isSingleRef && value is List
+            ? (value.isEmpty ? '' : value.last)
+            : value;
+        continue;
+      }
+
+      final current = data[name];
+      final isNumber =
+          field?.type == 'number' || (field == null && current is num);
+      if (isNumber) {
+        final a = current is num ? current : 0;
+        final b = entry.value is num
+            ? entry.value as num
+            : num.tryParse('${entry.value}') ?? 0;
+        data[name] = op == 'subtract' ? a - b : a + b;
+        continue;
+      }
+
+      final maxSelect = field?.data['maxSelect'];
+      final isMulti =
+          field == null ? current is List : (maxSelect is num && maxSelect > 1);
+      final values =
+          entry.value is List ? (entry.value as List).toList() : [entry.value];
+      if (!isMulti) {
+        if (op == 'subtract') {
+          if (values.contains(current)) data[name] = '';
+        } else if (values.isNotEmpty) {
+          data[name] = values.last;
+        }
+        continue;
+      }
+      final list = current is List ? current.toList() : <dynamic>[];
+      switch (op) {
+        case 'append':
+          list.addAll(values);
+        case 'prepend':
+          list.insertAll(0, values);
+        case 'subtract':
+          list.removeWhere(values.contains);
+      }
+      data[name] = list;
+    }
+    return (data: data, changed: changed);
+  }
+
+  /// Writes a locally created record. [sync] false makes it local-only
+  /// (`noSync`); otherwise it is queued for the server.
+  Future<Map<String, dynamic>> writeLocalCreate(
+    String service,
+    Map<String, dynamic> body, {
+    required bool sync,
+    String? owner,
+    List<Map<String, String>> files = const [],
+  }) async {
+    final collection = await collectionByName(service);
+    final rawId = body['id'];
+    final id = rawId is String && rawId.isNotEmpty ? rawId : newId();
+    final applied = applyRequestBody(collection, const {}, body);
+    final now = pbTimestamp();
+    return $create(service, {
+      ...applied.data,
+      'id': id,
+      'created': now,
+      'updated': now,
+      RecordMeta.deleted: false,
+      RecordMeta.synced: false,
+      RecordMeta.isNew: true,
+      RecordMeta.noSync: !sync,
+      if (sync && owner != null) RecordMeta.pendingOwner: owner,
+      if (sync) RecordMeta.pendingRev: 1,
+      if (sync && files.isNotEmpty) RecordMeta.pendingFiles: files,
+    });
+  }
+
+  /// Applies a local update to the cached row [id]. [sync] false makes the
+  /// row local-only (`noSync`); otherwise the change is queued.
+  ///
+  /// File uploads in [files] are tracked for sync but do not mark their
+  /// field as changed, so sync appends them instead of overwriting the
+  /// field's current server value.
+  Future<Map<String, dynamic>> writeLocalUpdate(
+    String service,
+    String id,
+    Map<String, dynamic> body, {
+    required bool sync,
+    String? owner,
+    Map<String, dynamic> fileBody = const {},
+    List<Map<String, String>> files = const [],
+  }) =>
+      transaction(() async {
+        final existing = await rowById(service, id);
+        final collection = await collectionByName(service);
+        final base = existing ?? <String, dynamic>{'id': id};
+        final applied = applyRequestBody(collection, base, body);
+        final withFiles =
+            applyRequestBody(collection, applied.data, fileBody).data;
+
+        final wasPending = existing != null && RecordMeta.isPending(existing);
+        if (wasPending) _checkOwner(service, existing, owner);
+        final isNew = wasPending && RecordMeta.flag(existing[RecordMeta.isNew]);
+        // Pending updates written before field tracking (0.6.x) sync the whole
+        // record; tracking only the new fields would drop the older edits.
+        final legacy = wasPending &&
+            !isNew &&
+            !RecordMeta.flag(existing[RecordMeta.deleted]) &&
+            existing[RecordMeta.pendingFields] == null;
+        final changed = <String>{
+          if (wasPending) ...?_stringList(existing[RecordMeta.pendingFields]),
+          ...applied.changed,
+        };
+        final pendingFiles = <Map<String, String>>[
+          if (wasPending)
+            for (final f
+                in (existing[RecordMeta.pendingFiles] as List? ?? const []))
+              if (f is Map) {'field': '${f['field']}', 'name': '${f['name']}'},
+          ...files,
+        ];
+
+        final data = Map<String, dynamic>.of(withFiles)
+          ..remove(RecordMeta.retryCount)
+          ..remove(RecordMeta.syncError)
+          ..remove(RecordMeta.pendingFields)
+          ..remove(RecordMeta.pendingFiles)
+          ..remove(RecordMeta.pendingOwner);
+        data
+          ..['id'] = id
+          ..['updated'] = pbTimestamp()
+          ..[RecordMeta.deleted] = false
+          ..[RecordMeta.synced] = false
+          ..[RecordMeta.isNew] = isNew
+          ..[RecordMeta.noSync] = !sync
+          ..[RecordMeta.pendingRev] =
+              ((existing?[RecordMeta.pendingRev] as num?)?.toInt() ?? 0) + 1;
+        if (sync) {
+          if (!isNew && !legacy) {
+            data[RecordMeta.pendingFields] = changed.toList();
+          }
+          if (pendingFiles.isNotEmpty) {
+            data[RecordMeta.pendingFiles] = pendingFiles;
+          }
+          if (owner != null) data[RecordMeta.pendingOwner] = owner;
+        }
+        return $create(service, data);
+      });
+
+  /// Deletes [id] locally. With [sync] the deletion is queued as a tombstone;
+  /// a pending create that never reached the server is removed outright,
+  /// unless [createInFlight] (its push is running, so the record may exist
+  /// on the server by now): then it becomes a tombstone too.
+  ///
+  /// Returns false when the record is not cached.
+  Future<bool> writeLocalDelete(
+    String service,
+    String id, {
+    required bool sync,
+    String? owner,
+    bool createInFlight = false,
+  }) =>
+      transaction(() async {
+        final existing = await rowById(service, id);
+        if (existing == null) return false;
+        final wasPending = RecordMeta.isPending(existing);
+        if (wasPending) _checkOwner(service, existing, owner);
+        final isNew = wasPending && RecordMeta.flag(existing[RecordMeta.isNew]);
+        if (sync && isNew && !createInFlight) {
+          await $delete(service, id);
+          return true;
+        }
+        final data = Map<String, dynamic>.of(existing)
+          ..remove(RecordMeta.retryCount)
+          ..remove(RecordMeta.syncError)
+          ..remove(RecordMeta.pendingFields);
+        data
+          ..[RecordMeta.deleted] = true
+          ..[RecordMeta.synced] = false
+          ..[RecordMeta.isNew] = isNew && !sync
+          ..[RecordMeta.noSync] = !sync
+          ..[RecordMeta.pendingRev] =
+              ((existing[RecordMeta.pendingRev] as num?)?.toInt() ?? 0) + 1;
+        if (sync && owner != null) data[RecordMeta.pendingOwner] = owner;
+        await $create(service, data, validate: false);
+        return true;
+      });
+
+  /// Local writes never mix accounts: a pending change queued by another
+  /// account (hidden until it logs in again) cannot be edited or deleted.
+  static void _checkOwner(
+    String service,
+    Map<String, dynamic> row,
+    String? owner,
+  ) {
+    final pendingOwner = row[RecordMeta.pendingOwner] as String?;
+    if (pendingOwner == null || pendingOwner == owner) return;
+    throw StateError(
+      '$service/${row['id']} has unsynced changes of another account; '
+      'they sync when that account logs in again.',
+    );
+  }
+
+  /// Replaces the pending row [id] with the server's version after a
+  /// successful sync of revision [sentRev] that uploaded [sentFiles]
+  /// (`{field, name}` entries of [RecordMeta.pendingFiles]).
+  ///
+  /// If the row changed while the request was in flight, the newer local
+  /// changes stay pending: changed fields keep their local values (names of
+  /// the files just uploaded become the server's names), uploads that were
+  /// not sent stay queued, and a deletion stays a tombstone.
+  Future<void> completePendingSync(
+    String service,
+    String id,
+    int? sentRev,
+    Map<String, dynamic> server, {
+    List<Map<String, dynamic>> sentFiles = const [],
+  }) {
+    return transaction(() async {
+      final row = await rowById(service, id);
+      if (row == null) return;
+
+      final renamed = await _renameUploadedBlobs(id, row, server, sentFiles);
+      final serverData = RecordMeta.strip(server)..remove('expand');
+
+      final rev = (row[RecordMeta.pendingRev] as num?)?.toInt();
+      final localOnly = RecordMeta.flag(row[RecordMeta.noSync]);
+      if (rev == sentRev || (!RecordMeta.isPending(row) && !localOnly)) {
+        serverData[RecordMeta.synced] = true;
+        await $create(service, {...serverData, 'id': id}, validate: false);
+        return;
+      }
+      // A local-only (`cacheOnly`) change made meanwhile stays as it is.
+      if (localOnly) return;
+
+      final owner = row[RecordMeta.pendingOwner];
+      final next = <String, dynamic>{
+        ...serverData,
+        'id': id,
+        RecordMeta.synced: false,
+        RecordMeta.isNew: false,
+        RecordMeta.noSync: false,
+        RecordMeta.pendingRev: rev,
+        if (owner != null) RecordMeta.pendingOwner: owner,
+      };
+
+      if (RecordMeta.flag(row[RecordMeta.deleted])) {
+        // Deleted while the record was being pushed: it exists on the
+        // server now, so the next push must delete it.
+        next[RecordMeta.deleted] = true;
+        await $create(service, next, validate: false);
+        return;
+      }
+
+      Object? local(String field) {
+        final value = row[field];
+        if (renamed.isEmpty) return value;
+        if (value is String) return renamed[value] ?? value;
+        if (value is List) return [for (final v in value) renamed[v] ?? v];
+        return value;
+      }
+
+      // Creates (sent whole) and rows written before field tracking (0.6.x,
+      // no pendingFields) keep the fields that still differ from what the
+      // server stored; updates keep their changed fields.
+      final changed = RecordMeta.flag(row[RecordMeta.isNew])
+          ? _fieldsDiffering(row, serverData, local)
+          : _stringList(row[RecordMeta.pendingFields]) ??
+              _fieldsDiffering(row, serverData, local);
+      for (final field in changed) {
+        if (row.containsKey(field)) {
+          next[field] = local(field);
+        } else {
+          next.remove(field);
+        }
+      }
+
+      final sentNames = {for (final f in sentFiles) f['name']};
+      final unsent = [
+        for (final f in (row[RecordMeta.pendingFiles] as List? ?? const []))
+          if (f is Map && !sentNames.contains(f['name'])) f,
+      ];
+      if (changed.isEmpty && unsent.isEmpty) {
+        // The edits made meanwhile equal what the server now has.
+        serverData[RecordMeta.synced] = true;
+        await $create(service, {...serverData, 'id': id}, validate: false);
+        return;
+      }
+      next
+        ..[RecordMeta.deleted] = false
+        ..[RecordMeta.pendingFields] = changed;
+      if (unsent.isNotEmpty) {
+        next[RecordMeta.pendingFiles] = unsent;
+        _addPendingFileNames(next, unsent);
+      }
+      await $create(service, next, validate: false);
+    });
+  }
+
+  /// Records that the server accepted a write of [id] that set [fields]
+  /// (from an online request, not the sync queue) and caches [server].
+  ///
+  /// A pending local change of the record no longer needs to send those
+  /// fields: the request was newer. The rest of the change stays pending.
+  Future<void> acceptServerWrite(
+    String service,
+    String id,
+    Map<String, dynamic> server,
+    Iterable<String> fields, {
+    bool partial = false,
+  }) {
+    return transaction(() async {
+      final row = await rowById(service, id);
+      if (row == null ||
+          !RecordMeta.isPending(row) ||
+          RecordMeta.flag(row[RecordMeta.deleted])) {
+        await upsertServerRecords(service, [server], partial: partial);
+        return;
+      }
+      final sent = fields.toSet();
+      final serverData = RecordMeta.strip(server)..remove('expand');
+      final base = partial ? {...row, ...serverData} : serverData;
+      // Creates and rows written before field tracking (0.6.x): every field
+      // that differs from the server's version is still to be sent.
+      final pendingNow = RecordMeta.flag(row[RecordMeta.isNew])
+          ? _fieldsDiffering(row, base, (f) => row[f])
+          : _stringList(row[RecordMeta.pendingFields]) ??
+              _fieldsDiffering(row, base, (f) => row[f]);
+      final remaining = pendingNow.where((f) => !sent.contains(f)).toList();
+      final files = row[RecordMeta.pendingFiles] as List? ?? const [];
+      if (remaining.isEmpty && files.isEmpty) {
+        final next = Map<String, dynamic>.of(base)
+          ..removeWhere((k, _) => RecordMeta.keys.contains(k))
+          ..['id'] = id
+          ..[RecordMeta.synced] = true;
+        await $create(service, next, validate: false);
+        return;
+      }
+      final next = Map<String, dynamic>.of(base)
+        ..removeWhere((k, _) => RecordMeta.keys.contains(k));
+      for (final field in remaining) {
+        if (row.containsKey(field)) next[field] = row[field];
+      }
+      _addPendingFileNames(next, files);
+      final owner = row[RecordMeta.pendingOwner];
+      next
+        ..['id'] = id
+        ..[RecordMeta.synced] = false
+        ..[RecordMeta.isNew] = false
+        ..[RecordMeta.deleted] = false
+        ..[RecordMeta.noSync] = false
+        ..[RecordMeta.pendingFields] = remaining
+        ..[RecordMeta.pendingRev] =
+            ((row[RecordMeta.pendingRev] as num?)?.toInt() ?? 0) + 1;
+      if (files.isNotEmpty) next[RecordMeta.pendingFiles] = files;
+      if (owner != null) next[RecordMeta.pendingOwner] = owner;
+      await $create(service, next, validate: false);
+    });
+  }
+
+  /// Record fields of [row] whose local value ([local] maps file names)
+  /// differs from [server].
+  static List<String> _fieldsDiffering(
+    Map<String, dynamic> row,
+    Map<String, dynamic> server,
+    Object? Function(String field) local,
+  ) =>
+      [
+        for (final key in row.keys)
+          if (!RecordMeta.keys.contains(key) &&
+              !RecordMeta.systemKeys.contains(key) &&
+              jsonEncode(local(key)) != jsonEncode(server[key]))
+            key,
+      ];
+
+  /// Adds the local names of queued uploads [files] to their file fields in
+  /// [data], so the cached value shows them until they sync.
+  static void _addPendingFileNames(
+    Map<String, dynamic> data,
+    Iterable<dynamic> files,
+  ) {
+    for (final f in files) {
+      if (f is! Map || f['name'] is! String || f['field'] is! String) continue;
+      final field = baseFieldName(f['field'] as String);
+      final name = f['name'] as String;
+      final value = data[field];
+      if (value is List) {
+        if (!value.contains(name)) data[field] = [...value, name];
+      } else if (value is String) {
+        data[field] = name;
+      }
+    }
+  }
+
+  /// PocketBase stores uploads as `snake_case(name)_<random>.<ext>`; re-key
+  /// the local blobs of the uploaded [sentFiles] to those names. Returns the
+  /// local → server name map.
+  Future<Map<String, String>> _renameUploadedBlobs(
+    String recordId,
+    Map<String, dynamic> row,
+    Map<String, dynamic> server,
+    List<Map<String, dynamic>> sentFiles,
+  ) async {
+    final renamed = <String, String>{};
+    if (sentFiles.isEmpty) return renamed;
+    final pendingNames = <String>{
+      for (final f in (row[RecordMeta.pendingFiles] as List? ?? const []))
+        if (f is Map && f['name'] is String) f['name'] as String,
+    };
+    final byField = <String, List<String>>{};
+    for (final f in sentFiles) {
+      if (f['name'] is! String || f['field'] is! String) continue;
+      final field = baseFieldName(f['field'] as String);
+      byField.putIfAbsent(field, () => []).add(f['name'] as String);
+    }
+    for (final entry in byField.entries) {
+      final before = <String>{
+        ..._relationIds(row[entry.key]),
+      }.difference(pendingNames);
+      final fresh = _relationIds(server[entry.key])
+          .where((n) => !before.contains(n))
+          .toList();
+      for (final local in entry.value) {
+        final stem = pbFileStem(local);
+        final match =
+            fresh.where((n) => n.startsWith('${stem}_')).firstOrNull ??
+                fresh.firstOrNull;
+        if (match == null) continue;
+        fresh.remove(match);
+        renamed[local] = match;
+        await (update(blobFiles)
+              ..where((t) =>
+                  t.recordId.equals(recordId) & t.filename.equals(local)))
+            .write(BlobFilesCompanion(filename: Value(match)));
+      }
+    }
+    return renamed;
+  }
+
+  /// Records a failed sync attempt of revision [sentRev] for the pending row
+  /// [id]. With [error] the row is parked (`syncError`) and automatic sync
+  /// skips it. Nothing is recorded when the row changed meanwhile: the new
+  /// change has not been tried yet. Returns whether the failure was recorded.
+  Future<bool> markSyncFailure(
+    String service,
+    String id, {
+    required int? sentRev,
+    required int retryCount,
+    Map<String, dynamic>? error,
+  }) {
+    return transaction(() async {
+      final row = await rowById(service, id);
+      if (row == null || !RecordMeta.isPending(row)) return false;
+      if ((row[RecordMeta.pendingRev] as num?)?.toInt() != sentRev) {
+        return false;
+      }
+      final data = Map<String, dynamic>.of(row)
+        ..[RecordMeta.retryCount] = retryCount;
+      if (error != null) data[RecordMeta.syncError] = error;
+      // Keep `updated` so watchers compare by the record's own timestamp.
+      await $create(service, data, validate: false);
+      return true;
+    });
+  }
+
+  /// Deletes the rows [ids] of [service] that hold no unsynced or
+  /// local-only data (checked and deleted atomically).
+  Future<void> deleteSyncedRows(String service, List<String> ids) {
+    return transaction(() async {
+      final rows = await _rowsByIds(service, ids);
+      for (final entry in rows.entries) {
+        final row = entry.value;
+        if (RecordMeta.isPending(row) ||
+            RecordMeta.flag(row[RecordMeta.noSync])) {
+          continue;
+        }
+        await $delete(service, entry.key);
       }
     });
   }
+
+  /// Rows with unsynced local changes (including offline deletions) across
+  /// all collections, or only [service], oldest first. Excludes local-only
+  /// rows and rows queued by another account. Rows the server rejected carry
+  /// [RecordMeta.syncError]. Use `.watch()` for a live pending queue.
+  Selectable<Service> pendingRecords({String? service}) {
+    return customSelect(
+      "SELECT * FROM services WHERE service != 'schema' AND $_pendingSql "
+      'AND $_ownerVisibleSql ${service == null ? '' : 'AND service = ? '}'
+      'ORDER BY cachedAt, rowid',
+      variables: [
+        Variable<String>(activeOwner),
+        if (service != null) Variable<String>(service),
+      ],
+      readsFrom: {services},
+    ).map((row) => services.map(row.data));
+  }
+
+  /// Collections with pending rows the active account may sync now
+  /// (excludes rows parked with [RecordMeta.syncError]).
+  Future<List<String>> pendingServices() async {
+    final rows = await customSelect(
+      "SELECT DISTINCT service FROM services WHERE service != 'schema' AND $_pendingSql "
+      "AND json_extract(data, '\$.syncError') IS NULL AND $_ownerVisibleSql",
+      variables: [Variable<String>(activeOwner)],
+      readsFrom: {services},
+    ).get();
+    return [for (final r in rows) r.read<String>('service')];
+  }
+
+  // -- Files ---------------------------------------------------------------
+
+  Selectable<BlobFile> getFile(String recordId, String filename) {
+    return select(blobFiles)
+      ..where((tbl) =>
+          tbl.recordId.equals(recordId) & tbl.filename.equals(filename));
+  }
+
+  Future<BlobFile> setFile(
+    String recordId,
+    String filename,
+    Uint8List data, {
+    DateTime? expires,
+  }) async {
+    return transaction(() async {
+      await (delete(blobFiles)
+            ..where((tbl) =>
+                tbl.recordId.equals(recordId) & tbl.filename.equals(filename)))
+          .go();
+      final item = BlobFilesCompanion.insert(
+        filename: filename,
+        data: data,
+        recordId: recordId,
+        expiration: expires != null ? Value(expires) : const Value.absent(),
+        created: Value(DateTime.now().toUtc().toIso8601String()),
+        updated: Value(DateTime.now().toUtc().toIso8601String()),
+      );
+      return into(blobFiles).insertReturning(item);
+    });
+  }
+
+  Future<void> deleteFile(String recordId, String filename) async {
+    final q = delete(blobFiles)
+      ..where((tbl) =>
+          tbl.recordId.equals(recordId) & tbl.filename.equals(filename));
+    await q.go();
+  }
+
+  /// Returns all cached file blobs for a given record.
+  Selectable<BlobFile> getFilesForRecord(String recordId) {
+    return select(blobFiles)..where((tbl) => tbl.recordId.equals(recordId));
+  }
+
+  // -- Cached responses ----------------------------------------------------
 
   /// Caches a raw JSON response string against a unique key.
   Future<void> cacheResponse(String key, String jsonData) async {
@@ -1119,7 +1713,6 @@ class DataBase extends _$DataBase {
       responseData: jsonData,
       cachedAt: Value(DateTime.now().toUtc()),
     );
-    // Use insertOrReplace to handle updates to an existing cached item.
     await into(cachedResponses)
         .insert(companion, mode: InsertMode.insertOrReplace);
   }
@@ -1132,71 +1725,31 @@ class DataBase extends _$DataBase {
     return result?.responseData;
   }
 
-  /// Deletes synced records that haven't been updated since [cutoffDate].
+  // -- Maintenance ---------------------------------------------------------
+
+  /// Deletes cached server rows that were last written before [cutoffDate].
   ///
-  /// This only removes records that:
-  /// - Are marked as synced (not pending local changes)
-  /// - Have an `updated` timestamp older than the cutoff
-  /// - Are not marked as local-only (noSync)
-  ///
-  /// Returns the number of records deleted.
-  ///
-  /// Example:
-  /// ```dart
-  /// // Delete records older than 60 days
-  /// final deleted = await db.cleanupExpiredRecords(
-  ///   cutoffDate: DateTime.now().subtract(Duration(days: 60)),
-  /// );
-  /// ```
+  /// Never deletes the schema, pending local changes, tombstones or
+  /// local-only (`noSync`) rows. Returns the number of rows deleted.
   Future<int> cleanupExpiredRecords({required DateTime cutoffDate}) async {
-    final cutoffString = cutoffDate.toIso8601String();
-
-    // First count how many will be deleted
-    final countResult = await customSelect(
-      '''
-      SELECT COUNT(*) as count FROM services
-      WHERE updated < ?
-        AND json_extract(data, '\$.synced') = 1
-        AND (json_extract(data, '\$.noSync') IS NULL OR json_extract(data, '\$.noSync') = 0)
-        AND (json_extract(data, '\$.deleted') IS NULL OR json_extract(data, '\$.deleted') = 0)
-      ''',
-      variables: [Variable<String>(cutoffString)],
-    ).getSingle();
-    final deletedCount = countResult.read<int>('count');
-
-    if (deletedCount > 0) {
-      // Only delete records that are:
-      // 1. Synced (synced = true)
-      // 2. Not local-only (noSync is null or false)
-      // 3. Not marked for deletion (deleted = false or null)
-      // 4. Updated before the cutoff date
-      await customStatement(
-        '''
-        DELETE FROM services
-        WHERE updated < ?
-          AND json_extract(data, '\$.synced') = 1
-          AND (json_extract(data, '\$.noSync') IS NULL OR json_extract(data, '\$.noSync') = 0)
-          AND (json_extract(data, '\$.deleted') IS NULL OR json_extract(data, '\$.deleted') = 0)
-        ''',
-        [cutoffString],
-      );
+    final deleted = await customUpdate(
+      "DELETE FROM services WHERE service != 'schema' "
+      'AND cachedAt IS NOT NULL AND cachedAt < ? '
+      "AND COALESCE(json_extract(data, '\$.synced'), 1) = 1 "
+      "AND COALESCE(json_extract(data, '\$.noSync'), 0) = 0 "
+      'AND $_notDeletedSql',
+      variables: [Variable<DateTime>(cutoffDate)],
+      updates: {services},
+      updateKind: UpdateKind.delete,
+    );
+    if (deleted > 0) {
       logger.info(
-          'Cleaned up $deletedCount expired records (older than $cutoffString)');
+          'Cleaned up $deleted expired records (cached before $cutoffDate)');
     }
-    return deletedCount;
+    return deleted;
   }
 
   /// Deletes cached responses that were cached before [cutoffDate].
-  ///
-  /// Returns the number of cached responses deleted.
-  ///
-  /// Example:
-  /// ```dart
-  /// // Delete cached responses older than 30 days
-  /// final deleted = await db.cleanupExpiredResponses(
-  ///   cutoffDate: DateTime.now().subtract(Duration(days: 30)),
-  /// );
-  /// ```
   Future<int> cleanupExpiredResponses({required DateTime cutoffDate}) async {
     final result = await (delete(cachedResponses)
           ..where((tbl) => tbl.cachedAt.isSmallerThanValue(cutoffDate)))
@@ -1208,14 +1761,22 @@ class DataBase extends _$DataBase {
     return result;
   }
 
-  /// Deletes expired file blobs that have passed their expiration date.
-  ///
-  /// Returns the number of file blobs deleted.
-  Future<int> cleanupExpiredFiles() async {
+  /// Deletes file blobs past their expiration date and, when [orphanCutoff]
+  /// is given, blobs created before it whose record is no longer cached.
+  Future<int> cleanupExpiredFiles({DateTime? orphanCutoff}) async {
     final now = DateTime.now().toUtc();
-    final result = await (delete(blobFiles)
+    var result = await (delete(blobFiles)
           ..where((tbl) => tbl.expiration.isSmallerThanValue(now)))
         .go();
+    if (orphanCutoff != null) {
+      final cutoff = orphanCutoff.toUtc().toIso8601String();
+      result += await (delete(blobFiles)
+            ..where((tbl) =>
+                tbl.created.isSmallerThanValue(cutoff) &
+                tbl.recordId.isNotInQuery(
+                    selectOnly(services)..addColumns([services.id]))))
+          .go();
+    }
 
     if (result > 0) {
       logger.info('Cleaned up $result expired file blobs');
@@ -1223,20 +1784,43 @@ class DataBase extends _$DataBase {
     return result;
   }
 
-  Future<void> clearAllData() async {
-    // Don't clear the schema
+  /// Deletes cached server data, cached responses and file blobs; keeps the
+  /// schema. With [keepPending] (the default) unsynced local changes and
+  /// their blobs are kept so they can still sync after the next login.
+  Future<void> clearCache({bool keepPending = true}) async {
     await transaction(() async {
-      await (delete(services)..where((r) => r.service.isNotValue('schema')))
+      await customUpdate(
+        "DELETE FROM services WHERE service != 'schema'"
+        '${keepPending ? ' AND NOT $_pendingSql' : ''}',
+        updates: {services},
+        updateKind: UpdateKind.delete,
+      );
+      await (delete(blobFiles)
+            ..where((tbl) => tbl.recordId.isNotInQuery(selectOnly(services)
+              ..addColumns([services.id])
+              ..where(services.service.isNotValue('schema')))))
           .go();
-      await delete(blobFiles).go();
       await delete(cachedResponses).go();
     });
-    logger.info('All local data has been cleared.');
+    logger.info('Local cache cleared (keepPending: $keepPending).');
   }
+
+  /// Deletes everything except the schema, including unsynced changes.
+  Future<void> clearAllData() => clearCache(keepPending: false);
 }
 
-// extension StringUtils on String {
-//   List<String> multiSplit(Iterable<String> delimiters) => delimiters.isEmpty
-//       ? [this]
-//       : split(RegExp(delimiters.map(RegExp.escape).join('|')));
-// }
+/// A [Selectable] that post-processes the complete result list (used for
+/// batched relation expansion instead of per-row lookups).
+class _ExpandedSelectable extends Selectable<Map<String, dynamic>> {
+  _ExpandedSelectable(this._rows, this._expand);
+
+  final Selectable<Map<String, dynamic>> _rows;
+  final Future<List<Map<String, dynamic>>> Function(List<Map<String, dynamic>>)
+      _expand;
+
+  @override
+  Future<List<Map<String, dynamic>>> get() async => _expand(await _rows.get());
+
+  @override
+  Stream<List<Map<String, dynamic>>> watch() => _rows.watch().asyncMap(_expand);
+}

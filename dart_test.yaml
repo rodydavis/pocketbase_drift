@@ -1,0 +1,4 @@
+# Test files share one PocketBase server (example/backend) and its `todo`
+# collection, and the integration suite switches server-wide fault modes;
+# running files in parallel makes them interfere.
+concurrency: 1

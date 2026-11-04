@@ -38,6 +38,30 @@ stream.listen((posts) {
 });
 ```
 
+`limit` sets how many records the query fetches from the server: the first page of `sort`. Without `limit`, the query fetches the full list.
+
+### QueryState Errors
+
+`QueryState.error` holds the error of the last network fetch. The next successful fetch clears it.
+
+- An unreachable server is not an error for cache-backed queries. They keep the cached data and mark it stale. `cacheAndNetwork` and `networkFirst` queries refresh when the server is reachable again.
+- Other fetch errors (for example 403, or a bad filter) set `error` and add an error event to the stream. The stream stays open.
+- Local filters with `@request.*` (other than `@request.auth.id`), `@collection.*` or field references on the right side throw `UnsupportedError`. `@` tokens on the left side also throw `UnsupportedError`. A malformed filter throws `FormatException`. The query reports these errors in the same way.
+
+```dart
+client.collection('posts').watchRecordsState(limit: 20).listen(
+  (state) {
+    if (state.hasError) {
+      print('Last fetch failed: ${state.error}');
+    }
+    print('${state.data.length} posts, fetching: ${state.isFetchingNetwork}');
+  },
+  onError: (Object e) {
+    // The same error, also delivered as a stream error event.
+  },
+);
+```
+
 ## Watch Single Record
 
 ```dart
@@ -60,25 +84,29 @@ stream.listen((post) {
 
 ## How watchRecords Works
 
-When `watchRecords` is called:
+When `watchRecords` is called with a cache-backed policy:
 
-1. **Initial Cache Emit** - If cache has data, emits immediately
-2. **Network Fetch** - Fetches from server (based on RequestPolicy)
-3. **Cache Update** - Updates local cache with server data
-4. **Realtime Subscribe** - Opens WebSocket subscription
+1. **Initial Cache Emit** - Emits the cached data
+2. **Realtime Subscribe** - Joins the realtime subscription of the collection (`cacheAndNetwork`, `networkFirst`)
+3. **Network Fetch** - Fetches from the server (only `limit` records if set) when the server is reachable
+4. **Cache Update** - Writes the server data to the cache; the stream emits from the cache
 5. **Ongoing Updates** - Emits whenever data changes (local or server)
+6. **Refetch** - Fetches again after a realtime reconnect and when the server becomes reachable, so changes made while disconnected are not missed
+
+With `networkOnly`, the stream emits the server's data and does not use the cache. It fetches again on every realtime event of the collection.
 
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                    watchRecords()                       │
 ├─────────────────────────────────────────────────────────┤
-│ 1. Emit cached data immediately                         │
-│ 2. Fetch from network (if policy allows)                │
-│ 3. Subscribe to realtime updates                        │
+│ 1. Emit cached data                                     │
+│ 2. Subscribe to realtime updates (shared per topic)     │
+│ 3. Fetch from network (if policy allows)                │
 │ 4. Emit on any change:                                  │
 │    - Local create/update/delete                         │
 │    - Network sync                                       │
 │    - Realtime event                                     │
+│ 5. Refetch after reconnect / server reachable again     │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -140,13 +168,15 @@ class PostListScreen extends ConsumerWidget {
 
 ## Realtime Updates
 
-Streams automatically subscribe to PocketBase realtime events:
+Streams with `cacheAndNetwork`, `networkFirst` and `networkOnly` subscribe to PocketBase realtime events:
 
 ```dart
 // When another user creates a post, your stream emits with the new post
 // When the server updates a post, your stream emits with updated data
 // When a post is deleted on server, your stream emits without that post
 ```
+
+All live queries of a collection share one realtime subscription per topic. Each server event is written to the cache one time. A pending local edit wins over realtime events until it is synced.
 
 ### Manual Subscription
 
@@ -167,15 +197,17 @@ await unsubscribe();
 
 ## Request Policy for Streams
 
-The policy affects initial behavior:
+The policy sets where the data comes from and whether the stream gets realtime updates:
 
-| Policy | Initial Behavior | Realtime |
-|--------|------------------|----------|
-| `cacheAndNetwork` | Emit cache, then network | Yes |
-| `cacheFirst` | Emit cache, background sync | Yes |
+| Policy | Behavior | Realtime |
+|--------|----------|----------|
+| `cacheAndNetwork` | Emit cache, refresh from network, refetch after reconnect | Yes |
+| `cacheFirst` | Emit cache, refresh from network one time | No |
 | `cacheOnly` | Emit cache only | No |
-| `networkFirst` | Try network, fallback cache | Yes |
-| `networkOnly` | Network only | Yes |
+| `networkFirst` | Emit cache, refresh from network, refetch after reconnect | Yes |
+| `networkOnly` | Emit server data only (no cache), refetch on realtime events | Yes |
+
+With `networkOnly`, a failed fetch is a stream error. When the server is unreachable, the error is a `ClientException` with `statusCode == 0` (or the gateway status, for example 503).
 
 ```dart
 // Cache-first for instant UI

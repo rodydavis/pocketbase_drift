@@ -206,6 +206,8 @@ class LikeNotifier extends StateNotifier<Post> {
 }
 ```
 
+With `RequestPolicy.cacheAndNetwork`, the write throws only when the server rejects it (for example 400 or 403). Nothing is stored in that case, so the revert is correct. When the server is unreachable, the write is queued locally and does not throw.
+
 ## Infinite Scroll
 
 ```dart
@@ -328,10 +330,11 @@ class PostListScreen extends ConsumerWidget {
     
     return RefreshIndicator(
       onRefresh: () async {
-        // Force network refresh
+        // Fetch from the server and write the result to the cache.
+        // networkOnly reads do not write the cache.
         final repository = ref.read(postRepositoryProvider);
         await repository.getAll(
-          requestPolicy: RequestPolicy.networkOnly,
+          requestPolicy: RequestPolicy.networkFirst,
         );
         // Rebuild stream with new data
         ref.invalidate(postsProvider);
@@ -349,29 +352,154 @@ class PostListScreen extends ConsumerWidget {
 }
 ```
 
+## Error Handling
+
+Server answers are never hidden behind the cache. Catch `ClientException` and check `statusCode`:
+
+```dart
+try {
+  final post = await client.collection('posts').getOne(postId);
+} on ClientException catch (e) {
+  if (e.statusCode == 0) {
+    // Server unreachable and the record is not cached.
+  } else if (e.statusCode == 404) {
+    // The server answered: the record does not exist.
+  } else if (e.statusCode == 403) {
+    // The server answered: no access.
+  }
+}
+```
+
+Rules:
+- Reads fall back to the cache only when the server is unreachable: status 0, timeout, socket error, 408, 429 or 5xx.
+- 4xx answers (400, 401, 403, 404) are thrown with the server status.
+- When nothing is cached and the server is unreachable, reads throw `ClientException` with status 0 (or the gateway status, for example 503).
+- `cacheAndNetwork` writes are queued locally only when the server is unreachable. A rejection (400 validation, 403 rule) is thrown, and nothing is stored.
+- `networkFirst` and `networkOnly` writes throw on failure. Status 0 means that the server is unreachable (no connection, socket error, or `requestTimeout` elapsed; `originalError` holds the cause). A 502, 503 or 504 answer keeps the server's status. `networkFirst` update does not change a 404 or 400 into a create.
+- `cacheFirst` writes do not throw server rejections. Rejections count towards `localSyncRetryCount`. Parked changes are reported on `client.syncFailures`.
+
+### Request Timeout
+
+`requestTimeout` (default 15 seconds) limits single-record reads and writes without file uploads. When it elapses, offline-first writes are queued and reads fall back to the cache. `null` disables the limit.
+
+```dart
+final client = $PocketBase.database(
+  'https://example.pocketbase.io',
+  requestTimeout: const Duration(seconds: 8),
+);
+```
+
+## Batch Operations
+
+```dart
+import 'package:http/http.dart' as http;
+
+final batch = client.$createBatch();
+batch.collection('posts').create(
+  body: {'title': 'New Post'},
+  files: [http.MultipartFile.fromBytes('image', bytes, filename: 'a.jpg')],
+);
+batch.collection('posts').update(postId, body: {'title': 'Edited'});
+batch.collection('posts').delete(oldPostId);
+
+try {
+  final results = await batch.send(); // RequestPolicy.cacheAndNetwork
+  for (final result in results) {
+    if (result.isError) {
+      print('${result.collection}/${result.recordId}: ${result.status}');
+    }
+  }
+} on ClientException catch (e) {
+  // The server rejected the batch. Nothing was stored.
+}
+```
+
+Batch rules:
+- Creates and upserts without an `id` get a client-generated id.
+- Files are sent with the batch. When the batch is queued offline, the files are stored and sent during sync.
+- `cacheAndNetwork`: a rejected batch throws, and nothing is stored. Only an unreachable server queues the operations. Each queued operation syncs individually.
+- `networkOnly` and `networkFirst`: when the device is offline, `send` throws `ClientException` with status 0.
+- `cacheFirst`: the operations are written to the cache as pending and sent in the background.
+
+## Sync Status and Failures
+
+### Manual Sync
+
+Sync runs automatically at startup, when the server becomes reachable, on app resume and after login. To start a pass manually:
+
+```dart
+await client.syncPendingChanges();
+```
+
+`syncPendingChanges` never throws. Only one pass runs at a time. A call during a pass returns a future that completes after one more pass. `client.syncCompleted` completes when the running pass ends.
+
+### Pending Changes Badge
+
+```dart
+final pendingCountProvider = StreamProvider<int>((ref) {
+  final client = ref.watch(pocketbaseProvider);
+  return client.db.pendingRecords().watch().map((rows) => rows.length);
+});
+```
+
+`pendingRecords()` excludes local-only rows and rows of other accounts. It includes rows parked with `syncError`. Use `pendingRecords(service: 'posts')` for one collection.
+
+### Sync Failures
+
+After `localSyncRetryCount` (default 5) rejections, a change is parked. The row keeps a `syncError` map (`status`, `message`, `data`, `at`). Automatic sync skips it. The record stays visible in reads.
+
+```dart
+final subscription = client.syncFailures.listen((failure) {
+  if (failure.dropped) {
+    // The record was deleted on the server. The local edit was discarded.
+    showMessage('${failure.collection}/${failure.recordId} no longer exists');
+    return;
+  }
+  // failure.operation: SyncOperation.create | update | delete
+  showMessage('Sync rejected (${failure.statusCode}): ${failure.error}');
+});
+
+// Retry parked changes (for example after the user fixed the data)
+Future<void> retryParked() => client.syncPendingChanges(includeFailed: true);
+
+// Or discard one parked change. The next read loads the server version.
+Future<void> discard(SyncFailure failure) =>
+    client.discardPendingChange(failure.collection, failure.recordId);
+```
+
+List the parked rows:
+
+```dart
+final parked = (await client.db.pendingRecords().get())
+    .where((row) => row.data[RecordMeta.syncError] != null)
+    .toList();
+```
+
 ## Troubleshooting
 
 ### Changes Not Syncing
 
 ```dart
-// Check connectivity
-if (!client.connectivity.isConnected) {
-  print('Device is offline');
+// Check whether the server is reachable
+if (!client.connectivity.canReachServer) {
+  print('Server not reachable');
 }
 
-// Check pending items
+// Check pending items (parked rows have a syncError)
 final pending = await client.collection('posts').pending().get();
 print('Pending: ${pending.length}');
 
-// Manually trigger sync
-await client.collection('posts').retryLocal().last;
+// Manually trigger sync (includeFailed also retries parked changes)
+await client.syncPendingChanges(includeFailed: true);
 ```
+
+Pending changes belong to the account that wrote them (`pendingOwner`). They do not sync while another account is logged in.
 
 ### Schema Validation Errors
 
 ```dart
-// Ensure schema is cached
-await client.cacheSchema(schemaJson);
+// Ensure schema is cached. setSchema throws on invalid schema JSON.
+await client.setSchema(schemaJson);
 
 // Check collections exist
 final collections = await client.db.$collections().get();
@@ -382,7 +510,7 @@ print('Collections: ${collections.map((c) => c.name).toList()}');
 
 ```dart
 // Force network fetch for missing files
-final bytes = await client.files.getFileData(
+final bytes = await client.files.getFileBytes(
   recordId: id,
   recordCollectionName: 'posts',
   filename: filename,
@@ -459,11 +587,14 @@ void main() {
 
   setUp(() async {
     testClient = TestHelpers.createTestClient();
+    // Wait for the startup sync pass.
+    await testClient.syncCompleted;
     repository = PostRepository(testClient);
   });
 
   tearDown(() async {
     await TestHelpers.clearTestData(testClient);
+    testClient.close();
   });
 
   test('getAll returns seeded posts', () async {
@@ -481,6 +612,10 @@ void main() {
   });
 }
 ```
+
+An `inMemory: true` client runs SQLite on the calling isolate. The default (non-web) client runs SQLite in a background isolate.
+
+For widget tests, create the client outside the fake-async zone (in `setUp`, not inside `testWidgets`). Then `await client.syncCompleted` in `setUp`. A database query that still runs on real time blocks the queries in the fake-async zone.
 
 ## Complete Todo App Example
 

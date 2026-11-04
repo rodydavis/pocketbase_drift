@@ -1,0 +1,26 @@
+name: device_lab
+description: On-device performance harness for pocketbase_drift (run against example/backend).
+publish_to: "none"
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  pocketbase_drift:
+    path: ../..
+  connectivity_plus: ">=6.0.0 <8.0.0"
+  drift: ^2.34.3
+  http: ^1.6.0
+  path: ^1.9.1
+  path_provider: ^2.1.6
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/pb_schema.json

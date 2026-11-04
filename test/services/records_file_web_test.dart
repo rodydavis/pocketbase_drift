@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -71,17 +69,6 @@ void main() {
           .setMockMethodCallHandler(
               const MethodChannel('dev.fluttercommunity.plus/connectivity'),
               (MethodCall methodCall) async => ['wifi']);
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(
-        const MethodChannel('plugins.flutter.io/path_provider'),
-        (MethodCall methodCall) async {
-          if (methodCall.method == 'getTemporaryDirectory') {
-            final tempDir = Directory.systemTemp.createTempSync();
-            return tempDir.path;
-          }
-          return null;
-        },
-      );
     });
 
     test('fetches from network, caches, and returns the file', () async {

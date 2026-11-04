@@ -72,25 +72,35 @@ class ConnectivityService {
   bool isConnected = true;
 
   /// A stream that emits `true` when the server is reachable and `false`
-  /// otherwise. New listeners immediately receive the current status.
-  Stream<bool> get statusStream {
-    Timer.run(() {
-      if (!_statusController.isClosed) {
-        _statusController.add(isConnected);
-      }
-    });
-    return _statusController.stream;
-  }
+  /// otherwise. Each new listener first receives the current status; other
+  /// listeners only see real status changes.
+  Stream<bool> get statusStream => Stream<bool>.multi((listener) {
+        listener.add(isConnected);
+        final sub = _statusController.stream.listen(
+          listener.add,
+          onError: listener.addError,
+          onDone: listener.close,
+        );
+        listener
+          ..onPause = sub.pause
+          ..onResume = sub.resume
+          ..onCancel = sub.cancel;
+      }, isBroadcast: true);
 
   /// Whether a network request should be attempted.
   ///
   /// `true` while any network interface is available, regardless of whether
-  /// recent requests have succeeded. This allows discovery of server
-  /// recovery by actually trying a request.
-  ///
-  /// Use this to decide whether to TRY a network request.
-  /// Use [isConnected] for UI display or queuing decisions.
+  /// recent requests have succeeded. Used by the strict policies
+  /// (`networkOnly`, `networkFirst` writes) that must try the server.
   bool get shouldAttemptNetwork => _interfaceAvailable;
+
+  /// Whether the server is believed reachable: an interface is up and the
+  /// last probe or request did not fail.
+  ///
+  /// Offline-first policies skip the network (and its timeouts) while this
+  /// is `false` and serve or queue locally instead; probes keep running in
+  /// the background and flip it back.
+  bool get canReachServer => _interfaceAvailable && isConnected;
 
   /// Starts monitoring. Idempotent; called by the owning `$PocketBase` client.
   void start() {
@@ -142,6 +152,13 @@ class ConnectivityService {
     await _runProbe();
   }
 
+  /// Probes the server now (if not already probing) while it is believed
+  /// unreachable, e.g. when the user queues a change offline.
+  void probeSoon() {
+    if (isConnected || _inFlightProbe != null || !_interfaceAvailable) return;
+    _scheduleProbe(Duration.zero);
+  }
+
   /// Releases listeners and timers. The service cannot be restarted.
   void dispose() {
     if (_disposed) return;
@@ -154,8 +171,8 @@ class ConnectivityService {
   }
 
   Future<void> _onInterfaceChange(List<ConnectivityResult> results) async {
-    final available = results.isNotEmpty &&
-        results.any((r) => r != ConnectivityResult.none);
+    final available =
+        results.isNotEmpty && results.any((r) => r != ConnectivityResult.none);
     if (available == _interfaceAvailable) {
       // Interface switched identity (e.g. wifi -> cellular). If we are
       // currently offline, verify the new network reaches the server.
@@ -203,8 +220,7 @@ class ConnectivityService {
       if (reachable) {
         _backoffStep = 0;
         if (!isConnected) {
-          _logger
-              .info('Server probe succeeded - connectivity restored.');
+          _logger.info('Server probe succeeded - connectivity restored.');
         }
         _setConnected(true);
         _scheduleProbe(onlineProbeInterval);

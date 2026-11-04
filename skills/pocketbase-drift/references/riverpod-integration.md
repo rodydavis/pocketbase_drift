@@ -11,37 +11,40 @@ This guide covers provider patterns for pocketbase_drift.
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-// Override these in main.dart
+// Override in main.dart
 final sharedPreferencesProvider = Provider<SharedPreferences>((ref) {
-  throw UnimplementedError('Override in main.dart');
-});
-
-final schemaProvider = Provider<String>((ref) {
   throw UnimplementedError('Override in main.dart');
 });
 ```
 
 ### PocketBase Client
 
+Create the client before `runApp` and await `setSchema`. Then override the client provider with it. The example app (`example/lib/shared/providers/pocketbase_provider.dart`) uses this pattern and names the provider `pocketBaseProvider`.
+
 ```dart
 // lib/shared/providers/pocketbase_provider.dart
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pocketbase_drift/pocketbase_drift.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-final pocketbaseProvider = Provider<$PocketBase>((ref) {
-  final prefs = ref.watch(sharedPreferencesProvider);
-  final schema = ref.watch(schemaProvider);
-  
-  final authStore = $AuthStore.prefs(prefs, 'pb_auth');
-  
+/// Creates the client and caches the schema before it returns.
+/// setSchema throws on invalid schema JSON.
+Future<$PocketBase> createPocketBaseClient(
+  SharedPreferences prefs,
+  String schemaJson,
+) async {
   final client = $PocketBase.database(
     const String.fromEnvironment('POCKETBASE_URL',
       defaultValue: 'http://127.0.0.1:8090'),
-    authStore: authStore,
-  )..setSchema(schema);
-  ref.onDispose(client.close);
-  
+    authStore: $AuthStore.prefs(prefs, 'pb_auth'),
+  );
+  await client.setSchema(schemaJson);
   return client;
+}
+
+// Override in main.dart with the client from createPocketBaseClient
+final pocketbaseProvider = Provider<$PocketBase>((ref) {
+  throw UnimplementedError('Override in main.dart');
 });
 ```
 
@@ -60,11 +63,16 @@ Future<void> main() async {
   final prefs = startupValues[0] as SharedPreferences;
   final schema = startupValues[1] as String;
 
+  final client = await createPocketBaseClient(prefs, schema);
+
   runApp(
     ProviderScope(
       overrides: [
         sharedPreferencesProvider.overrideWithValue(prefs),
-        schemaProvider.overrideWithValue(schema),
+        pocketbaseProvider.overrideWith((ref) {
+          ref.onDispose(client.close);
+          return client;
+        }),
       ],
       child: const MyApp(),
     ),
@@ -131,6 +139,9 @@ class AuthController {
     return login(email, password);
   }
 
+  /// Deletes the cache but keeps this account's unsynced changes.
+  /// They sync when the same account logs in again.
+  /// Use `_client.db.clearAllData()` to delete them too.
   void logout() {
     _client.authStore.clear();
   }
@@ -151,18 +162,29 @@ abstract class BaseRepository<T> {
   
   $RecordService get collection => client.collection(collectionName);
   
-  Stream<QueryState<List<RecordModel>>> watchAll({
+  Stream<List<RecordModel>> watchAll({
     String? filter,
     String? sort,
     String? expand,
+    int? limit, // Fetches only `limit` records from the server
     RequestPolicy requestPolicy = RequestPolicy.cacheAndNetwork,
   }) {
-    return collection.watchRecordsState(
+    return collection.watchRecords(
       filter: filter,
       sort: sort,
       expand: expand,
+      limit: limit,
       requestPolicy: requestPolicy,
     );
+  }
+
+  // Use watchRecordsState for loading and error state (QueryState).
+  // An unreachable server is not an error for cache-backed queries.
+  Stream<QueryState<List<RecordModel>>> watchAllState({
+    String? filter,
+    String? sort,
+  }) {
+    return collection.watchRecordsState(filter: filter, sort: sort);
   }
   
   Stream<RecordModel?> watchOne(String id, {String? expand}) {
@@ -346,6 +368,7 @@ class PostListScreen extends ConsumerWidget {
 ## Connectivity Provider
 
 ```dart
+// Each new listener gets the current status first, then only changes.
 final connectivityProvider = StreamProvider<bool>((ref) {
   final client = ref.watch(pocketbaseProvider);
   return client.connectivity.statusStream;
@@ -362,21 +385,15 @@ if (!isConnected) {
 ## Pending Sync Provider
 
 ```dart
-final pendingSyncCountProvider = FutureProvider<int>((ref) async {
+// Live queue of pending changes across all collections.
+// Excludes local-only rows and other accounts' rows. Includes parked rows.
+final pendingChangesProvider = StreamProvider<List<Service>>((ref) {
   final client = ref.watch(pocketbaseProvider);
-  
-  // Count all pending records across collections
-  final result = await client.db.customSelect('''
-    SELECT COUNT(*) as count FROM services 
-    WHERE json_extract(data, '\$.synced') = 0
-    AND (json_extract(data, '\$.noSync') IS NULL OR json_extract(data, '\$.noSync') = 0)
-  ''').getSingle();
-  
-  return result.read<int>('count');
+  return client.db.pendingRecords().watch();
 });
 
 // Show sync indicator
-final pendingCount = ref.watch(pendingSyncCountProvider).valueOrNull ?? 0;
+final pendingCount = ref.watch(pendingChangesProvider).valueOrNull?.length ?? 0;
 if (pendingCount > 0) {
   Badge(
     label: Text('$pendingCount'),
@@ -384,6 +401,35 @@ if (pendingCount > 0) {
   );
 }
 ```
+
+## Sync Failures Provider
+
+```dart
+// Changes the server rejected localSyncRetryCount times (parked),
+// or offline edits of records deleted on the server (dropped).
+final syncFailuresProvider = StreamProvider<SyncFailure>((ref) {
+  final client = ref.watch(pocketbaseProvider);
+  return client.syncFailures;
+});
+
+// Show each failure once
+ref.listen(syncFailuresProvider, (previous, next) {
+  final failure = next.valueOrNull;
+  if (failure == null) return;
+  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+    content: Text('Not synced: ${failure.collection}/${failure.recordId}'),
+  ));
+});
+
+// Actions
+final client = ref.read(pocketbaseProvider);
+await client.syncPendingChanges(includeFailed: true); // Retry parked changes
+await client.discardPendingChange('posts', recordId); // Drop one local change
+```
+
+## Widget Tests
+
+Create the client in `setUp`, outside the fake-async zone of `testWidgets`. Then `await client.syncCompleted` in `setUp`. A database query that still runs on real time blocks the queries of the fake-async zone. Override `pocketbaseProvider` with this client in the test's `ProviderScope`. See `setup.md` for a full example.
 
 ## Summary
 

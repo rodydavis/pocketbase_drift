@@ -164,6 +164,10 @@ Search covers all text fields in the record's JSON data:
 - Nested JSON content
 - Does not search relation IDs (just the raw ID string)
 
+Search excludes:
+- Records deleted offline whose deletion is not synced yet
+- Unsynced changes of other accounts. After logout, pending changes stay in the cache (`pendingOwner`), but only the account that wrote them sees them in search results.
+
 ## Performance Tips
 
 ### Limit Results

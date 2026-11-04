@@ -122,49 +122,59 @@ void main() {
           reason: "retryCount should increment to 1 after first failure");
     });
 
-    test('should delete record after exceeding localSyncRetryCount', () async {
+    test(
+        'parks a change the server rejected localSyncRetryCount times and '
+        'reports it', () async {
+      var posts = 0;
       await setupClient(
         mockHandler: (request) async {
-          // Simulate 400 Bad Request
           if (request.method == 'POST' || request.method == 'PATCH') {
+            posts++;
             return http.Response(
                 '{"code": 400, "message": "Validation error"}', 400);
           }
           return http.Response('{}', 200);
         },
-        maxRetries: 2, // Set low max retries
+        maxRetries: 2,
       );
 
       final collection = client.collection('todo');
-      final recordId = 'test_delete_sync';
+      final recordId = 'test_park_sync';
+      final failures = <SyncFailure>[];
+      final sub = client.syncFailures.listen(failures.add);
 
-      // 1. Insert record
       await client.db.$create('todo', {
         'id': recordId,
-        'name': 'test_delete',
+        'name': 'test_park',
         'synced': false,
         'isNew': true,
         'retryCount': 0,
       });
 
-      // 2. First retry (Count -> 1)
-      await (collection).retryLocal().drain();
-
-      var record = await client.db
-          .$query('todo', filter: "id = '$recordId'")
-          .getSingleOrNull();
-      expect(record, isNotNull);
-      expect(record!['retryCount'], 1);
-
-      // 3. Second retry (Count -> 2 => Delete)
       await collection.retryLocal().drain();
+      var record = await client.db.rowById('todo', recordId);
+      expect(record!['retryCount'], 1);
+      expect(record['syncError'], isNull);
+      expect(failures, isEmpty);
 
-      // 4. Verify deletion
-      record = await client.db
-          .$query('todo', filter: "id = '$recordId'")
-          .getSingleOrNull();
-      expect(record, isNull,
-          reason: "Record should be deleted after exceeding max retries");
+      await collection.retryLocal().drain();
+      record = await client.db.rowById('todo', recordId);
+      expect(record, isNotNull,
+          reason: 'A rejected change is kept for the user, never deleted');
+      expect(record!['syncError'], isA<Map>());
+      expect((record['syncError'] as Map)['status'], 400);
+      expect(failures.single.recordId, recordId);
+      expect(failures.single.statusCode, 400);
+      expect(failures.single.operation, SyncOperation.create);
+
+      // Automatic sync skips the parked change; an explicit retry sends it.
+      final before = posts;
+      await collection.retryLocal().drain();
+      expect(posts, before);
+      await collection.retryLocal(includeFailed: true).drain();
+      expect(posts, before + 1);
+
+      await sub.cancel();
     });
 
     test('should NOT delete record on non-400 errors', () async {
@@ -206,58 +216,48 @@ void main() {
           reason: "retryCount should not increment for non-400 errors");
     });
 
-    test(
-        'should delete record-associated file blobs after exceeding localSyncRetryCount',
+    test('a parked change keeps its file blobs until it is discarded',
         () async {
       await setupClient(
         mockHandler: (request) async {
-          // Simulate 400 Bad Request
           return http.Response(
               '{"code": 400, "message": "Validation error"}', 400);
         },
-        maxRetries: 1, // Set strict max retries
+        maxRetries: 1,
       );
 
       final collection = client.collection('ultimate');
       final recordId = 'test_file_cleanup';
       final fileName = 'test_file.txt';
 
-      // 1. Insert record to "ultimate" collection which has file fields
       await client.db.$create('ultimate', {
         'id': recordId,
         'plain_text': 'test_file_record',
-        'file_single': fileName, // Reference the file
+        'file_single': fileName,
         'synced': false,
         'isNew': true,
         'retryCount': 0,
       });
-
-      // 2. Create a dummy file blob
       await client.db.setFile(
         recordId,
         fileName,
         Uint8List.fromList([1, 2, 3]),
       );
 
-      // Verify file exists
-      var file = await client.db.getFile(recordId, fileName).getSingleOrNull();
-      expect(file, isNotNull);
-
-      // 3. First retry (Count -> 1, which equals Max -> Delete)
-      // Since maxRetries is 1, and retryCount starts at 0.
-      // 1st run: retryCount++ -> 1. 1 >= 1 is true. So it deletes immediately.
       await collection.retryLocal().drain();
 
-      // 4. Verify record deletion
-      final record = await client.db
-          .$query('ultimate', filter: "id = '$recordId'")
-          .getSingleOrNull();
-      expect(record, isNull, reason: "Record should be deleted");
+      final record = await client.db.rowById('ultimate', recordId);
+      expect(record?['syncError'], isNotNull);
+      expect(await client.db.getFile(recordId, fileName).getSingleOrNull(),
+          isNotNull,
+          reason: 'The upload must still be possible after fixing the data');
 
-      // 5. Verify file blob deletion
-      file = await client.db.getFile(recordId, fileName).getSingleOrNull();
-      expect(file, isNull,
-          reason: "File blob should be deleted with the record");
+      await client.discardPendingChange('ultimate', recordId);
+
+      expect(await client.db.rowById('ultimate', recordId), isNull);
+      expect(
+          await client.db.getFile(recordId, fileName).getSingleOrNull(), isNull,
+          reason: 'File blob should be deleted with the record');
     });
   });
 }

@@ -1,123 +1,208 @@
-import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
-import 'package:pocketbase_drift/pocketbase_drift.dart';
-
+import 'dart:async';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter/painting.dart';
+import 'package:pocketbase_drift/pocketbase_drift.dart';
 
 /// An [ImageProvider] that fetches and caches images from a PocketBase instance.
 ///
-/// This provider integrates with PocketBase to retrieve image files associated
-/// with a [RecordModel]. It uses the PocketBase SDK's file service, which typically
-/// handles caching and network requests.
+/// Bytes are loaded through [$FileService.getFileBytes], which handles the
+/// offline blob cache and [RequestPolicy]. Providers with the same client,
+/// record, file, [thumb], [scale] and decode size are equal, so Flutter's
+/// [ImageCache] reuses the decoded image across rebuilds.
+///
+/// To limit memory, request a server-side thumbnail with [thumb] and/or a
+/// decode size with [pixelWidth]/[pixelHeight] or [size].
 class PocketBaseImageProvider extends ImageProvider<PocketBaseImageProvider> {
   /// Creates an [ImageProvider] for a PocketBase file.
-  PocketBaseImageProvider({
+  const PocketBaseImageProvider({
     required this.client,
     required this.recordId,
     required this.recordCollectionName,
     required this.filename,
+    this.thumb,
     this.pixelWidth,
     this.pixelHeight,
     this.size,
-    this.color,
     this.scale,
     this.expireAfter,
     this.token,
     this.autoGenerateToken = false,
     this.requestPolicy = RequestPolicy.cacheAndNetwork,
+    this.timeout = const Duration(seconds: 30),
   });
 
   final $PocketBase client;
   final String recordId;
   final String recordCollectionName;
   final String filename;
+
+  /// PocketBase thumb spec (e.g. `'100x100'`, `'0x300'`) so the server sends a
+  /// resized image. Thumbs are cached separately from the original file.
+  final String? thumb;
+
+  /// Width in physical pixels to decode the image to.
+  ///
+  /// With [pixelWidth] and/or [pixelHeight] set, the image is decoded at the
+  /// smallest aspect-preserving size that covers the requested dimensions,
+  /// and never upscaled.
   final int? pixelWidth;
+
+  /// Height in physical pixels to decode the image to. See [pixelWidth].
   final int? pixelHeight;
+
+  /// Logical size to decode the image for, used when neither [pixelWidth] nor
+  /// [pixelHeight] is set; converted to physical pixels with the device pixel
+  /// ratio. Without any of them the image is decoded at full resolution.
   final Size? size;
-  final Color? color;
+
+  /// Image pixels per logical pixel; defaults to the device pixel ratio.
   final double? scale;
+
+  /// How long a downloaded file stays valid in the blob cache.
   final Duration? expireAfter;
   final String? token;
   final bool autoGenerateToken;
   final RequestPolicy requestPolicy;
 
-  @override
-  ImageStreamCompleter loadImage(
-      PocketBaseImageProvider key, ImageDecoderCallback decode) {
-    return MultiFrameImageStreamCompleter(
-      codec: _loadAsync(
-          key, decode), // Asynchronously loads and decodes the image.
-      scale: key.scale ?? 1.0,
-      debugLabel: 'PocketBaseImageProvider(${key.filename})',
-    );
-  }
-
-  /// Asynchronously loads the image bytes using the [download] method and then
-  /// decodes them using the provided [decode] callback.
-  Future<ui.Codec> _loadAsync(PocketBaseImageProvider key, decode) async {
-    final bytes = await download();
-    if (bytes.isEmpty) {
-      PaintingBinding.instance.imageCache.evict(key);
-      throw StateError(
-          '${key.filename} is empty and cannot be loaded as an image.');
-    }
-
-    return decode(await ui.ImmutableBuffer.fromUint8List(bytes));
-  }
-
-  static Color getFilterColor([Color? color]) {
-    if (kIsWeb && color == Colors.transparent) {
-      return const Color(0x01ffffff);
-    } else {
-      return color ?? Colors.transparent;
-    }
-  }
+  /// Maximum time for the download before it counts as a network failure.
+  final Duration timeout;
 
   @override
   Future<PocketBaseImageProvider> obtainKey(ImageConfiguration configuration) {
-    final Color color = this.color ?? Colors.transparent;
-    final double scale = this.scale ?? configuration.devicePixelRatio ?? 1.0;
+    final dpr = configuration.devicePixelRatio ?? 1.0;
+    var targetWidth = pixelWidth;
+    var targetHeight = pixelHeight;
+    final size = this.size;
+    if (targetWidth == null && targetHeight == null && size != null) {
+      targetWidth = _toPixels(size.width, dpr);
+      targetHeight = _toPixels(size.height, dpr);
+    }
 
-    final double logicWidth = (size ?? configuration.size)?.width ?? 100;
-
-    final double logicHeight = (size ?? configuration.size)?.height ?? 100;
-
-    // Returns a new PocketBaseImageProvider instance configured with the derived values.
-    // This new instance serves as the cache key.
+    // The key carries the resolved scale and decode size, so equal inputs on
+    // the same device produce equal keys.
     return SynchronousFuture<PocketBaseImageProvider>(
       PocketBaseImageProvider(
         client: client,
-        filename: filename,
         recordId: recordId,
         recordCollectionName: recordCollectionName,
-        scale: scale,
-        color: color,
-        pixelWidth: (logicWidth * scale).round(),
-        pixelHeight: (logicHeight * scale).round(),
+        filename: filename,
+        thumb: thumb,
+        pixelWidth: targetWidth,
+        pixelHeight: targetHeight,
+        scale: scale ?? dpr,
         expireAfter: expireAfter,
         token: token,
         autoGenerateToken: autoGenerateToken,
-        size: size,
         requestPolicy: requestPolicy,
+        timeout: timeout,
       ),
     );
   }
 
-  /// Downloads the image file bytes from the PocketBase server.
-  ///
-  /// This method uses the `client.files.get` method from the PocketBase SDK,
-  /// which is expected to handle caching and network policies.
-  Future<Uint8List> download() async {
-    // The image provider's entire cache/network logic is now handled by the FileService.
-    // We use a network-first policy by default for images to ensure they are up-to-date.
+  static int? _toPixels(double logical, double devicePixelRatio) {
+    if (!logical.isFinite || logical <= 0) return null;
+    return math.max(1, (logical * devicePixelRatio).round());
+  }
+
+  @override
+  ImageStreamCompleter loadImage(
+      PocketBaseImageProvider key, ImageDecoderCallback decode) {
+    return MultiFrameImageStreamCompleter(
+      codec: key._loadAsync(decode),
+      scale: key.scale ?? 1.0,
+      debugLabel: key.toString(),
+      informationCollector: () => <DiagnosticsNode>[
+        DiagnosticsProperty<ImageProvider>('Image provider', this),
+        DiagnosticsProperty<PocketBaseImageProvider>('Image key', key),
+      ],
+    );
+  }
+
+  Future<ui.Codec> _loadAsync(ImageDecoderCallback decode) async {
+    try {
+      final bytes = await download();
+      if (bytes.isEmpty) {
+        throw StateError(
+            '$filename is empty and cannot be loaded as an image.');
+      }
+      final buffer = await ui.ImmutableBuffer.fromUint8List(bytes);
+      return await decode(
+        buffer,
+        getTargetSize:
+            pixelWidth == null && pixelHeight == null ? null : _targetSize,
+      );
+    } catch (_) {
+      // Drop the failed entry so the next resolve retries the load.
+      scheduleMicrotask(() {
+        PaintingBinding.instance.imageCache.evict(this);
+      });
+      rethrow;
+    }
+  }
+
+  /// Smallest aspect-preserving size covering [pixelWidth] x [pixelHeight],
+  /// never larger than the intrinsic size.
+  ui.TargetImageSize _targetSize(int intrinsicWidth, int intrinsicHeight) {
+    final widthRatio = pixelWidth != null ? pixelWidth! / intrinsicWidth : 0.0;
+    final heightRatio =
+        pixelHeight != null ? pixelHeight! / intrinsicHeight : 0.0;
+    final ratio = math.max(widthRatio, heightRatio);
+    if (ratio >= 1) return const ui.TargetImageSize();
+    return ui.TargetImageSize(
+      width: math.max(1, (intrinsicWidth * ratio).round()),
+      height: math.max(1, (intrinsicHeight * ratio).round()),
+    );
+  }
+
+  /// Downloads the image file bytes through [$FileService.getFileBytes],
+  /// which applies [requestPolicy] and the offline blob cache.
+  Future<Uint8List> download() {
     return client.files.getFileBytes(
       recordId: recordId,
       recordCollectionName: recordCollectionName,
       filename: filename,
+      thumb: thumb,
       token: token,
       autoGenerateToken: autoGenerateToken,
       requestPolicy: requestPolicy,
       expireAfter: expireAfter,
+      timeout: timeout,
     );
   }
+
+  @override
+  bool operator ==(Object other) {
+    if (other.runtimeType != runtimeType) return false;
+    return other is PocketBaseImageProvider &&
+        identical(other.client, client) &&
+        other.recordId == recordId &&
+        other.recordCollectionName == recordCollectionName &&
+        other.filename == filename &&
+        other.thumb == thumb &&
+        other.scale == scale &&
+        other.pixelWidth == pixelWidth &&
+        other.pixelHeight == pixelHeight &&
+        other.size == size;
+  }
+
+  @override
+  int get hashCode => Object.hash(
+        identityHashCode(client),
+        recordId,
+        recordCollectionName,
+        filename,
+        thumb,
+        scale,
+        pixelWidth,
+        pixelHeight,
+        size,
+      );
+
+  @override
+  String toString() => '${objectRuntimeType(this, 'PocketBaseImageProvider')}('
+      '"$recordCollectionName/$recordId/$filename", thumb: $thumb, '
+      'scale: $scale, pixelWidth: $pixelWidth, pixelHeight: $pixelHeight)';
 }

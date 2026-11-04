@@ -10,6 +10,9 @@ class $CollectionService extends CollectionService
   @override
   final String service = 'schema';
 
+  Future<void> _cache(CollectionModel value) =>
+      client.db.setLocal(service, [value.toJson()], removeAll: false);
+
   @override
   Future<CollectionModel> getOne(
     String id, {
@@ -21,46 +24,28 @@ class $CollectionService extends CollectionService
   }) async {
     final policy = resolvePolicy(requestPolicy);
     return policy.fetch<CollectionModel>(
-      label: service,
+      label: '$service/$id',
       client: client,
       remote: () {
-        // We bypass the ServiceMixin.getOne by replicating the base network call.
-        // This prevents a nested requestPolicy.fetch with the wrong policy.
+        // The base network call; ServiceMixin.getOne would nest a second
+        // policy fetch.
         final path = '/api/collections/${Uri.encodeComponent(id)}';
         final q = Map<String, dynamic>.of(query);
         q['expand'] ??= expand;
         q['fields'] ??= fields;
         return client
-            .send(
-              path,
-              query: q,
-              headers: headers,
-            )
+            .send(path, query: q, headers: headers)
             .then((data) => itemFactoryFunc(data));
       },
       getLocal: () async {
-        final result = await client.db
-            .$query(
-              service,
-              expand: expand,
-              fields: fields,
-              filter: "id = '$id'",
-            )
-            .getSingleOrNull();
-        if (result == null) {
-          throw Exception(
-            'Record ($id) not found in collection $service [cache]',
-          );
+        final local = await client.db.collectionById(id) ??
+            await client.db.collectionByName(id);
+        if (local == null) {
+          throw CacheMissException('Collection ($id) not found [cache]');
         }
-        return itemFactoryFunc(result);
+        return local;
       },
-      setLocal: (value) async {
-        await client.db.setLocal(
-          service,
-          [value.toJson()],
-          removeAll: false,
-        );
-      },
+      setLocal: _cache,
     );
   }
 
@@ -75,54 +60,42 @@ class $CollectionService extends CollectionService
   }) {
     final policy = resolvePolicy(requestPolicy);
     return policy.fetch<CollectionModel>(
-      label: service,
+      label: '$service "$filter"',
       client: client,
-      remote: () {
-        return getList(
+      remote: () async {
+        final result = await getList(
           perPage: 1,
+          skipTotal: true,
           filter: filter,
           expand: expand,
           fields: fields,
           query: query,
           headers: headers,
-          requestPolicy: policy,
-        ).then((result) {
-          if (result.items.isEmpty) {
-            throw ClientException(
-              statusCode: 404,
-              response: <String, dynamic>{
-                "code": 404,
-                "message": "The requested resource wasn't found.",
-                "data": <String, dynamic>{},
-              },
-            );
-          }
-          return result.items.first;
-        });
-      },
-      getLocal: () async {
-        final item = await client.db
-            .$query(
-              service,
-              expand: expand,
-              fields: fields,
-              filter: filter,
-            )
-            .getSingleOrNull();
-        if (item == null) {
-          throw Exception(
-            'No item found for filter "$filter" in collection $service [cache]',
+          requestPolicy: RequestPolicy.networkOnly,
+        );
+        if (result.items.isEmpty) {
+          throw ClientException(
+            statusCode: 404,
+            response: <String, dynamic>{
+              "code": 404,
+              "message": "The requested resource wasn't found.",
+              "data": <String, dynamic>{},
+            },
           );
         }
-        return itemFactoryFunc(item);
+        return result.items.first;
       },
-      setLocal: (value) async {
-        await client.db.setLocal(
-          service,
-          [value.toJson()],
-          removeAll: false,
-        );
+      getLocal: () async {
+        final items = await client.db
+            .$query(service,
+                expand: expand, fields: fields, filter: filter, limit: 1)
+            .get();
+        if (items.isEmpty) {
+          throw CacheMissException('No collection matches "$filter" [cache]');
+        }
+        return itemFactoryFunc(items.first);
       },
+      setLocal: _cache,
     );
   }
 }

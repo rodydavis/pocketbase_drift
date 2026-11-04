@@ -21,7 +21,7 @@ final created = DateTime.parse(post.get('created'));
 
 ### Get One or Null
 
-Returns `null` instead of throwing if not found:
+Returns `null` instead of throwing if the record does not exist (404 from the server, or not cached while the server is unreachable). Other errors are thrown:
 
 ```dart
 final post = await client.collection('posts').getOneOrNull(
@@ -102,6 +102,21 @@ final newPost = await client.collection('posts').create(
 print('Created post with ID: ${newPost.id}');
 ```
 
+With `cacheAndNetwork`:
+- The server answers: the record is created on the server and cached.
+- The server is unreachable: the record is stored locally as pending and returned. The sync engine creates it on the server later with the same id.
+- The server rejects the record (400 validation, 403 rule): `ClientException` is thrown. Nothing is stored.
+
+```dart
+try {
+  await client.collection('posts').create(body: {'title': ''});
+} on ClientException catch (e) {
+  if (e.statusCode == 400) {
+    final fieldErrors = e.response['data']; // Per-field validation errors
+  }
+}
+```
+
 ### Create with Custom ID
 
 ```dart
@@ -139,6 +154,8 @@ final post = await client.collection('posts').create(
 );
 ```
 
+When the server is unreachable, the file bytes are stored locally. Sync sends them once as multipart parts. Later edits of the record do not upload them again.
+
 ## Updating Records
 
 ### Basic Update
@@ -156,7 +173,7 @@ final updatedPost = await client.collection('posts').update(
 
 ### Partial Update
 
-Only the specified fields are updated:
+Only the specified fields are updated. An offline update records the changed fields in `pendingFields`. Sync sends only these fields:
 
 ```dart
 await client.collection('posts').update(
@@ -191,12 +208,14 @@ await client.collection('posts').delete(
 ### Offline Delete Behavior
 
 When using `cacheAndNetwork`:
-- If online: Deletes from server, then removes from cache
-- If offline: Marks record as `deleted: true` in cache, syncs deletion when online
+- Server answers: Deletes from server, then removes from cache. A 404 also removes the local copy without an error.
+- Server unreachable: Marks record as `deleted: true` in cache, syncs deletion when the server is reachable again
+- Record created offline and not synced yet: Removed locally at once. No server delete is queued.
+- Server rejects the delete (for example 403): `ClientException` is thrown. The cached record stays.
 
 ## Filtering
 
-PocketBase filter syntax works locally:
+PocketBase filter syntax works locally. Supported right-hand sides: literals (strings, numbers, `true`/`false`, `null`), date macros (`@now`, `@todayStart`, `@yesterday`, ...) and `@request.auth.id` (the logged-in account id, or `''` when nobody is logged in). Other `@request.*` values, `@collection.*` and field references on the right-hand side throw `UnsupportedError` in local queries. Malformed filters throw `FormatException`. Server requests are not affected.
 
 ```dart
 // Equality
@@ -271,36 +290,39 @@ try {
   final post = await client.collection('posts').getOne(postId);
   // Use post
 } on ClientException catch (e) {
-  if (e.statusCode == 404) {
-    // Record not found
+  if (e.statusCode == 0) {
+    // Server unreachable and the record is not cached
+  } else if (e.statusCode == 404) {
+    // Not found on the server. The stale cached copy is removed
+    // (unless it has unsynced local changes).
   } else {
-    // Other error
+    // Other server answer (400, 401, 403) or transient status (for example 503)
   }
-} catch (e) {
-  // Network or cache error
 }
 ```
+
+Reads use the cache only when the server is unreachable (status 0, timeout, 408, 429, 5xx). A 4xx answer is always thrown. A pending offline create is still returned from the cache when the server answers 404. A local filter (list reads, streams) with an unsupported right-hand side throws `UnsupportedError`. A malformed filter throws `FormatException`.
 
 ## Checking Sync Status
 
 Records have metadata indicating sync state:
 
 ```dart
-final post = await client.collection('posts').getOne(postId);
+// Read the cached row: server responses do not contain the sync metadata
+final post = await client.collection('posts').getOne(
+  postId,
+  requestPolicy: RequestPolicy.cacheOnly,
+);
 
-final synced = post.data['synced'] as bool? ?? true;
-final isNew = post.data['isNew'] as bool? ?? false;
-final deleted = post.data['deleted'] as bool? ?? false;
-final noSync = post.data['noSync'] as bool? ?? false;
+final synced = !RecordMeta.isPending(post.data);
+final isNew = RecordMeta.flag(post.data[RecordMeta.isNew]);
+final noSync = RecordMeta.flag(post.data[RecordMeta.noSync]);
 
 if (!synced && isNew) {
   print('Created offline, pending sync');
 }
 if (!synced && !isNew) {
   print('Updated offline, pending sync');
-}
-if (deleted) {
-  print('Marked for deletion, pending sync');
 }
 if (noSync) {
   print('Local-only record, will never sync');
@@ -311,4 +333,4 @@ if (noSync) {
 > reads (`getOne`, `getFullList`, `watchRecords`, `search`, `$count`). To inspect them
 > (diagnostics, pending-queue screens), query the database directly with
 > `client.db.$query(collection, includeDeleted: true)`. A record created offline and
-> deleted before ever syncing is purged locally during sync — it never hits the server.
+> deleted before it syncs is removed locally at once — it never hits the server.

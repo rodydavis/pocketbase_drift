@@ -10,6 +10,8 @@ Access the underlying Drift database via `client.db`:
 final db = client.db;
 ```
 
+On native platforms, the default connection runs SQLite in a background isolate (`NativeDatabase.createInBackground`, WAL mode). Queries do not block the UI isolate. A client with `inMemory: true` runs SQLite on the calling isolate.
+
 ## Database Schema
 
 All PocketBase records are stored in a generic `services` table:
@@ -17,16 +19,68 @@ All PocketBase records are stored in a generic `services` table:
 | Column | Type | Description |
 |--------|------|-------------|
 | `id` | TEXT | Record ID (PocketBase ID) |
-| `service` | TEXT | Collection name (e.g., "posts", "users") |
-| `data` | TEXT | JSON-encoded record data |
-| `created` | TEXT | ISO 8601 timestamp |
-| `updated` | TEXT | ISO 8601 timestamp |
+| `service` | TEXT | Collection name (e.g., "posts", "users"); `schema` holds the collection definitions |
+| `data` | TEXT | JSON-encoded record data, including the bookkeeping keys (see below) |
+| `created` | TEXT | PocketBase timestamp, e.g. `2026-11-04 10:00:00.123Z` |
+| `updated` | TEXT | PocketBase timestamp, e.g. `2026-11-04 10:00:00.123Z` |
+| `cachedAt` | INTEGER (nullable) | When the row was last written from the server or by a local change (Drift `DateTime`, Unix seconds). Cache TTL uses this column. |
 
 **Primary Key**: `(id, service)`
 
+**Indexes**: `idx_services_service` on `service`; `idx_blob_files_record` on `BlobFiles (recordId, filename)`
+
 Additional tables:
-- `blob_files` - Cached file/image blobs
-- `cached_responses` - Cached API responses for custom routes
+- `BlobFiles` - Cached file/image blobs (`recordId`, `filename`, `data`, `expiration`, `created`, `updated`). Thumbs are stored under `filename?thumb=<spec>`.
+- `CachedResponses` - Cached API responses for custom routes (`requestKey`, `responseData`, `cachedAt`)
+- `text_entries` - FTS5 index of `services.data`
+
+## Bookkeeping Keys (RecordMeta)
+
+The package stores local state inside the `data` JSON. `RecordMeta` holds the key names:
+
+| Key | Meaning |
+|-----|---------|
+| `synced` | `false` while a local change is pending. A missing key means synced. |
+| `isNew` | Created locally, not on the server yet |
+| `deleted` | Tombstone: deleted locally, deletion not synced yet |
+| `noSync` | Local-only row (`cacheOnly` write), never synced |
+| `retryCount` | Sync attempts the server rejected |
+| `pendingFields` | Fields changed by pending updates; sync sends only these |
+| `pendingFiles` | Files attached by pending writes |
+| `pendingOwner` | Auth record id of the account that made the pending change |
+| `pendingRev` | Increments with every local change |
+| `syncError` | Set when the change is parked: `status`, `message`, `data`, `at` |
+
+Helpers: `RecordMeta.keys`, `RecordMeta.systemKeys`, `RecordMeta.flag(value)` (JSON booleans can be `0`/`1`), `RecordMeta.isPending(data)`, `RecordMeta.strip(data)` (removes the bookkeeping keys). `pbTimestamp([time])` formats a `DateTime` as a PocketBase timestamp.
+
+```dart
+final row = await client.db.customSelect(
+  "SELECT data FROM services WHERE service = 'posts' AND id = ?",
+  variables: [Variable(postId)],
+).getSingleOrNull();
+
+if (row != null) {
+  final data = jsonDecode(row.read<String>('data')) as Map<String, dynamic>;
+  print('Pending: ${RecordMeta.isPending(data)}');
+  print('Server fields: ${RecordMeta.strip(data)}');
+}
+```
+
+## Pending Changes
+
+Use `pendingRecords` instead of raw SQL to read the sync queue:
+
+```dart
+// All collections, oldest first
+final pending = await client.db.pendingRecords().get();
+
+// One collection, live
+client.db.pendingRecords(service: 'posts').watch().listen((rows) {
+  print('${rows.length} unsynced posts');
+});
+```
+
+`pendingRecords` excludes local-only rows (`noSync`) and rows of other accounts. It includes rows parked with `syncError`. `client.db.pendingServices()` returns the collections with pending rows that the active account can sync now (parked rows excluded).
 
 ## Custom Select Queries
 
@@ -112,7 +166,7 @@ stream.listen((rows) {
 
 ## Execute Statements
 
-For INSERT, UPDATE, DELETE operations:
+For INSERT, UPDATE, DELETE operations. Direct statements do not queue changes for sync and do not set `cachedAt`:
 
 ```dart
 // Delete all temp data
@@ -150,6 +204,10 @@ final posts = await client.db.$query(
 ).get();
 ```
 
+Local filters support literals (strings with PocketBase escapes, numbers, `true`, `false`, `null`), date macros (`@now`, `@todayStart`, `@yesterday`, ...) and `@request.auth.id` (the logged-in account id, or `""` when nobody is logged in). Other `@request.*` values, `@collection.*` and field references on the right side throw `UnsupportedError`. `@` tokens on the left side also throw `UnsupportedError`. A malformed filter throws `FormatException`. Server filters are not affected.
+
+`FilterTerm`, `LogicalOperator` and `ValueType` are no longer exported. To translate a filter to SQL yourself, use `FilterParser(filter, baseFields: {...}, now: ..., authId: ...).parse()`.
+
 ## Aggregations
 
 ```dart
@@ -180,18 +238,20 @@ final grouped = await client.db.customSelect('''
 
 ## Full-Text Search Table
 
-FTS5 search uses a separate virtual table:
+FTS5 search uses a separate virtual table, `text_entries`:
 
 ```dart
 // Search using FTS5
 final results = await client.db.customSelect('''
-  SELECT s.* 
-  FROM services s
-  JOIN services_fts fts ON s.rowid = fts.rowid
-  WHERE services_fts MATCH 'flutter'
+  SELECT s.*
+  FROM text_entries
+  JOIN services s ON s.rowid = text_entries.rowid
+  WHERE text_entries MATCH 'flutter'
     AND s.service = 'posts'
 ''').get();
 ```
+
+This raw query also returns tombstones and unsynced rows of other accounts. `client.db.search(query, service: 'posts')` excludes them.
 
 ## Transactions
 
@@ -238,16 +298,17 @@ Future<DashboardStats> getDashboardStats() async {
       (SELECT COUNT(*) FROM services WHERE service = 'posts') as post_count,
       (SELECT COUNT(*) FROM services WHERE service = 'users') as user_count,
       (SELECT COUNT(*) FROM services WHERE service = 'posts' 
-       AND json_extract(data, '\$.published') = 1) as published_count,
-      (SELECT COUNT(*) FROM services 
-       WHERE json_extract(data, '\$.synced') = 0) as pending_sync_count
+       AND json_extract(data, '\$.published') = 1) as published_count
   ''').getSingle();
+
+  // Pending changes of the active account (local-only rows excluded)
+  final pending = await client.db.pendingRecords().get();
 
   return DashboardStats(
     postCount: results.read<int>('post_count'),
     userCount: results.read<int>('user_count'),
     publishedCount: results.read<int>('published_count'),
-    pendingSyncCount: results.read<int>('pending_sync_count'),
+    pendingSyncCount: pending.length,
   );
 }
 ```
@@ -256,7 +317,7 @@ Future<DashboardStats> getDashboardStats() async {
 
 ### Use Indexes
 
-The `services` table is indexed on `(id, service)`. For frequent JSON queries, consider:
+The `services` table has the primary key `(id, service)` and the index `idx_services_service` on `service`. JSON fields have no index:
 
 ```dart
 // This is fast (uses index)

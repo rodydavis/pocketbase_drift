@@ -3,9 +3,9 @@ import 'package:pocketbase_drift/pocketbase_drift.dart';
 
 void main() {
   // Helper function to easily test the parser
-  String parseFilter(String filter) {
+  String parseFilter(String filter, {DateTime? now}) {
     final baseFields = {'id', 'created', 'updated', 'service'};
-    final parser = FilterParser(filter, baseFields: baseFields);
+    final parser = FilterParser(filter, baseFields: baseFields, now: now);
     return parser.parse();
   }
 
@@ -44,21 +44,23 @@ void main() {
     test('parses LIKE operator (~)', () {
       final filter = 'name ~ "test"';
       // Should auto-wrap in % for wildcard
-      final expected = "json_extract(services.data, '\$.name') LIKE '%test%'";
+      final expected =
+          "json_extract(services.data, '\$.name') LIKE '%test%' ESCAPE '\\'";
       expect(parseFilter(filter), expected);
     });
 
     test('parses NOT LIKE operator (!~)', () {
       final filter = 'name !~ "test"';
       final expected =
-          "json_extract(services.data, '\$.name') NOT LIKE '%test%'";
+          "json_extract(services.data, '\$.name') NOT LIKE '%test%' ESCAPE '\\'";
       expect(parseFilter(filter), expected);
     });
 
     test('preserves wildcards in LIKE operator', () {
       final filter = 'name ~ "test%"';
       // Should NOT double-wrap since wildcard is present
-      final expected = "json_extract(services.data, '\$.name') LIKE 'test%'";
+      final expected =
+          "json_extract(services.data, '\$.name') LIKE 'test%' ESCAPE '\\'";
       expect(parseFilter(filter), expected);
     });
   });
@@ -95,7 +97,7 @@ void main() {
     test('parses nested expressions with parentheses', () {
       final filter = 'id = "123" && (status = "done" || name ~ "task")';
       final expected =
-          "id = '123' AND (json_extract(services.data, '\$.status') = 'done' OR json_extract(services.data, '\$.name') LIKE '%task%')";
+          "id = '123' AND (json_extract(services.data, '\$.status') = 'done' OR json_extract(services.data, '\$.name') LIKE '%task%' ESCAPE '\\')";
       expect(parseFilter(filter), expected);
     });
 
@@ -191,14 +193,14 @@ void main() {
     test('parses ?~ operator with LIKE', () {
       final filter = 'tags ?~ "flutter"';
       final expected =
-          "EXISTS (SELECT 1 FROM json_each(json_extract(services.data, '\$.tags')) WHERE value LIKE '%flutter%')";
+          "EXISTS (SELECT 1 FROM json_each(json_extract(services.data, '\$.tags')) WHERE value LIKE '%flutter%' ESCAPE '\\')";
       expect(parseFilter(filter), expected);
     });
 
     test('parses ?!~ operator', () {
       final filter = 'tags ?!~ "test"';
       final expected =
-          "EXISTS (SELECT 1 FROM json_each(json_extract(services.data, '\$.tags')) WHERE value NOT LIKE '%test%')";
+          "EXISTS (SELECT 1 FROM json_each(json_extract(services.data, '\$.tags')) WHERE value NOT LIKE '%test%' ESCAPE '\\')";
       expect(parseFilter(filter), expected);
     });
 
@@ -241,7 +243,7 @@ void main() {
     test('parses :lower modifier with LIKE', () {
       final filter = 'email:lower ~ "gmail"';
       final expected =
-          "LOWER(json_extract(services.data, '\$.email')) LIKE '%gmail%'";
+          "LOWER(json_extract(services.data, '\$.email')) LIKE '%gmail%' ESCAPE '\\'";
       expect(parseFilter(filter), expected);
     });
 
@@ -261,41 +263,58 @@ void main() {
   });
 
   group('DateTime Macros', () {
-    test('resolves @now macro', () {
-      final result = parseFilter('created > @now');
-      // Check that @now was replaced with a datetime string
-      expect(result, contains("created >"));
-      expect(result, contains("'20")); // Year prefix
-      expect(result, isNot(contains('@now')));
+    // A Sunday in a leap-year February.
+    final now = DateTime.utc(2024, 2, 11, 10, 30, 45, 123, 456);
+
+    String macro(String name) => parseFilter('x = $name', now: now)
+        .replaceFirst("json_extract(services.data, '\$.x') = ", '');
+
+    test('formats datetime macros like PocketBase dates', () {
+      expect(macro('@now'), "'2024-02-11 10:30:45.123Z'");
+      expect(macro('@todayStart'), "'2024-02-11 00:00:00.000Z'");
+      expect(macro('@todayEnd'), "'2024-02-11 23:59:59.999Z'");
+      expect(macro('@yesterday'), "'2024-02-10 10:30:45.123Z'");
+      expect(macro('@tomorrow'), "'2024-02-12 10:30:45.123Z'");
+      expect(macro('@monthStart'), "'2024-02-01 00:00:00.000Z'");
+      expect(macro('@monthEnd'), "'2024-02-29 23:59:59.999Z'");
+      expect(macro('@yearStart'), "'2024-01-01 00:00:00.000Z'");
+      expect(macro('@yearEnd'), "'2024-12-31 23:59:59.999Z'");
     });
 
-    test('resolves @todayStart macro', () {
-      final result = parseFilter('created >= @todayStart');
-      expect(result, contains("created >="));
-      expect(result, contains("T00:00:00")); // Start of day
-      expect(result, isNot(contains('@todayStart')));
+    test('resolves numeric macros in UTC with Sunday as weekday 0', () {
+      expect(macro('@second'), '45');
+      expect(macro('@minute'), '30');
+      expect(macro('@hour'), '10');
+      expect(macro('@day'), '11');
+      expect(macro('@weekday'), '0');
+      expect(macro('@month'), '2');
+      expect(macro('@year'), '2024');
+      expect(
+        parseFilter('x = @weekday', now: DateTime.utc(2024, 2, 17)),
+        endsWith(' = 6'), // Saturday
+      );
+      // Local times are converted to UTC first.
+      final local = DateTime.utc(2024, 2, 11, 23, 30).toLocal();
+      expect(parseFilter('x = @hour', now: local), endsWith(' = 23'));
     });
 
-    test('resolves @todayEnd macro', () {
-      final result = parseFilter('created <= @todayEnd');
-      expect(result, contains("created <="));
-      expect(result, contains("T23:59:59")); // End of day
-      expect(result, isNot(contains('@todayEnd')));
+    test('rolls @yesterday and @tomorrow across month boundaries', () {
+      final firstOfMarch = DateTime.utc(2024, 3, 1, 8);
+      expect(
+        parseFilter('created > @yesterday', now: firstOfMarch),
+        "created > '2024-02-29 08:00:00.000Z'",
+      );
+      expect(
+        parseFilter('created < @tomorrow', now: DateTime.utc(2024, 12, 31)),
+        "created < '2025-01-01 00:00:00.000Z'",
+      );
     });
 
-    test('resolves @year macro', () {
-      final result = parseFilter('birth_year = @year');
-      final currentYear = DateTime.now().year.toString();
-      expect(result, contains(currentYear));
-      expect(result, isNot(contains('@year')));
-    });
-
-    test('resolves multiple macros', () {
-      final result =
-          parseFilter('created >= @monthStart && created <= @monthEnd');
-      expect(result, isNot(contains('@monthStart')));
-      expect(result, isNot(contains('@monthEnd')));
-      expect(result, contains('AND'));
+    test('does not treat macro names inside quoted text as macros', () {
+      expect(
+        parseFilter('note = "@now"'),
+        "json_extract(services.data, '\$.note') = '@now'",
+      );
     });
   });
 
@@ -314,18 +333,52 @@ void main() {
     });
   });
 
-  group('Quote Normalization', () {
+  group('Quoted Literals', () {
     test('converts double quotes to single quotes', () {
-      final filter = 'name = "test"';
-      final result = parseFilter(filter);
-      expect(result, contains("= 'test'"));
+      expect(parseFilter('name = "test"'),
+          "json_extract(services.data, '\$.name') = 'test'");
     });
 
-    test('handles single quotes in values', () {
-      final filter = "name = \"O'Brien\"";
-      final result = parseFilter(filter);
-      // Single quotes should be escaped by doubling
-      expect(result, contains("= 'O''Brien'"));
+    test('doubles single quotes inside the SQL literal', () {
+      expect(parseFilter("name = \"O'Brien\""), contains("= 'O''Brien'"));
+      expect(parseFilter(r"name = 'O\'Brien'"), contains("= 'O''Brien'"));
+    });
+
+    test('unescapes backslash sequences like PocketBase', () {
+      expect(parseFilter(r'name = "say \"hi\""'), contains("= 'say \"hi\"'"));
+      expect(parseFilter(r'name = "a\\b"'), contains(r"= 'a\b'"));
+      expect(parseFilter(r'name = "a\nb\tc\rd"'), contains("= 'a\nb\tc\rd'"));
+      // Unknown escapes keep their backslash.
+      expect(parseFilter(r'name = "\d\u00e9"'), contains(r"= '\d\u00e9'"));
+    });
+
+    test('keeps logical operators and parentheses inside quotes literal', () {
+      expect(
+        parseFilter(r'name = "a && (b) || \"c\" // d"'),
+        "json_extract(services.data, '\$.name') = 'a && (b) || \"c\" // d'",
+      );
+    });
+
+    test('keeps injection attempts inside the literal', () {
+      expect(
+        parseFilter("name = \"x' OR 1=1 --\""),
+        "json_extract(services.data, '\$.name') = 'x'' OR 1=1 --'",
+      );
+      expect(
+        parseFilter(r"name = 'x\' OR 1=1 --'"),
+        "json_extract(services.data, '\$.name') = 'x'' OR 1=1 --'",
+      );
+    });
+
+    test('escapes LIKE wildcards of contains matches like PocketBase', () {
+      expect(
+        parseFilter(r'name ~ "a_b\\c"'),
+        "json_extract(services.data, '\$.name') LIKE '%a\\_b\\\\c%' ESCAPE '\\'",
+      );
+      expect(
+        parseFilter("name ~ \"it's\""),
+        "json_extract(services.data, '\$.name') LIKE '%it''s%' ESCAPE '\\'",
+      );
     });
   });
 
@@ -385,6 +438,64 @@ void main() {
       expect(
         () => parseFilter('invalid filter without operator'),
         throwsFormatException,
+      );
+    });
+
+    test('throws FormatException for malformed filters', () {
+      for (final filter in [
+        'name = "unterminated',
+        "name = 'it\\'",
+        '(name = "a"',
+        'name = "a")',
+        'name = "a" &&',
+        'name = "a" "b"',
+        'name =',
+        '()',
+        '// only a comment',
+        '"value" = name',
+      ]) {
+        expect(() => parseFilter(filter), throwsFormatException,
+            reason: filter);
+      }
+    });
+
+    test('resolves @request.auth.id to the logged-in account id', () {
+      String parseAs(String filter, String? authId) => FilterParser(filter,
+              baseFields: {'id', 'created', 'updated'}, authId: authId)
+          .parse();
+
+      expect(parseAs('author = @request.auth.id', 'u1'),
+          parseAs('author = "u1"', null));
+      expect(parseAs('author = @request.auth.id', null),
+          parseAs('author = ""', null),
+          reason: 'Like the server: empty when nobody is logged in');
+    });
+
+    test('rejects other request and collection macros with the offending token',
+        () {
+      for (final token in [
+        '@request.auth.email',
+        '@collection.posts.author',
+        '@unknownMacro',
+      ]) {
+        expect(
+          () => parseFilter('author = $token'),
+          throwsA(isA<UnsupportedError>()
+              .having((e) => e.message, 'message', contains('"$token"'))),
+        );
+      }
+      expect(
+        () => parseFilter('@request.auth.id != ""'),
+        throwsA(isA<UnsupportedError>().having(
+            (e) => e.message, 'message', contains('"@request.auth.id"'))),
+      );
+    });
+
+    test('rejects unquoted field references', () {
+      expect(
+        () => parseFilter('status = active'),
+        throwsA(isA<UnsupportedError>()
+            .having((e) => e.message, 'message', contains('"active"'))),
       );
     });
   });

@@ -4,7 +4,10 @@ import 'dart:math';
 import 'package:drift/drift.dart';
 import 'package:pocketbase/pocketbase.dart';
 
+/// One row per cached record. All collections share this table; `service`
+/// is the collection name (`schema` holds the collection definitions).
 @DataClassName('Service')
+@TableIndex(name: 'idx_services_service', columns: {#service})
 class Services extends Table {
   TextColumn get id => text().clientDefault(newId)();
   TextColumn get data => text().map(const JsonMapper())();
@@ -12,11 +15,17 @@ class Services extends Table {
   TextColumn get created => text().nullable()();
   TextColumn get updated => text().nullable()();
 
+  /// When the row was last written from the server or by a local change.
+  /// Cache TTL maintenance expires rows by this time, not by the server's
+  /// `updated` value (which can be old for data that is fetched daily).
+  DateTimeColumn get cachedAt => dateTime().nullable()();
+
   @override
   Set<Column<Object>>? get primaryKey => {id, service};
 }
 
 @DataClassName('BlobFile')
+@TableIndex(name: 'idx_blob_files_record', columns: {#recordId, #filename})
 class BlobFiles extends Table with AutoIncrementingPrimaryKey {
   TextColumn get recordId => text().references(Services, #id)();
   TextColumn get filename => text()();

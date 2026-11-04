@@ -4,7 +4,7 @@ This guide covers cache cleanup, TTL configuration, and database maintenance.
 
 ## Cache TTL
 
-By default, cached data expires after 60 days. Configure on initialization:
+By default, cached data expires 60 days after it was cached. The age of a row is the time it was last written to the cache (`cachedAt`), not the server's `updated` value. Configure on initialization:
 
 ```dart
 final client = $PocketBase.database(
@@ -43,20 +43,22 @@ print('Total deleted: ${result.totalDeleted}');
 |----------|-------------|
 | `deletedRecords` | Expired synced records removed |
 | `deletedResponses` | Expired cached API responses removed |
-| `deletedFiles` | Expired file blobs removed |
+| `deletedFiles` | Expired file blobs and blobs of records no longer cached |
 | `totalDeleted` | Sum of all deletions |
 
 ## What Gets Cleaned
 
 Maintenance **ONLY** deletes:
-- Synced records older than TTL (`synced: true` + `updated` < cutoff)
+- Synced records cached before the cutoff (`cachedAt` < now − TTL). This includes rows fetched by list reads.
 - Cached API responses older than TTL
-- Orphaned file blobs
+- File blobs past their expiration
+- Orphaned file blobs: blobs created before the cutoff whose record is no longer cached
 
 Maintenance **NEVER** deletes:
-- Unsynced local changes (`synced: false`)
+- Unsynced local changes (`synced: false`), including changes parked with `syncError`
 - Local-only records (`noSync: true`)
 - Pending deletions (`deleted: true, synced: false`)
+- The schema
 
 **You will never lose unsynced data during maintenance.**
 
@@ -114,14 +116,26 @@ class SettingsScreen extends ConsumerWidget {
 
 ## Manual Cache Clearing
 
+### Clear the Cache
+
+```dart
+// Delete cached server data, cached responses and file blobs.
+// Unsynced changes and their blobs stay (default keepPending: true).
+await client.db.clearCache();
+```
+
+Logout (`authStore.clear()` with `clearOnLogout`, the default) calls `clearCache(keepPending: true)`. Pending changes belong to the account that wrote them (`pendingOwner`). Other accounts do not see them. They sync when that account logs in again.
+
+`clearCache` also deletes local-only rows (`noSync`).
+
 ### Clear All Data
 
 ```dart
-// Clear absolutely everything (use with caution!)
+// Delete everything except the schema (use with caution!)
 await client.db.clearAllData();
 ```
 
-**Warning**: This deletes ALL cached data including unsynced changes.
+**Warning**: This deletes ALL cached data including unsynced changes. It is the same as `clearCache(keepPending: false)`.
 
 ### Clear Specific Collection
 
@@ -133,18 +147,25 @@ await client.db.customStatement(
 );
 ```
 
+**Warning**: This statement also deletes unsynced changes of the collection.
+
 ### Clear Old Records Manually
 
 ```dart
-// Delete synced posts older than 30 days
-final cutoff = DateTime.now().subtract(Duration(days: 30)).toIso8601String();
+import 'package:drift/drift.dart';
 
-await client.db.customStatement('''
-  DELETE FROM services 
-  WHERE service = 'posts'
-    AND json_extract(data, '\$.synced') = 1
-    AND updated < ?
-''', [cutoff]);
+// Delete synced posts cached more than 30 days ago
+final cutoff = DateTime.now().subtract(const Duration(days: 30));
+
+await client.db.customUpdate(
+  "DELETE FROM services WHERE service = 'posts' "
+  'AND cachedAt < ? '
+  "AND COALESCE(json_extract(data, '\$.synced'), 1) = 1 "
+  "AND COALESCE(json_extract(data, '\$.noSync'), 0) = 0",
+  variables: [Variable<DateTime>(cutoff)],
+  updates: {client.db.services},
+  updateKind: UpdateKind.delete,
+);
 ```
 
 ## Database Size
@@ -165,7 +186,7 @@ for (final row in counts) {
 
 // Count file blobs
 final fileCount = await client.db.customSelect(
-  "SELECT COUNT(*) as count FROM blob_files",
+  "SELECT COUNT(*) as count FROM BlobFiles",
 ).getSingle();
 print('Cached files: ${fileCount.read<int>('count')}');
 ```
@@ -196,11 +217,19 @@ await client.runMaintenance();
 Monitor file cache specifically:
 
 ```dart
-// Clear old files
+// Clear files downloaded more than 30 days ago.
+// Keep the blobs of unsynced changes: sync uploads them.
+final cutoff =
+    DateTime.now().toUtc().subtract(const Duration(days: 30)).toIso8601String();
+
 await client.db.customStatement('''
-  DELETE FROM blob_files 
-  WHERE created < datetime('now', '-30 days')
-''');
+  DELETE FROM BlobFiles
+  WHERE created < ?
+    AND recordId NOT IN (
+      SELECT id FROM services
+      WHERE COALESCE(json_extract(data, '\$.synced'), 1) = 0
+    )
+''', [cutoff]);
 ```
 
 ## Riverpod Provider for Maintenance

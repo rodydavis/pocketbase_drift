@@ -1,43 +1,3 @@
-import 'package:flutter/foundation.dart';
-
-/// Represents a single term in a filter expression, like `name = "value"`.
-@immutable
-class FilterTerm {
-  const FilterTerm(
-    this.field,
-    this.operator,
-    this.value, {
-    this.modifier,
-    this.isAnyOf = false,
-  });
-
-  final String field;
-  final String operator;
-  final String? value; // Value can be null for operators like IS NULL
-  final String? modifier; // Field modifier like :lower, :length
-  final bool isAnyOf; // Whether this is a ?= style operator
-
-  @override
-  String toString() => '$field $operator ${value ?? ''}'.trim();
-}
-
-/// Represents a logical operator in a filter expression.
-enum LogicalOperator {
-  and,
-  or;
-
-  @override
-  String toString() => name.toUpperCase();
-}
-
-/// Represents the type of a value literal
-enum ValueType {
-  string,
-  number,
-  boolean,
-  nullValue,
-}
-
 /// A class responsible for parsing a PocketBase filter string into a valid
 /// SQL `WHERE` clause for Drift.
 ///
@@ -58,16 +18,22 @@ enum ValueType {
 /// - `(...)` for grouping
 ///
 /// **Value types:**
-/// - Strings: `"value"` or `'value'`
-/// - Numbers: `123`, `19.99`
+/// - Strings: `"value"` or `'value'`, with the same backslash escapes as
+///   PocketBase (`\"`, `\'`, `\\`, `\n`, `\t`, `\r`; any other escaped
+///   character keeps its backslash). Values produced by the SDK's
+///   `pb.filter('title = {:t}', {'t': value})` therefore match the same
+///   records locally as on the server.
+/// - Numbers: `123`, `19.99`, `-10`
 /// - Booleans: `true`, `false`
 /// - Null: `null`
 ///
-/// **DateTime macros:**
+/// **DateTime macros** (UTC, formatted like PocketBase dates,
+/// e.g. `2026-11-04 00:00:00.000Z`):
 /// - `@now`, `@todayStart`, `@todayEnd`
-/// - `@yesterday`, `@tomorrow`
+/// - `@yesterday`, `@tomorrow` (the current time one day earlier/later)
 /// - `@monthStart`, `@monthEnd`, `@yearStart`, `@yearEnd`
-/// - `@second`, `@minute`, `@hour`, `@day`, `@weekday`, `@month`, `@year`
+/// - `@second`, `@minute`, `@hour`, `@day`, `@weekday` (0 = Sunday),
+///   `@month`, `@year`
 ///
 /// **Field modifiers:**
 /// - `:lower` - Case-insensitive comparison
@@ -75,420 +41,441 @@ enum ValueType {
 ///
 /// **Comments:**
 /// - `// single line comments` are stripped
+///
+/// ## Errors
+///
+/// - Malformed filters (unterminated quotes, unbalanced parentheses, missing
+///   operators or values) throw a [FormatException].
+/// - Right-hand operands that are neither literals, datetime macros nor
+///   `@request.auth.id`, such as other `@request.*` values, `@collection.*`
+///   or field references, throw an [UnsupportedError]: the local cache
+///   cannot evaluate them.
+///
+/// `@request.auth.id` is the id of the logged-in account ([authId]), or an
+/// empty string when nobody is logged in, as on the server.
+///
+/// Every value is emitted as a SQL literal; quoted text can never escape its
+/// literal and inject SQL.
 class FilterParser {
-  FilterParser(this.filter, {required this.baseFields});
+  FilterParser(this.filter, {required this.baseFields, this.now, this.authId});
 
   final String filter;
   final Set<String> baseFields;
-  final List<dynamic> _tokens = [];
+
+  /// Reference time for the datetime macros. Defaults to the current time.
+  final DateTime? now;
+
+  /// Value of `@request.auth.id`.
+  final String? authId;
 
   /// Parses the filter string and generates the SQL WHERE clause.
   String parse() {
-    // Pre-process: strip comments and resolve macros
-    final processedFilter = _preProcess(filter);
-    _tokenize(processedFilter);
-    return _buildSql();
+    final reader = _FilterReader(
+      filter,
+      baseFields: baseFields,
+      macros: {
+        ..._datetimeMacros((now ?? DateTime.now()).toUtc()),
+        '@request.auth.id': _Operand(_ValueType.string, authId ?? ''),
+      },
+    );
+    return reader.read();
   }
 
-  /// Pre-processes the filter string:
-  /// 1. Strips single-line comments (// ...)
-  /// 2. Resolves datetime macros (@now, @todayStart, etc.)
-  String _preProcess(String input) {
-    var result = input;
+  /// Resolves the PocketBase datetime macros for [now] (in UTC), mirroring
+  /// `tools/search/identifier_macros.go`.
+  static Map<String, _Operand> _datetimeMacros(DateTime now) {
+    _Operand date(DateTime value) =>
+        _Operand(_ValueType.string, _formatPocketBaseDate(value));
+    _Operand number(int value) => _Operand(_ValueType.number, '$value');
 
-    // Strip single-line comments (but not inside quotes)
-    result = _stripComments(result);
-
-    // Resolve datetime macros
-    result = _resolveMacros(result);
-
-    return result;
-  }
-
-  /// Strips single-line comments while respecting quoted strings.
-  String _stripComments(String input) {
-    final buffer = StringBuffer();
-    bool inSingleQuote = false;
-    bool inDoubleQuote = false;
-
-    for (int i = 0; i < input.length; i++) {
-      final char = input[i];
-      final isEscaped = i > 0 && input[i - 1] == r'\';
-
-      if (!isEscaped) {
-        if (char == "'" && !inDoubleQuote) {
-          inSingleQuote = !inSingleQuote;
-        } else if (char == '"' && !inSingleQuote) {
-          inDoubleQuote = !inDoubleQuote;
-        }
-      }
-
-      // Check for comment start outside quotes
-      if (!inSingleQuote &&
-          !inDoubleQuote &&
-          char == '/' &&
-          i + 1 < input.length &&
-          input[i + 1] == '/') {
-        // Skip until end of line or end of string
-        while (i < input.length && input[i] != '\n') {
-          i++;
-        }
-        continue;
-      }
-
-      buffer.write(char);
-    }
-
-    return buffer.toString();
-  }
-
-  /// Resolves PocketBase datetime macros to their actual values.
-  String _resolveMacros(String input) {
-    final now = DateTime.now().toUtc();
-    final today = DateTime.utc(now.year, now.month, now.day);
-
-    final macros = <String, String>{
-      // Datetime macros
-      '@now': "'${now.toIso8601String()}'",
-      '@todayStart': "'${today.toIso8601String()}'",
+    return {
+      '@now': date(now),
+      '@yesterday': date(DateTime.utc(now.year, now.month, now.day - 1,
+          now.hour, now.minute, now.second, now.millisecond, now.microsecond)),
+      '@tomorrow': date(DateTime.utc(now.year, now.month, now.day + 1, now.hour,
+          now.minute, now.second, now.millisecond, now.microsecond)),
+      '@todayStart': date(DateTime.utc(now.year, now.month, now.day)),
       '@todayEnd':
-          "'${today.add(const Duration(hours: 23, minutes: 59, seconds: 59, milliseconds: 999)).toIso8601String()}'",
-      '@yesterday':
-          "'${today.subtract(const Duration(days: 1)).toIso8601String()}'",
-      '@tomorrow': "'${today.add(const Duration(days: 1)).toIso8601String()}'",
-      '@monthStart':
-          "'${DateTime.utc(now.year, now.month, 1).toIso8601String()}'",
+          date(DateTime.utc(now.year, now.month, now.day, 23, 59, 59, 999)),
+      '@monthStart': date(DateTime.utc(now.year, now.month)),
       '@monthEnd':
-          "'${DateTime.utc(now.year, now.month + 1, 0, 23, 59, 59, 999).toIso8601String()}'",
-      '@yearStart': "'${DateTime.utc(now.year, 1, 1).toIso8601String()}'",
-      '@yearEnd':
-          "'${DateTime.utc(now.year, 12, 31, 23, 59, 59, 999).toIso8601String()}'",
-
-      // Numeric datetime components
-      '@second': '${now.second}',
-      '@minute': '${now.minute}',
-      '@hour': '${now.hour}',
-      '@day': '${now.day}',
-      '@weekday': '${now.weekday % 7}', // 0=Sunday in PocketBase
-      '@month': '${now.month}',
-      '@year': '${now.year}',
+          date(DateTime.utc(now.year, now.month + 1, 0, 23, 59, 59, 999)),
+      '@yearStart': date(DateTime.utc(now.year)),
+      '@yearEnd': date(DateTime.utc(now.year, 12, 31, 23, 59, 59, 999)),
+      '@second': number(now.second),
+      '@minute': number(now.minute),
+      '@hour': number(now.hour),
+      '@day': number(now.day),
+      '@weekday': number(now.weekday % DateTime.daysPerWeek),
+      '@month': number(now.month),
+      '@year': number(now.year),
     };
-
-    var result = input;
-    // Sort by length descending to avoid partial replacements (e.g., @month before @monthStart)
-    final sortedMacros = macros.keys.toList()
-      ..sort((a, b) => b.length.compareTo(a.length));
-
-    for (final macro in sortedMacros) {
-      result = result.replaceAll(macro, macros[macro]!);
-    }
-
-    return result;
   }
 
-  /// Breaks the filter string into a series of [FilterTerm]s, [LogicalOperator]s,
-  /// and nested [FilterParser] instances for parenthesized groups. This tokenizer
-  /// correctly handles operators inside quoted strings and nested parentheses.
-  void _tokenize(String filterStr) {
-    // Use word boundaries (\b) to ensure 'AND' and 'OR' are matched as whole words
-    // and not as parts of other words (e.g., the 'or' in 'priority').
-    final logicalRegex =
-        RegExp(r'\s*(&&|\|\||\bAND\b|\bOR\b)\s*', caseSensitive: false);
+  /// Formats [value] (UTC) like PocketBase's `types.DateTime`
+  /// (`2006-01-02 15:04:05.000Z`).
+  static String _formatPocketBaseDate(DateTime value) {
+    String pad(int n, [int width = 2]) => n.toString().padLeft(width, '0');
+    return '${pad(value.year, 4)}-${pad(value.month)}-${pad(value.day)} '
+        '${pad(value.hour)}:${pad(value.minute)}:${pad(value.second)}.'
+        '${pad(value.millisecond, 3)}Z';
+  }
+}
 
-    // Operator regex supporting:
-    // - Standard operators: =, !=, >, >=, <, <=, ~, !~
-    // - Any-of operators: ?=, ?!=, ?>, ?>=, ?<, ?<=, ?~, ?!~
-    // Field names can include modifiers like :lower, :length
-    final termRegex = RegExp(
-        r'^\s*([\w\.\-]+(?::\w+)?)\s*(\?!~|\?!=|\?>=|\?<=|\?>|\?<|\?~|\?=|!~|!=|>=|<=|~|=|>|<)\s*(.*)$',
-        caseSensitive: false);
+enum _ValueType { string, number, boolean, nullValue }
 
-    int balance = 0;
-    int lastSplit = 0;
-    bool inSingleQuote = false;
-    bool inDoubleQuote = false;
+/// A resolved right-hand operand. [value] holds the unescaped text of strings
+/// and the literal text of numbers.
+class _Operand {
+  const _Operand(this.type, [this.value]);
 
-    for (int i = 0; i < filterStr.length; i++) {
-      final char = filterStr[i];
+  final _ValueType type;
+  final String? value;
+}
 
-      // Toggle quote state if the quote is not escaped.
-      final isEscaped = i > 0 && filterStr[i - 1] == r'\';
-      if (!isEscaped) {
-        if (char == "'" && !inDoubleQuote) {
-          inSingleQuote = !inSingleQuote;
-        } else if (char == '"' && !inSingleQuote) {
-          inDoubleQuote = !inDoubleQuote;
-        }
-      }
+/// Single-pass reader that translates a filter string into SQL.
+class _FilterReader {
+  _FilterReader(
+    this.input, {
+    required this.baseFields,
+    required this.macros,
+  });
 
-      // If we are inside a quote, we don't care about operators or parentheses.
-      if (inSingleQuote || inDoubleQuote) {
-        continue;
-      }
+  final String input;
+  final Set<String> baseFields;
+  final Map<String, _Operand> macros;
+  int _pos = 0;
 
-      if (char == '(') {
-        balance++;
-      } else if (char == ')') {
-        balance--;
-      } else if (balance == 0) {
-        // Potential logical operator found at the top level (not in parentheses or quotes).
-        final match = logicalRegex.matchAsPrefix(filterStr, i);
-        if (match != null) {
-          final termString = filterStr.substring(lastSplit, i).trim();
-          if (termString.isNotEmpty) {
-            _addTerm(termString, termRegex);
-          }
+  /// Operators ordered so that longer operators are matched first.
+  static const _operators = [
+    '?!~', '?!=', '?>=', '?<=', '?>', '?<', '?~', '?=', //
+    '!~', '!=', '>=', '<=', '~', '=', '>', '<',
+  ];
+  static const _likeOperators = {'~', '!~', '?~', '?!~'};
+  static final _identifierChar = RegExp(r'[\w.\-@#:]');
+  static final _fieldPattern = RegExp(r'^([\w.\-]+)(?::(\w+))?$');
+  static final _numberPattern = RegExp(r'^-?\d+\.?\d*$');
 
-          final operator = match.group(1)!.toUpperCase();
-          if (operator == '&&' || operator == 'AND') {
-            _tokens.add(LogicalOperator.and);
-          } else if (operator == '||' || operator == 'OR') {
-            _tokens.add(LogicalOperator.or);
-          }
+  bool get _atEnd => _pos >= input.length;
 
-          i = match.end - 1; // Move cursor past the operator
-          lastSplit = match.end;
-        }
-      }
+  String read() {
+    final sql = _readExpression(nested: false);
+    if (sql.isEmpty) {
+      throw FormatException('Empty filter expression', input);
     }
-
-    // Add the final term after the last operator.
-    final lastTermString = filterStr.substring(lastSplit).trim();
-    if (lastTermString.isNotEmpty) {
-      _addTerm(lastTermString, termRegex);
-    }
+    return sql;
   }
 
-  /// Adds a parsed term or a nested parser to the token list.
-  void _addTerm(String termString, RegExp termRegex) {
-    // Handle parenthesis by recursively parsing the inner content.
-    if (termString.startsWith('(') && termString.endsWith(')')) {
-      final innerFilter = termString.substring(1, termString.length - 1);
-      final subParser = FilterParser(innerFilter, baseFields: baseFields);
-      _tokens.add(subParser); // Add the sub-parser itself as a token.
-    } else {
-      final termMatch = termRegex.firstMatch(termString);
-      if (termMatch != null) {
-        var field = termMatch.group(1)!.trim();
-        final operator = termMatch.group(2)!.trim();
-        final value = termMatch.group(3)!.trim();
-
-        // Parse field modifiers (e.g., name:lower -> field: name, modifier: lower)
-        String? modifier;
-        if (field.contains(':')) {
-          final parts = field.split(':');
-          field = parts[0];
-          modifier = parts[1].toLowerCase();
+  /// Reads terms and groups joined by logical operators until the end of the
+  /// input or, when [nested], until the closing parenthesis.
+  String _readExpression({required bool nested}) {
+    final parts = <String>[];
+    while (true) {
+      _skipWhitespaceAndComments();
+      if (_atEnd || input[_pos] == ')') {
+        if (parts.isNotEmpty) {
+          throw FormatException(
+              'Expected an expression after the logical operator', input, _pos);
         }
+        break;
+      }
 
-        // Check if this is an "any-of" operator
-        final isAnyOf = operator.startsWith('?');
+      parts.add(_readOperand());
 
-        _tokens.add(FilterTerm(
-          field,
-          operator,
-          value.isEmpty ? null : value,
-          modifier: modifier,
-          isAnyOf: isAnyOf,
-        ));
+      _skipWhitespaceAndComments();
+      if (_atEnd || input[_pos] == ')') break;
+
+      final join = _readJoin();
+      if (join == null) {
+        throw FormatException(
+            'Expected "&&" or "||" between filter expressions', input, _pos);
+      }
+      parts.add(join);
+    }
+
+    if (nested) {
+      if (_atEnd) {
+        throw FormatException('Missing closing parenthesis', input, _pos);
+      }
+      _pos++; // consume ')'
+    } else if (!_atEnd) {
+      throw FormatException('Unexpected closing parenthesis', input, _pos);
+    }
+
+    return parts.join(' ');
+  }
+
+  String _readOperand() {
+    if (input[_pos] != '(') return _readTerm();
+
+    final start = _pos;
+    _pos++; // consume '('
+    final inner = _readExpression(nested: true);
+    if (inner.isEmpty) {
+      throw FormatException('Empty parenthesized expression', input, start);
+    }
+    return '($inner)';
+  }
+
+  /// Reads `&&`, `||` or the `AND` / `OR` keywords (case-insensitive).
+  String? _readJoin() {
+    if (input.startsWith('&&', _pos)) {
+      _pos += 2;
+      return 'AND';
+    }
+    if (input.startsWith('||', _pos)) {
+      _pos += 2;
+      return 'OR';
+    }
+    final start = _pos;
+    final word = _readIdentifier().toUpperCase();
+    if (word == 'AND' || word == 'OR') return word;
+    _pos = start;
+    return null;
+  }
+
+  /// Reads a single `field operator value` comparison.
+  String _readTerm() {
+    final start = _pos;
+    final left = _readIdentifier();
+    if (left.startsWith('@')) {
+      throw UnsupportedError(
+          'The filter token "$left" cannot be evaluated against the local '
+          'cache.');
+    }
+    final fieldMatch = _fieldPattern.firstMatch(left);
+    if (fieldMatch == null) {
+      throw FormatException(
+          'Invalid filter term: expected a field name', input, start);
+    }
+    final field = fieldMatch.group(1)!;
+    final modifier = fieldMatch.group(2)?.toLowerCase();
+
+    _skipWhitespaceAndComments();
+    final operator = _operators.firstWhere(
+      (op) => input.startsWith(op, _pos),
+      orElse: () => throw FormatException(
+          'Invalid filter term: expected an operator after "$left"',
+          input,
+          _pos),
+    );
+    _pos += operator.length;
+
+    _skipWhitespaceAndComments();
+    final operand = _readValue(left, operator);
+    return _buildTerm(field, modifier, operator, operand);
+  }
+
+  _Operand _readValue(String left, String operator) {
+    if (_atEnd) {
+      throw FormatException(
+          'Invalid filter term: missing value after "$left $operator"',
+          input,
+          _pos);
+    }
+
+    final char = input[_pos];
+    if (char == '"' || char == "'") {
+      return _Operand(_ValueType.string, _readQuotedText());
+    }
+
+    final start = _pos;
+    final token = _readIdentifier();
+    if (token.isEmpty) {
+      throw FormatException(
+          'Invalid filter term: missing value after "$left $operator"',
+          input,
+          start);
+    }
+
+    final lower = token.toLowerCase();
+    if (lower == 'null') return const _Operand(_ValueType.nullValue);
+    if (lower == 'true') return const _Operand(_ValueType.boolean, '1');
+    if (lower == 'false') return const _Operand(_ValueType.boolean, '0');
+    if (_numberPattern.hasMatch(token)) {
+      return _Operand(_ValueType.number, token);
+    }
+
+    final macro = macros[token];
+    if (macro != null) return macro;
+
+    if (token.startsWith('@')) {
+      throw UnsupportedError(
+          'The filter token "$token" cannot be evaluated against the local '
+          'cache; only literals and the datetime macros are supported.');
+    }
+    throw UnsupportedError(
+        'The unquoted filter value "$token" cannot be evaluated against the '
+        'local cache; field references are not supported. Quote text values '
+        '(e.g. "$token").');
+  }
+
+  /// Reads a quoted text literal starting at the current position and returns
+  /// its unescaped content, mirroring the PocketBase (fexpr) scanner.
+  String _readQuotedText() {
+    final start = _pos;
+    final quote = input[_pos++];
+    final buffer = StringBuffer();
+    var escapeNext = false;
+
+    // fexpr treats U+0000 as the end of the input.
+    while (!_atEnd && input.codeUnitAt(_pos) != 0) {
+      final char = input[_pos++];
+      if (escapeNext) {
+        escapeNext = false;
+        switch (char) {
+          case 'n':
+            buffer.write('\n');
+          case 't':
+            buffer.write('\t');
+          case 'r':
+            buffer.write('\r');
+          case r'\':
+          case "'":
+          case '"':
+            buffer.write(char);
+          default:
+            buffer
+              ..write(r'\')
+              ..write(char);
+        }
+      } else if (char == r'\') {
+        escapeNext = true;
+      } else if (char == quote) {
+        return buffer.toString();
       } else {
-        throw FormatException('Invalid filter term: "$termString"');
+        buffer.write(char);
+      }
+    }
+
+    throw FormatException('Unterminated quoted text', input, start);
+  }
+
+  /// Reads a run of identifier characters (field names, keywords, numbers
+  /// and macros).
+  String _readIdentifier() {
+    final start = _pos;
+    while (!_atEnd && _identifierChar.hasMatch(input[_pos])) {
+      _pos++;
+    }
+    return input.substring(start, _pos);
+  }
+
+  void _skipWhitespaceAndComments() {
+    while (!_atEnd) {
+      final char = input[_pos];
+      if (char == ' ' || char == '\t' || char == '\n' || char == '\r') {
+        _pos++;
+      } else if (input.startsWith('//', _pos)) {
+        final end = input.indexOf('\n', _pos);
+        _pos = end == -1 ? input.length : end + 1;
+      } else {
+        break;
       }
     }
   }
 
-  /// Determines the type of a value
-  (ValueType, dynamic) _parseValue(String? value) {
-    if (value == null || value.isEmpty) {
-      return (ValueType.nullValue, null);
+  String _buildTerm(
+    String field,
+    String? modifier,
+    String operator,
+    _Operand operand,
+  ) {
+    final isAnyOf = operator.startsWith('?');
+    final baseOperator = isAnyOf ? operator.substring(1) : operator;
+    final isBaseField = baseFields.contains(field.toLowerCase());
+
+    if (operand.type == _ValueType.nullValue) {
+      final fieldSql = _fieldSql(field, modifier);
+      return baseOperator == '!='
+          ? '$fieldSql IS NOT NULL'
+          : '$fieldSql IS NULL';
     }
 
-    final trimmed = value.trim();
-
-    // Check for null literal
-    if (trimmed.toLowerCase() == 'null') {
-      return (ValueType.nullValue, null);
-    }
-
-    // Check for boolean literals
-    if (trimmed.toLowerCase() == 'true') {
-      return (ValueType.boolean, true);
-    }
-    if (trimmed.toLowerCase() == 'false') {
-      return (ValueType.boolean, false);
-    }
-
-    // Check for numeric literals (integers and decimals, including negative)
-    if (RegExp(r'^-?\d+\.?\d*$').hasMatch(trimmed)) {
-      return (ValueType.number, trimmed);
-    }
-
-    // Everything else is treated as a string
-    return (ValueType.string, trimmed);
-  }
-
-  /// A helper function to correctly quote a field for SQL based on whether it's
-  /// a base field or a JSON field.
-  String _quoteField(String field, {String? modifier}) {
-    String fieldSql;
-
-    if (baseFields.contains(field.toLowerCase())) {
-      fieldSql = field;
+    final String valueSql;
+    String sqlOperator = baseOperator;
+    String suffix = '';
+    if (_likeOperators.contains(operator)) {
+      // Like PocketBase, non-text operands are matched by their text form.
+      sqlOperator = baseOperator == '~' ? 'LIKE' : 'NOT LIKE';
+      valueSql = _sqlString(_likePattern(operand.value!));
+      suffix = r" ESCAPE '\'";
     } else {
-      // All other fields are assumed to be in the 'data' JSON column.
-      fieldSql = "json_extract(services.data, '\$.$field')";
+      valueSql = switch (operand.type) {
+        // SQLite reads the `true`/`false` keywords as 1/0, which is also how
+        // json_extract returns JSON booleans.
+        _ValueType.boolean when !isBaseField =>
+          operand.value == '1' ? 'true' : 'false',
+        _ValueType.string => _sqlString(operand.value!),
+        _ValueType.boolean || _ValueType.number => operand.value!,
+        _ValueType.nullValue => 'NULL',
+      };
     }
 
-    // Apply modifiers
-    if (modifier != null) {
-      switch (modifier) {
-        case 'lower':
-          fieldSql = 'LOWER($fieldSql)';
-          break;
-        case 'length':
-          // For length, we need json_array_length instead of json_extract
-          if (baseFields.contains(field.toLowerCase())) {
-            // Base fields shouldn't have :length modifier, but handle gracefully
-            fieldSql = 'LENGTH($fieldSql)';
-          } else {
-            fieldSql =
-                "json_array_length(json_extract(services.data, '\$.$field'))";
-          }
-          break;
-      }
+    if (isAnyOf) {
+      final jsonPath =
+          isBaseField ? field : "json_extract(services.data, '\$.$field')";
+      return 'EXISTS (SELECT 1 FROM json_each($jsonPath) '
+          'WHERE value $sqlOperator $valueSql$suffix)';
     }
-
-    return fieldSql;
+    return '${_fieldSql(field, modifier)} $sqlOperator $valueSql$suffix';
   }
 
-  /// Translates a PocketBase operator to its SQLite equivalent.
-  String _translateOperator(String pbOperator) {
-    // Strip the '?' prefix if present - we handle any-of differently
-    final baseOp =
-        pbOperator.startsWith('?') ? pbOperator.substring(1) : pbOperator;
+  /// Returns the SQL expression for [field], which is either a real column
+  /// (base fields) or a value in the `data` JSON column.
+  String _fieldSql(String field, String? modifier) {
+    final isBaseField = baseFields.contains(field.toLowerCase());
+    final fieldSql =
+        isBaseField ? field : "json_extract(services.data, '\$.$field')";
 
-    switch (baseOp.toUpperCase()) {
-      case '~':
-        return 'LIKE';
-      case '!~':
-        return 'NOT LIKE';
+    switch (modifier) {
+      case 'lower':
+        return 'LOWER($fieldSql)';
+      case 'length':
+        return isBaseField
+            ? 'LENGTH($fieldSql)'
+            : "json_array_length(json_extract(services.data, '\$.$field'))";
       default:
-        return baseOp;
+        return fieldSql;
     }
   }
 
-  /// Normalizes quotes in a value string to use single quotes for SQLite string literals.
-  ///
-  /// In SQLite:
-  /// - Single quotes (') are used for string literals (values)
-  /// - Double quotes (") are used for identifiers (column/table names)
-  ///
-  /// This method converts double-quoted values to single-quoted to prevent SQLite
-  /// from misinterpreting values as identifiers, which can cause errors when the
-  /// value happens to match a column name.
-  ///
-  /// Example: "value" -> 'value'
-  String _normalizeValueQuotes(String value) {
-    // Check if the value is wrapped in double quotes
-    if (value.length >= 2 && value.startsWith('"') && value.endsWith('"')) {
-      // Extract the content inside the double quotes
-      final content = value.substring(1, value.length - 1);
-      // Escape any single quotes in the content by doubling them (SQLite convention)
-      final escapedContent = content.replaceAll("'", "''");
-      // Wrap in single quotes
-      return "'$escapedContent'";
+  /// Quotes [value] as a SQLite string literal.
+  static String _sqlString(String value) => "'${value.replaceAll("'", "''")}'";
+
+  /// Mirrors PocketBase's `wrapLikeParams`: values without an unescaped `%`
+  /// get their `\`, `%` and `_` escaped and are wrapped in `%` for a contains
+  /// match; values with an explicit `%` wildcard are used as-is.
+  static String _likePattern(String value) {
+    if (_containsUnescaped(value, '%')) return value;
+    return '%${_escapeUnescaped(value, const {r'\', '%', '_'})}%';
+  }
+
+  static bool _containsUnescaped(String value, String char) {
+    var previous = '';
+    for (var i = 0; i < value.length; i++) {
+      final c = value[i];
+      if (c == char && previous != r'\') return true;
+      // A double backslash is an escaped backslash, not an escape sequence.
+      previous = c == r'\' && previous == r'\' ? '' : c;
     }
-    // If already single-quoted or not quoted, return as-is
-    return value;
+    return false;
   }
 
-  /// Builds SQL for an "any-of" operator using EXISTS subquery.
-  String _buildAnyOfSql(String field, String operator, String valueSql) {
-    // Get the base operator without the '?' prefix
-    final translatedOp = _translateOperator(operator);
-
-    // Build the JSON field path for json_each
-    final jsonPath = baseFields.contains(field.toLowerCase())
-        ? field
-        : "json_extract(services.data, '\$.$field')";
-
-    return 'EXISTS (SELECT 1 FROM json_each($jsonPath) WHERE value $translatedOp $valueSql)';
-  }
-
-  /// Builds the final SQL string from the tokenized parts.
-  String _buildSql() {
-    final sqlParts = <String>[];
-    for (final token in _tokens) {
-      if (token is FilterTerm) {
-        final fieldSql = _quoteField(token.field, modifier: token.modifier);
-        final (valueType, parsedValue) = _parseValue(token.value);
-
-        // Handle null comparisons
-        if (valueType == ValueType.nullValue) {
-          if (token.operator == '=' || token.operator == '?=') {
-            sqlParts.add('$fieldSql IS NULL');
-          } else if (token.operator == '!=' || token.operator == '?!=') {
-            sqlParts.add('$fieldSql IS NOT NULL');
-          } else {
-            // Other operators with null don't make sense, but handle gracefully
-            sqlParts.add('$fieldSql IS NULL');
-          }
-          continue;
-        }
-
-        final operatorSql = _translateOperator(token.operator);
-        String valueSql;
-
-        // Build value SQL based on type
-        switch (valueType) {
-          case ValueType.boolean:
-            // SQLite uses 1/0 for booleans, but JSON stores true/false
-            // For json_extract, we need to compare against JSON boolean
-            if (!baseFields.contains(token.field.toLowerCase())) {
-              valueSql = parsedValue == true ? 'true' : 'false';
-            } else {
-              valueSql = parsedValue == true ? '1' : '0';
-            }
-            break;
-          case ValueType.number:
-            valueSql = parsedValue.toString();
-            break;
-          case ValueType.string:
-            valueSql = _normalizeValueQuotes(parsedValue as String);
-            // PocketBase's LIKE operators (~ and !~) auto-wrap the value in '%'
-            // if no wildcard is present.
-            if (token.operator == '~' ||
-                token.operator == '!~' ||
-                token.operator == '?~' ||
-                token.operator == '?!~') {
-              // The value now has single quotes. Check if the content has a '%'.
-              if (!valueSql.substring(1, valueSql.length - 1).contains('%')) {
-                final unquotedValue =
-                    valueSql.substring(1, valueSql.length - 1);
-                // Re-quote with the wildcards.
-                valueSql = "'%${unquotedValue.replaceAll("'", "''")}%'";
-              }
-            }
-            break;
-          case ValueType.nullValue:
-            // Already handled above
-            valueSql = 'NULL';
-            break;
-        }
-
-        // Build the SQL - either normal or EXISTS for any-of
-        if (token.isAnyOf) {
-          sqlParts.add(_buildAnyOfSql(token.field, token.operator, valueSql));
-        } else {
-          sqlParts.add('$fieldSql $operatorSql $valueSql');
-        }
-      } else if (token is LogicalOperator) {
-        sqlParts.add(token.toString());
-      } else if (token is FilterParser) {
-        // Recursively build the SQL for the sub-query and wrap it in parentheses.
-        sqlParts.add('(${token.parse()})');
+  static String _escapeUnescaped(String value, Set<String> chars) {
+    final result = <String>[];
+    var match = false;
+    for (var i = value.length - 1; i >= 0; i--) {
+      final c = value[i];
+      if (match) {
+        if (c != r'\') result.add(r'\');
+        match = false;
+      } else {
+        match = chars.contains(c);
       }
+      result.add(c);
+      if (i == 0 && match) result.add(r'\');
     }
-    return sqlParts.join(' ');
+    return result.reversed.join();
   }
 }

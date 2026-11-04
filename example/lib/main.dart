@@ -20,16 +20,21 @@ Future<void> main() async {
   final sharedPreferences = startupData[0] as SharedPreferences;
   final schemaJson = startupData[1] as String;
 
+  // The schema must be cached before any record is written or validated.
+  final client = await createPocketBaseClient(sharedPreferences, schemaJson);
+
+  // Seed sample projects and tasks if database is newly initialized
+  await seedInitialDataIfEmpty(client);
+
   final container = ProviderContainer(
     overrides: [
       sharedPreferencesProvider.overrideWithValue(sharedPreferences),
-      schemaProvider.overrideWithValue(schemaJson),
+      pocketBaseProvider.overrideWith((ref) {
+        ref.onDispose(client.close);
+        return client;
+      }),
     ],
   );
-
-  // Seed sample projects and tasks if database is newly initialized
-  final client = container.read(pocketBaseProvider);
-  await seedInitialDataIfEmpty(client);
 
   runApp(
     UncontrolledProviderScope(

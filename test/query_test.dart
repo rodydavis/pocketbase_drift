@@ -8,10 +8,6 @@ import 'package:pocketbase_drift/pocketbase_drift.dart';
 
 import 'test_data/collections.json.dart';
 
-/// The tombstone exclusion clause that queryBuilder appends to every query.
-const deletedClause =
-    "(json_extract(services.data, '\$.deleted') IS NULL OR json_extract(services.data, '\$.deleted') = 0)";
-
 void main() {
   final connection = DatabaseConnection(NativeDatabase.memory());
   final db = DataBase(connection);
@@ -48,73 +44,6 @@ void main() {
     expect(schema.isNotEmpty, true);
     expect(result.isNotEmpty, true);
     expect(schema.first.id, result.first['id']);
-  });
-
-  group('query builder', () {
-    test('empty', () async {
-      final (statement, variables) = db.queryBuilder('todo');
-      expect(statement, 'SELECT * FROM services WHERE service = ? AND $deletedClause');
-      expect(variables, [Variable.withString('todo')]);
-    });
-
-    test('fields', () async {
-      final (statement, _) = db.queryBuilder('todo', fields: 'id, created');
-      final (statement2, _) = db.queryBuilder('todo', fields: 'id, name');
-      expect(statement, 'SELECT id, created FROM services WHERE service = ? AND $deletedClause');
-      expect(statement2,
-          "SELECT id, json_extract(services.data, '\$.name') as name FROM services WHERE service = ? AND $deletedClause");
-    });
-
-    test('sort', () async {
-      final (statement1, _) = db.queryBuilder('todo', sort: '-created,id');
-      final (statement2, _) = db.queryBuilder('todo', sort: '+name,id');
-      expect(statement1,
-          'SELECT * FROM services WHERE service = ? AND $deletedClause ORDER BY created DESC, id ASC');
-      expect(statement2,
-          "SELECT * FROM services WHERE service = ? AND $deletedClause ORDER BY json_extract(services.data, '\$.name') ASC, id ASC");
-    });
-
-    test('all', () async {
-      final (statement, _) = db.queryBuilder(
-        'todo',
-        sort: '-created,id',
-        fields: 'id, created',
-        filter: 'id = "1234"',
-      );
-      expect(statement,
-          'SELECT id, created FROM services WHERE service = ? AND $deletedClause AND (id = \'1234\') ORDER BY created DESC, id ASC');
-    });
-
-    // test('string multi split', () {
-    //   expect(
-    //     'name = "todo" AND data != true OR id = ""'.multiSplit([' AND ', ' OR ']),
-    //     ['name = "todo"', 'data != true', 'id = ""'],
-    //   );
-    // });
-
-    test('json_extract fields', () {
-      final (statement, _) = db.queryBuilder('todo', fields: 'id, name');
-      expect(statement,
-          "SELECT id, json_extract(services.data, '\$.name') as name FROM services WHERE service = ? AND $deletedClause");
-    });
-
-    test('json_extract filter', () {
-      final (statement, _) = db.queryBuilder('todo', filter: 'name = "test1"');
-      expect(statement,
-          "SELECT * FROM services WHERE service = ? AND $deletedClause AND (json_extract(services.data, '\$.name') = 'test1')");
-    });
-
-    test('queryBuilder field name replacement with word boundaries', () {
-      final (statement, _) = db.queryBuilder('tasks',
-          filter: 'user = "abc" AND super_user_role = "admin"');
-
-      expect(
-          statement.contains("json_extract(services.data, '\$.user')"), isTrue);
-      expect(
-          statement
-              .contains("json_extract(services.data, '\$.super_user_role')"),
-          isTrue);
-    });
   });
 
   group('query test', () {

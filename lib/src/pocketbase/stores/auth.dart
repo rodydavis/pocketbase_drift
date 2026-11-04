@@ -11,13 +11,19 @@ class $AuthStore extends AsyncAuthStore {
   });
 
   DataBase? db;
+
+  /// Whether logging out deletes the cached data.
+  ///
+  /// Unsynced local changes are kept: they belong to the account that made
+  /// them, stay hidden while another account is logged in, and sync when
+  /// that account logs in again. Use [DataBase.clearAllData] to discard them.
   final bool clearOnLogout;
 
   @override
   void clear() {
     super.clear();
     if (clearOnLogout) {
-      db?.clearAllData();
+      db?.clearCache(keepPending: true);
     }
   }
 

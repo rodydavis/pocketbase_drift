@@ -305,38 +305,28 @@ void main() {
           requestPolicy: RequestPolicy.cacheAndNetwork);
 
       // The record never reached the server.
-      final serverListBefore = await serverClient.collection('todo').getFullList(
-        filter: "name = '$recordName'",
-      );
+      final serverListBefore =
+          await serverClient.collection('todo').getFullList(
+                filter: "name = '$recordName'",
+              );
       expect(serverListBefore, isEmpty,
           reason: 'Record was created offline; server must not know it.');
 
-      // The deletion stays queued.
+      // Nothing to delete on the server: the row is purged right away, not
+      // kept as a tombstone retrying a doomed server delete.
       final pendingBefore = await todoCollection.pending().get();
-      expect(pendingBefore.map((r) => r.id), contains(offlineRecord.id));
+      expect(pendingBefore.map((r) => r.id), isNot(contains(offlineRecord.id)));
+      expect(await client.db.rowById('todo', offlineRecord.id), isNull,
+          reason:
+              'Locally-created deleted record must be purged, not left in limbo.');
 
       await setConnectivity(true);
       await Future.delayed(Duration.zero);
       await client.syncCompleted;
 
-      // Queue drained and the local row purged entirely - not stuck as a
-      // tombstone retrying a doomed server delete forever.
-      final pendingAfter = await todoCollection.pending().get();
-      expect(pendingAfter.map((r) => r.id), isNot(contains(offlineRecord.id)),
-          reason: 'Pending queue should be drained after sync.');
-
-      final row = await client.db
-          .$query('todo',
-              filter: "id = '${offlineRecord.id}'", includeDeleted: true)
-          .getSingleOrNull();
-      expect(row, isNull,
-          reason:
-              'Locally-created deleted record must be purged, not left in limbo.');
-
-      final serverListAfter =
-          await serverClient.collection('todo').getFullList(
-                filter: "name = '$recordName'",
-              );
+      final serverListAfter = await serverClient.collection('todo').getFullList(
+            filter: "name = '$recordName'",
+          );
       expect(serverListAfter, isEmpty,
           reason: 'Nothing should have been created on the server.');
     });
@@ -347,7 +337,9 @@ void main() {
       final todoServer = serverClient.collection('todo');
 
       final record = await todoCollection.create(
-        body: {'name': 'tombstone_404_${DateTime.now().millisecondsSinceEpoch}'},
+        body: {
+          'name': 'tombstone_404_${DateTime.now().millisecondsSinceEpoch}'
+        },
         requestPolicy: RequestPolicy.cacheAndNetwork,
       );
 
@@ -389,8 +381,8 @@ void main() {
       await todoCollection.delete(record.id,
           requestPolicy: RequestPolicy.cacheAndNetwork);
 
-      final visible =
-          await todoCollection.getFullList(requestPolicy: RequestPolicy.cacheOnly);
+      final visible = await todoCollection.getFullList(
+          requestPolicy: RequestPolicy.cacheOnly);
       expect(visible.map((r) => r.id), isNot(contains(record.id)),
           reason: 'getFullList must exclude offline-deleted records.');
 
@@ -431,11 +423,15 @@ void main() {
       // the server still returns the record, but mergeLocal must keep the
       // tombstone instead of writing the stale server copy over it.
       await client.db.mergeLocal('todo', [
-        {'id': record.id, 'name': 'stale_server_copy', 'updated': DateTime.now().toUtc().toIso8601String()},
+        {
+          'id': record.id,
+          'name': 'stale_server_copy',
+          'updated': DateTime.now().toUtc().toIso8601String()
+        },
       ]);
 
-      final visible =
-          await todoCollection.getFullList(requestPolicy: RequestPolicy.cacheOnly);
+      final visible = await todoCollection.getFullList(
+          requestPolicy: RequestPolicy.cacheOnly);
       expect(visible.map((r) => r.id), isNot(contains(record.id)),
           reason: 'Server data must not resurrect the pending delete.');
 
@@ -465,8 +461,8 @@ void main() {
         requestPolicy: RequestPolicy.cacheAndNetwork,
       );
       expect(
-        (await todoCollection
-                .getFullList(requestPolicy: RequestPolicy.cacheOnly))
+        (await todoCollection.getFullList(
+                requestPolicy: RequestPolicy.cacheOnly))
             .map((r) => r.id),
         contains(record.id),
         reason: 'Record is visible before the offline delete.',

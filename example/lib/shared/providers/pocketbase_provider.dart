@@ -11,13 +11,6 @@ final sharedPreferencesProvider = Provider<SharedPreferences>((ref) {
   );
 });
 
-/// Schema JSON provider (overridden at app startup in main.dart).
-final schemaProvider = Provider<String>((ref) {
-  throw UnimplementedError(
-    'schemaProvider must be overridden in ProviderScope at startup.',
-  );
-});
-
 /// Active request policy provider with local persistence.
 final activeRequestPolicyProvider =
     StateNotifierProvider<RequestPolicyNotifier, RequestPolicy>((ref) {
@@ -47,26 +40,29 @@ class RequestPolicyNotifier extends StateNotifier<RequestPolicy> {
   }
 }
 
-/// Core PocketBase client provider with Drift SQLite database backing and schema caching.
-final pocketBaseProvider = Provider<$PocketBase>((ref) {
-  final prefs = ref.watch(sharedPreferencesProvider);
-  final schema = ref.watch(schemaProvider);
-
-  // Initialize persistent auth store
-  final authStore = $AuthStore.prefs(prefs, AppConstants.keyPbAuth);
-
-  // Initialize PocketBase client backed by Drift SQLite
+/// Creates the PocketBase client backed by Drift SQLite and caches the
+/// collection schema before returning, so validation and the first queries
+/// (including seeding) already see every collection.
+Future<$PocketBase> createPocketBaseClient(
+  SharedPreferences prefs,
+  String schemaJson,
+) async {
   final client = $PocketBase.database(
     AppConstants.defaultServerUrl,
-    authStore: authStore,
+    authStore: $AuthStore.prefs(prefs, AppConstants.keyPbAuth),
     dbName: AppConstants.databaseName,
     cacheTtl: const Duration(days: 30),
-  )..setSchema(schema);
-
-  // Clean up database resources on dispose
-  ref.onDispose(client.close);
-
+  );
+  await client.setSchema(schemaJson);
   return client;
+}
+
+/// Core PocketBase client provider (overridden at app startup in main.dart
+/// with the client from [createPocketBaseClient]).
+final pocketBaseProvider = Provider<$PocketBase>((ref) {
+  throw UnimplementedError(
+    'pocketBaseProvider must be overridden in ProviderScope at startup.',
+  );
 });
 
 /// Stream of connectivity status (online / offline).

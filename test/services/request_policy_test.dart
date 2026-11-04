@@ -700,29 +700,33 @@ void main() {
       );
     });
 
-    test('update: handles 404 by creating the record instead', () async {
-      // Try to update a record that doesn't exist on server
-      // but use an ID that looks valid
-      final fakeId = 'test123456789ab';
+    test(
+        'update: a 404 is thrown and never recreates the record on the '
+        'server', () async {
+      // Deleted on the server (e.g. by another device) but still cached.
+      final created = await serverClient
+          .collection('todo')
+          .create(body: {'name': 'deleted_elsewhere'});
+      await todoService.getOne(created.id,
+          requestPolicy: RequestPolicy.networkFirst);
+      await serverClient.collection('todo').delete(created.id);
 
-      // First create it locally only with cacheOnly
-      await todoService.create(
-        body: {'id': fakeId, 'name': 'local_only_record'},
-        requestPolicy: RequestPolicy.cacheOnly,
+      await expectLater(
+        todoService.update(
+          created.id,
+          body: {'name': 'edited_after_delete'},
+          requestPolicy: RequestPolicy.networkFirst,
+        ),
+        throwsA(isA<ClientException>()
+            .having((e) => e.statusCode, 'statusCode', 404)),
       );
 
-      // Now try to update with networkFirst - should create on server
-      final result = await todoService.update(
-        fakeId,
-        body: {'name': 'now_on_server'},
-        requestPolicy: RequestPolicy.networkFirst,
-      );
-
-      expect(result.data['name'], 'now_on_server');
-
-      // Verify it now exists on server
-      final serverRecord = await serverClient.collection('todo').getOne(fakeId);
-      expect(serverRecord.data['name'], 'now_on_server');
+      final onServer = await serverClient
+          .collection('todo')
+          .getFullList(filter: 'id = "${created.id}"');
+      expect(onServer, isEmpty, reason: 'A deleted record must stay deleted');
+      expect(await client.db.rowById('todo', created.id), isNull,
+          reason: 'The stale cached copy is dropped');
     });
   });
 

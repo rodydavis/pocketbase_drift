@@ -4,7 +4,20 @@ import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
+import 'package:sqlite3/sqlite3.dart' show Database;
 
+/// Runs inside the database isolate when the connection opens.
+void _configure(Database db) {
+  // WAL: readers do not block on writers and commits are cheaper.
+  db.execute('PRAGMA journal_mode = WAL;');
+  db.execute('PRAGMA busy_timeout = 5000;');
+}
+
+/// Opens the cache database.
+///
+/// File databases run SQLite in a background isolate, so queries, batch
+/// writes and blob reads never block the UI isolate. [inMemory] databases
+/// (tests) stay on the calling isolate.
 DatabaseConnection connect(
   String dbName, {
   bool logStatements = false,
@@ -18,9 +31,10 @@ DatabaseConnection connect(
     final appDir = await getApplicationDocumentsDirectory();
     final dbPath = p.join(appDir.path, dbName);
 
-    return DatabaseConnection(NativeDatabase(
+    return DatabaseConnection(NativeDatabase.createInBackground(
       File(dbPath),
       logStatements: logStatements,
+      setup: _configure,
     ));
   }));
 }

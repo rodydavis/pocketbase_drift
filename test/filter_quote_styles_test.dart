@@ -142,4 +142,107 @@ void main() {
       expect(result1.first['id'], result2.first['id']);
     });
   });
+
+  group('Filter literals match like PocketBase', () {
+    final pb = PocketBase('http://127.0.0.1:8090');
+
+    Future<List<String>> names(String filter) async {
+      final rows = await db.$query('todo', filter: filter).get();
+      return rows.map((e) => e['name'] as String).toList();
+    }
+
+    test('pb.filter-encoded values round-trip with = and ~', () async {
+      final values = [
+        "it's",
+        'say "hi"',
+        r'back\slash',
+        'line\nbreak',
+        'tab\tand\rreturn',
+        'unicode é ✓ 😀',
+        'snake_case',
+      ];
+      for (final value in values) {
+        await db.$create('todo', {'name': value});
+      }
+      await db.$create('todo', {'name': 'snakeXcase'});
+      await db.$create('todo', {'name': '50%_off'});
+      await db.$create('todo', {'name': '50x off'});
+
+      for (final value in values) {
+        expect(await names(pb.filter('name = {:v}', {'v': value})), [value],
+            reason: value);
+        expect(await names(pb.filter('name ~ {:v}', {'v': value})), [value],
+            reason: value);
+      }
+
+      // As on the server, an unescaped `%` turns the value into a raw LIKE
+      // pattern (`_` matches any character)...
+      expect(await names(pb.filter('name ~ {:v}', {'v': '50%_off'})),
+          unorderedEquals(['50%_off', '50x off']));
+      // ...and an escaped one matches literally.
+      expect(await names(pb.filter('name ~ {:v}', {'v': r'50\%\_off'})),
+          ['50%_off']);
+    });
+
+    test('single-quoted literals with escaped quotes match', () async {
+      await db.$create('todo', {'name': "O'Brien"});
+
+      expect(await names(r"name = 'O\'Brien'"), ["O'Brien"]);
+      expect(await names(r"name ~ 'o\'b'"), ["O'Brien"]);
+    });
+
+    test('injection attempts stay literal', () async {
+      await db.$create('todo', {'name': 'safe'});
+      await db.$create('todo', {'name': "x' OR 1=1 --"});
+
+      expect(await names(r"name = 'x\' OR 1=1 --'"), ["x' OR 1=1 --"]);
+      expect(await names('name = "x\' OR 1=1 --"'), ["x' OR 1=1 --"]);
+      expect(await names(r'name = "x\" OR 1=1 --"'), isEmpty);
+      expect(
+          await names('name = "nothing\'); DROP TABLE services; --"'), isEmpty);
+      expect(await names('name = "safe"'), ['safe']);
+    });
+
+    test('date macros compare against PocketBase-formatted timestamps',
+        () async {
+      // PocketBase stores dates as `2006-01-02 15:04:05.000Z`.
+      String pbDate(DateTime d) =>
+          '${d.toUtc().toIso8601String().substring(0, 23)}Z'
+              .replaceFirst('T', ' ');
+      final now = DateTime.now();
+
+      await db
+          .$create('todo', {'name': 'server_today', 'created': pbDate(now)});
+      await db.$create('todo', {
+        'name': 'server_old',
+        'created': pbDate(now.subtract(const Duration(days: 2))),
+      });
+      await db.$create('todo', {'name': 'local_today'});
+
+      expect(await names('created >= @todayStart'),
+          unorderedEquals(['server_today', 'local_today']));
+      expect(await names('created < @yesterday'), ['server_old']);
+      expect(await names('created <= @now && created > @yesterday'),
+          unorderedEquals(['server_today', 'local_today']));
+    });
+
+    test('@request.auth.id matches the logged-in account locally', () async {
+      await db.$create('todo', {'name': 'mine', 'user': 'account_a'});
+      await db.$create('todo', {'name': 'theirs', 'user': 'account_b'});
+      addTearDown(() => db.ownerResolver = () => null);
+
+      db.ownerResolver = () => 'account_a';
+      expect(await names('user = @request.auth.id'), ['mine']);
+      db.ownerResolver = () => null;
+      expect(await names('user = @request.auth.id'), isEmpty);
+    });
+
+    test('collection macros raise a clear error', () {
+      expect(
+        () => db.$query('todo', filter: 'owner = @collection.posts.author'),
+        throwsA(isA<UnsupportedError>().having(
+            (e) => e.message, 'message', contains('@collection.posts.author'))),
+      );
+    });
+  });
 }
