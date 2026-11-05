@@ -677,6 +677,7 @@ class $BatchService {
               for (final f in request.files)
                 if (f.$2 != null) {'field': f.$1, 'name': f.$2},
             ],
+            sentBody: request.body,
           );
         } else if (request.isCreate) {
           await client.db.upsertServerRecords(
@@ -692,7 +693,7 @@ class $BatchService {
             data,
             {
               for (final k in request.body.keys)
-                if (k != 'id') baseFieldName(k),
+                if (k != 'id') k,
               for (final f in request.files)
                 if (baseFieldName(f.$1) == f.$1) f.$1,
             },

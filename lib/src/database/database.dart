@@ -55,6 +55,20 @@ abstract final class RecordMeta {
   /// pending (visible in `pendingRecords()`) but automatic sync skips it.
   static const syncError = 'syncError';
 
+  /// Server values of the pending fields when each first became pending
+  /// (`{field: value}`; file fields without local upload names). Fields
+  /// changed by local uploads have a base too.
+  static const pendingBase = 'pendingBase';
+
+  /// Server `updated` of the row when its pending change started.
+  static const baseUpdated = 'baseUpdated';
+
+  /// Pending fields whose every local edit was a modifier (`{field: kind}`,
+  /// see `DeltaKind`). Sync sends their change from [pendingBase] as
+  /// modifiers (`n+: 2`, `tags+: [...]`, `tags-: [...]`), so concurrent
+  /// changes of other devices to the same field survive.
+  static const pendingDeltas = 'pendingDeltas';
+
   static const keys = {
     synced,
     isNew,
@@ -66,6 +80,9 @@ abstract final class RecordMeta {
     pendingOwner,
     pendingRev,
     syncError,
+    pendingBase,
+    baseUpdated,
+    pendingDeltas,
   };
 
   /// Record keys the server owns or that only exist in responses.
@@ -1250,14 +1267,33 @@ class DataBase extends _$DataBase {
   /// plain keys replace; `field+` / `+field` append / prepend (multi-value
   /// fields) or add (numbers); `field-` removes values or subtracts.
   ///
-  /// Returns the new data and the plain names of the fields that changed.
-  static ({Map<String, dynamic> data, Set<String> changed}) applyRequestBody(
+  /// Returns the new data, the plain names of the fields that changed and,
+  /// in [deltas], the fields of [collection] that [body] changed only with
+  /// number or multi-value modifiers (`{field: DeltaKind}`).
+  static ({
+    Map<String, dynamic> data,
+    Set<String> changed,
+    Map<String, String> deltas,
+  }) applyRequestBody(
     CollectionModel? collection,
     Map<String, dynamic> base,
     Map<String, dynamic> body,
   ) {
     final data = Map<String, dynamic>.of(base);
     final changed = <String>{};
+    final deltas = <String, String>{};
+    final sets = <String>{};
+    void delta(String name, String kind) {
+      final previous = deltas[name];
+      final combined =
+          previous == null ? kind : DeltaKind.combine(previous, kind);
+      if (combined == null) {
+        sets.add(name);
+      } else {
+        deltas[name] = combined;
+      }
+    }
+
     for (final entry in body.entries) {
       final key = entry.key;
       if (RecordMeta.keys.contains(key) || key == 'id') continue;
@@ -1283,6 +1319,7 @@ class DataBase extends _$DataBase {
       }
       changed.add(name);
       if (op == '=') {
+        sets.add(name);
         final value = entry.value;
         final maxSelect = field?.data['maxSelect'];
         final isSingleRef = field != null &&
@@ -1305,6 +1342,11 @@ class DataBase extends _$DataBase {
             ? entry.value as num
             : num.tryParse('${entry.value}') ?? 0;
         data[name] = op == 'subtract' ? a - b : a + b;
+        if (field != null) {
+          delta(name, DeltaKind.number);
+        } else {
+          sets.add(name);
+        }
         continue;
       }
 
@@ -1314,6 +1356,7 @@ class DataBase extends _$DataBase {
       final values =
           entry.value is List ? (entry.value as List).toList() : [entry.value];
       if (!isMulti) {
+        sets.add(name);
         if (op == 'subtract') {
           if (values.contains(current)) data[name] = '';
         } else if (values.isNotEmpty) {
@@ -1331,8 +1374,20 @@ class DataBase extends _$DataBase {
           list.removeWhere(values.contains);
       }
       data[name] = list;
+      if (field != null) {
+        delta(
+            name,
+            switch (op) {
+              'append' => DeltaKind.append,
+              'prepend' => DeltaKind.prepend,
+              _ => DeltaKind.remove,
+            });
+      } else {
+        sets.add(name);
+      }
     }
-    return (data: data, changed: changed);
+    deltas.removeWhere((name, _) => sets.contains(name));
+    return (data: data, changed: changed, deltas: deltas);
   }
 
   /// Writes a locally created record. [sync] false makes it local-only
@@ -1384,8 +1439,8 @@ class DataBase extends _$DataBase {
         final collection = await collectionByName(service);
         final base = existing ?? <String, dynamic>{'id': id};
         final applied = applyRequestBody(collection, base, body);
-        final withFiles =
-            applyRequestBody(collection, applied.data, fileBody).data;
+        final uploaded = applyRequestBody(collection, applied.data, fileBody);
+        final withFiles = uploaded.data;
 
         final wasPending = existing != null && RecordMeta.isPending(existing);
         if (wasPending) _checkOwner(service, existing, owner);
@@ -1413,7 +1468,10 @@ class DataBase extends _$DataBase {
           ..remove(RecordMeta.syncError)
           ..remove(RecordMeta.pendingFields)
           ..remove(RecordMeta.pendingFiles)
-          ..remove(RecordMeta.pendingOwner);
+          ..remove(RecordMeta.pendingOwner)
+          ..remove(RecordMeta.pendingBase)
+          ..remove(RecordMeta.baseUpdated)
+          ..remove(RecordMeta.pendingDeltas);
         data
           ..['id'] = id
           ..['updated'] = pbTimestamp()
@@ -1426,6 +1484,8 @@ class DataBase extends _$DataBase {
         if (sync) {
           if (!isNew && !legacy) {
             data[RecordMeta.pendingFields] = changed.toList();
+            _trackBase(data, existing, applied.changed, applied.deltas,
+                uploaded.changed);
           }
           if (pendingFiles.isNotEmpty) {
             data[RecordMeta.pendingFiles] = pendingFiles;
@@ -1479,7 +1539,16 @@ class DataBase extends _$DataBase {
         final data = Map<String, dynamic>.of(existing)
           ..remove(RecordMeta.retryCount)
           ..remove(RecordMeta.syncError)
-          ..remove(RecordMeta.pendingFields);
+          ..remove(RecordMeta.pendingFields)
+          ..remove(RecordMeta.pendingDeltas);
+        if (!sync) {
+          data
+            ..remove(RecordMeta.pendingBase)
+            ..remove(RecordMeta.baseUpdated);
+        } else if (!wasPending &&
+            !RecordMeta.flag(existing[RecordMeta.noSync])) {
+          data[RecordMeta.baseUpdated] = existing['updated'];
+        }
         data
           ..[RecordMeta.deleted] = true
           ..[RecordMeta.synced] = false
@@ -1491,6 +1560,77 @@ class DataBase extends _$DataBase {
         await $create(service, data, validate: false);
         return true;
       });
+
+  /// Records in the pending update [data] the base of the fields that the
+  /// local edit of [existing] changed ([edited], with modifiers only:
+  /// [deltas]) or attached files to ([uploaded]): see
+  /// [RecordMeta.pendingBase], [RecordMeta.baseUpdated] and
+  /// [RecordMeta.pendingDeltas].
+  static void _trackBase(
+    Map<String, dynamic> data,
+    Map<String, dynamic>? existing,
+    Set<String> edited,
+    Map<String, String> deltas,
+    Set<String> uploaded,
+  ) {
+    final wasPending = existing != null && RecordMeta.isPending(existing);
+    // The values of a local-only row are not the server's.
+    final fromServer =
+        existing != null && !RecordMeta.flag(existing[RecordMeta.noSync]);
+    final pending = <String>{
+      if (wasPending) ...?_stringList(existing[RecordMeta.pendingFields]),
+    };
+    final oldBase = wasPending ? existing[RecordMeta.pendingBase] : null;
+    final oldDeltas = wasPending ? existing[RecordMeta.pendingDeltas] : null;
+    final localNames = <Object?>{
+      for (final f in (existing?[RecordMeta.pendingFiles] as List? ?? const []))
+        if (f is Map) f['name'],
+    };
+
+    final base = <String, dynamic>{
+      if (oldBase is Map) ...oldBase.cast<String, dynamic>(),
+    };
+    if (fromServer) {
+      for (final field in {...edited, ...uploaded}) {
+        // A field pending without a base (written before bases were
+        // tracked) has no known server value.
+        if (base.containsKey(field) || pending.contains(field)) continue;
+        if (!existing.containsKey(field)) continue;
+        final value = existing[field];
+        base[field] = value is List
+            ? [
+                for (final v in value)
+                  if (!localNames.contains(v)) v
+              ]
+            : (localNames.contains(value) ? '' : value);
+      }
+    }
+
+    final kinds = <String, String>{};
+    for (final field in data[RecordMeta.pendingFields] as List<String>) {
+      final previous = oldDeltas is Map ? oldDeltas[field] : null;
+      if (!edited.contains(field)) {
+        if (previous is String) kinds[field] = previous;
+        continue;
+      }
+      final kind = deltas[field];
+      if (kind == null) continue;
+      if (!pending.contains(field)) {
+        kinds[field] = kind;
+      } else if (previous is String) {
+        final combined = DeltaKind.combine(previous, kind);
+        if (combined != null) kinds[field] = combined;
+      }
+    }
+    kinds.removeWhere((field, _) => !base.containsKey(field));
+
+    final baseUpdated = wasPending
+        ? existing[RecordMeta.baseUpdated]
+        : (fromServer ? existing['updated'] : null);
+    if (base.isNotEmpty) data[RecordMeta.pendingBase] = base;
+    if (baseUpdated != null) data[RecordMeta.baseUpdated] = baseUpdated;
+    if (kinds.isNotEmpty) data[RecordMeta.pendingDeltas] = kinds;
+  }
 
   /// Local writes never mix accounts: a pending change queued by another
   /// account (hidden until it logs in again) cannot be edited or deleted.
@@ -1514,13 +1654,16 @@ class DataBase extends _$DataBase {
   /// If the row changed while the request was in flight, the newer local
   /// changes stay pending: changed fields keep their local values (names of
   /// the files just uploaded become the server's names), uploads that were
-  /// not sent stay queued, and a deletion stays a tombstone.
+  /// not sent stay queued, and a deletion stays a tombstone. Fields synced as
+  /// deltas ([RecordMeta.pendingDeltas]) take the server's value plus the
+  /// part of the local change that [sentBody] did not carry yet.
   Future<void> completePendingSync(
     String service,
     String id,
     int? sentRev,
     Map<String, dynamic> server, {
     List<Map<String, dynamic>> sentFiles = const [],
+    Map<String, dynamic> sentBody = const {},
   }) {
     return transaction(() async {
       final row = await rowById(service, id);
@@ -1554,6 +1697,9 @@ class DataBase extends _$DataBase {
         // Deleted while the record was being pushed: it exists on the
         // server now, so the next push must delete it.
         next[RecordMeta.deleted] = true;
+        if (serverData['updated'] != null) {
+          next[RecordMeta.baseUpdated] = serverData['updated'];
+        }
         await $create(service, next, validate: false);
         return;
       }
@@ -1573,12 +1719,37 @@ class DataBase extends _$DataBase {
           ? _fieldsDiffering(row, serverData, local)
           : _stringList(row[RecordMeta.pendingFields]) ??
               _fieldsDiffering(row, serverData, local);
+      final collection = await collectionByName(service);
+      final base = row[RecordMeta.pendingBase];
+      final kinds = row[RecordMeta.pendingDeltas];
+      final pendingNow = <String>[];
+      final nextKinds = <String, String>{};
       for (final field in changed) {
-        if (row.containsKey(field)) {
+        final kind = kinds is Map ? kinds[field] : null;
+        if (kind is String &&
+            base is Map &&
+            base.containsKey(field) &&
+            row.containsKey(field)) {
+          // What the server holds of the local change after this request,
+          // then the rest of the change moved onto the server's value.
+          final sent = {
+            for (final e in sentBody.entries)
+              if (baseFieldName(e.key) == field) e.key: e.value,
+          };
+          final expected =
+              applyRequestBody(collection, {field: base[field]}, sent)
+                  .data[field];
+          final value =
+              rebaseDelta(kind, expected, local(field), serverData[field]);
+          next[field] = value;
+          if (jsonEncode(value) == jsonEncode(serverData[field])) continue;
+          nextKinds[field] = kind;
+        } else if (row.containsKey(field)) {
           next[field] = local(field);
         } else {
           next.remove(field);
         }
+        pendingNow.add(field);
       }
 
       final sentNames = {for (final f in sentFiles) f['name']};
@@ -1586,15 +1757,29 @@ class DataBase extends _$DataBase {
         for (final f in (row[RecordMeta.pendingFiles] as List? ?? const []))
           if (f is Map && !sentNames.contains(f['name'])) f,
       ];
-      if (changed.isEmpty && unsent.isEmpty) {
+      if (pendingNow.isEmpty && unsent.isEmpty) {
         // The edits made meanwhile equal what the server now has.
         serverData[RecordMeta.synced] = true;
         await $create(service, {...serverData, 'id': id}, validate: false);
         return;
       }
+      // The server holds these values now.
+      final nextBase = <String, dynamic>{
+        for (final field in [
+          ...pendingNow,
+          for (final f in unsent)
+            if (f['field'] is String) baseFieldName(f['field'] as String),
+        ])
+          if (serverData.containsKey(field)) field: serverData[field],
+      };
       next
         ..[RecordMeta.deleted] = false
-        ..[RecordMeta.pendingFields] = changed;
+        ..[RecordMeta.pendingFields] = pendingNow;
+      if (nextBase.isNotEmpty) next[RecordMeta.pendingBase] = nextBase;
+      if (serverData['updated'] != null) {
+        next[RecordMeta.baseUpdated] = serverData['updated'];
+      }
+      if (nextKinds.isNotEmpty) next[RecordMeta.pendingDeltas] = nextKinds;
       if (unsent.isNotEmpty) {
         next[RecordMeta.pendingFiles] = unsent;
         _addPendingFileNames(next, unsent);
@@ -1604,10 +1789,13 @@ class DataBase extends _$DataBase {
   }
 
   /// Records that the server accepted a write of [id] that set [fields]
-  /// (from an online request, not the sync queue) and caches [server].
+  /// (request body keys, modifiers allowed; from an online request, not the
+  /// sync queue) and caches [server].
   ///
   /// A pending local change of the record no longer needs to send those
   /// fields: the request was newer. The rest of the change stays pending.
+  /// A queued delta ([RecordMeta.pendingDeltas]) of a field the request
+  /// changed only with modifiers stays pending too: both changes apply.
   Future<void> acceptServerWrite(
     String service,
     String id,
@@ -1623,7 +1811,13 @@ class DataBase extends _$DataBase {
         await upsertServerRecords(service, [server], partial: partial);
         return;
       }
-      final sent = fields.toSet();
+      final sent = {for (final f in fields) baseFieldName(f)};
+      final plain = {
+        for (final f in fields)
+          if (baseFieldName(f) == f) f,
+      };
+      final rowBase = row[RecordMeta.pendingBase];
+      final kinds = row[RecordMeta.pendingDeltas];
       final serverData = RecordMeta.strip(server)..remove('expand');
       final base = partial ? {...row, ...serverData} : serverData;
       // Creates and rows written before field tracking (0.6.x): every field
@@ -1632,7 +1826,15 @@ class DataBase extends _$DataBase {
           ? _fieldsDiffering(row, base, (f) => row[f])
           : _stringList(row[RecordMeta.pendingFields]) ??
               _fieldsDiffering(row, base, (f) => row[f]);
-      final remaining = pendingNow.where((f) => !sent.contains(f)).toList();
+      bool keepsDelta(String field) =>
+          !plain.contains(field) &&
+          kinds is Map &&
+          kinds[field] is String &&
+          rowBase is Map &&
+          rowBase.containsKey(field) &&
+          row.containsKey(field);
+      final remaining =
+          pendingNow.where((f) => !sent.contains(f) || keepsDelta(f)).toList();
       final files = row[RecordMeta.pendingFiles] as List? ?? const [];
       if (remaining.isEmpty && files.isEmpty) {
         final next = Map<String, dynamic>.of(base)
@@ -1644,8 +1846,25 @@ class DataBase extends _$DataBase {
       }
       final next = Map<String, dynamic>.of(base)
         ..removeWhere((k, _) => RecordMeta.keys.contains(k));
+      final nextBase = <String, dynamic>{
+        if (rowBase is Map)
+          for (final e in rowBase.cast<String, dynamic>().entries)
+            if (remaining.contains(e.key) ||
+                files.any(
+                    (f) => f is Map && baseFieldName('${f['field']}') == e.key))
+              e.key: e.value,
+      };
       for (final field in remaining) {
-        if (row.containsKey(field)) next[field] = row[field];
+        if (!row.containsKey(field)) continue;
+        if (sent.contains(field)) {
+          // The request's modifier is on the server; the queued delta is
+          // still to be sent on top of it.
+          next[field] = rebaseDelta(
+              kinds[field] as String, rowBase[field], row[field], base[field]);
+          nextBase[field] = base[field];
+        } else {
+          next[field] = row[field];
+        }
       }
       _addPendingFileNames(next, files);
       final owner = row[RecordMeta.pendingOwner];
@@ -1660,6 +1879,17 @@ class DataBase extends _$DataBase {
             ((row[RecordMeta.pendingRev] as num?)?.toInt() ?? 0) + 1;
       if (files.isNotEmpty) next[RecordMeta.pendingFiles] = files;
       if (owner != null) next[RecordMeta.pendingOwner] = owner;
+      if (nextBase.isNotEmpty) next[RecordMeta.pendingBase] = nextBase;
+      if (row[RecordMeta.baseUpdated] != null) {
+        next[RecordMeta.baseUpdated] = row[RecordMeta.baseUpdated];
+      }
+      if (kinds is Map) {
+        final nextKinds = {
+          for (final field in remaining)
+            if (kinds[field] is String) field: kinds[field] as String,
+        };
+        if (nextKinds.isNotEmpty) next[RecordMeta.pendingDeltas] = nextKinds;
+      }
       await $create(service, next, validate: false);
     });
   }

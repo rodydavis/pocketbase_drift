@@ -245,5 +245,64 @@ void syncCorrectnessTests() {
       await eventually(() async => (await pendingIds(c, 'tasks')).isEmpty,
           reason: 'nothing left pending');
     });
+
+    test(
+        'queued modifier edits sync as deltas: another device\'s increment and upload survive',
+        () async {
+      final c = await clients.create();
+      final post = await c.collection('posts').create(
+        body: {'title': uniq('delta'), 'likes': 1},
+        files: [
+          http.MultipartFile.fromBytes('images', tinyPng, filename: 'one.png'),
+          http.MultipartFile.fromBytes('images', tinyPng, filename: 'two.png'),
+        ],
+      );
+      final before = ((await Lab.record('posts', post.id))!['images'] as List)
+          .cast<String>();
+      expect(before, hasLength(2));
+
+      c.connectivity.setConnectivityStatus(false);
+      await c.collection('posts').update(
+        post.id,
+        body: {
+          'likes+': 2,
+          'images-': [before.first],
+        },
+        files: [
+          http.MultipartFile.fromBytes('images+', tinyPng, filename: 'mine.png')
+        ],
+      );
+      await c.collection('posts').update(post.id, body: {'likes-': 1});
+
+      // Another device, while this one is offline.
+      await (await admin()).collection('posts').update(
+        post.id,
+        body: {'likes+': 5},
+        files: [
+          http.MultipartFile.fromBytes('images+', tinyPng,
+              filename: 'theirs.png')
+        ],
+      );
+
+      c.connectivity.setConnectivityStatus(true);
+      await c.syncPendingChanges();
+
+      final server = (await Lab.record('posts', post.id))!;
+      expect(server['likes'], 7, reason: '1 + 5 (other device) + 2 - 1');
+      final images = (server['images'] as List).cast<String>();
+      expect(images, hasLength(3));
+      expect(images, isNot(contains(before.first)));
+      expect(images, contains(before.last));
+      expect(images.where((n) => n.startsWith('theirs')), hasLength(1));
+      expect(images.where((n) => n.startsWith('mine')), hasLength(1));
+
+      final local = await c
+          .collection('posts')
+          .getOne(post.id, requestPolicy: RequestPolicy.cacheOnly);
+      expect(local.data[RecordMeta.synced], isTrue);
+      expect(local.get<num>('likes'), 7);
+      expect(local.get<List<dynamic>>('images'), images);
+      expect(await pendingIds(c, 'posts'), isEmpty);
+    });
   });
 }

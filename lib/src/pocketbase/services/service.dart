@@ -234,7 +234,8 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
         id,
         value.toJson(),
         {
-          for (final key in body.keys) baseFieldName(key),
+          // Raw keys: a modifier does not supersede a queued delta.
+          ...body.keys,
           // A plain key (no `+`/`-` modifier) replaces the field's files.
           for (final f in files)
             if (baseFieldName(f.$1) == f.$1) f.$1,
@@ -1046,22 +1047,37 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
         ? changed.whereType<String>()
         : row.keys.where((k) =>
             !RecordMeta.keys.contains(k) && !RecordMeta.systemKeys.contains(k));
+    final base = changed is List ? row[RecordMeta.pendingBase] : null;
+    final kinds = changed is List ? row[RecordMeta.pendingDeltas] : null;
     final body = <String, dynamic>{};
     for (final key in keys) {
+      final Object? value;
       if (fileFields.contains(key)) {
         // New files travel as multipart parts; legacy rows never resend the
         // record's existing files.
         if (create || changed is! List) continue;
-        final value = row[key];
-        body[key] = value is List
-            ? value
+        final local = row[key];
+        value = local is List
+            ? local
                 .whereType<String>()
                 .where((n) => !localFiles.contains(n))
                 .toList()
-            : (value is String && localFiles.contains(value) ? '' : value);
-        continue;
+            : (local is String && localFiles.contains(local) ? '' : local);
+      } else {
+        value = row[key];
       }
-      body[key] = row[key];
+      // Modifier-only edits send their change, so concurrent changes of the
+      // field on the server survive.
+      final kind = kinds is Map ? kinds[key] : null;
+      final delta = kind is String && base is Map && base.containsKey(key)
+          ? deltaBody(key, kind, base[key], value,
+              files: fileFields.contains(key))
+          : null;
+      if (delta != null) {
+        body.addAll(delta);
+      } else {
+        body[key] = value;
+      }
     }
     return body;
   }
@@ -1171,10 +1187,11 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
         case SyncOperation.update:
           final fileFields = await _fileFieldNames();
           final parts = await _pendingParts(id, row, fileFields);
+          final body = _syncBody(row, fileFields, create: false);
           final result = await _timedPush(
             super.update(
               id,
-              body: _syncBody(row, fileFields, create: false),
+              body: body,
               files: parts,
               query: query,
               headers: headers,
@@ -1182,7 +1199,7 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
             uploads: parts.isNotEmpty,
           );
           await client.db.completePendingSync(service, id, rev, result.toJson(),
-              sentFiles: _sentFiles(parts));
+              sentFiles: _sentFiles(parts), sentBody: body);
       }
       client.connectivity.reportNetworkSuccess();
       client.logger.fine('Synced ${operation.name} of $service/$id');

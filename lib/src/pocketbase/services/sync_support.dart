@@ -163,3 +163,104 @@ Future<T> runOnline<T>(
 /// Whether [error] is the [RecordBusy] answer of [runOnline].
 bool isRecordBusyError(Object error) =>
     error is ClientException && error.originalError is RecordBusy;
+
+// -- Field deltas ----------------------------------------------------------
+
+/// How a pending field changed when all its local edits were modifiers
+/// (`RecordMeta.pendingDeltas`): number `+`/`-`, or multi-value appends
+/// (`field+`), prepends (`+field`) or removals only (`field-`).
+abstract final class DeltaKind {
+  static const number = 'number';
+  static const append = 'append';
+  static const prepend = 'prepend';
+  static const remove = 'remove';
+
+  /// The kind after edits of kinds [a] and [b]; null when they do not mix
+  /// (number and list).
+  static String? combine(String a, String b) {
+    if (a == b) return a;
+    if (a == number || b == number) return null;
+    if (a == remove) return b;
+    if (b == remove) return a;
+    // Appends and prepends mixed: the new values are appended.
+    return append;
+  }
+}
+
+List<Object?> _values(Object? value) =>
+    value is List ? value : (value == null || value == '' ? const [] : [value]);
+
+/// Request body entries that change [field] from [base] to [local] with
+/// modifiers of [kind]: `field+`/`field-` for numbers, `field+` (or
+/// `+field`) for added and `field-` for removed values of multi-value
+/// fields. For file fields ([files]) only removals are sent; uploads travel
+/// as multipart parts. Returns null when the values do not fit [kind]
+/// (send the absolute value instead).
+Map<String, dynamic>? deltaBody(
+  String field,
+  String kind,
+  Object? base,
+  Object? local, {
+  bool files = false,
+}) {
+  if (kind == DeltaKind.number) {
+    if (local is! num || (base != null && base is! num)) return null;
+    final delta = local - ((base as num?) ?? 0);
+    if (delta == 0) return const {};
+    return delta > 0 ? {'$field+': delta} : {'$field-': -delta};
+  }
+  if (local is! List) return null;
+  final before = _values(base);
+  final added = [
+    for (final v in local)
+      if (!before.contains(v)) v
+  ];
+  final removed = [
+    for (final v in before)
+      if (!local.contains(v)) v
+  ];
+  return {
+    if (added.isNotEmpty && !files)
+      kind == DeltaKind.prepend ? '+$field' : '$field+': added,
+    if (removed.isNotEmpty) '$field-': removed,
+  };
+}
+
+/// Applies the local change of a [kind] field — from [expected] to [local] —
+/// to the [server] value, so the cache shows other devices' changes plus
+/// the local change that is still to be sent.
+Object? rebaseDelta(
+  String kind,
+  Object? expected,
+  Object? local,
+  Object? server,
+) {
+  if (kind == DeltaKind.number) {
+    if (local is! num ||
+        (expected != null && expected is! num) ||
+        (server != null && server is! num)) {
+      return local;
+    }
+    return ((server as num?) ?? 0) + (local - ((expected as num?) ?? 0));
+  }
+  if (local is! List) return local;
+  final before = _values(expected);
+  final removed = {
+    for (final v in before)
+      if (!local.contains(v)) v
+  };
+  final result = [
+    for (final v in _values(server))
+      if (!removed.contains(v)) v
+  ];
+  final added = [
+    for (final v in local)
+      if (!before.contains(v) && !result.contains(v)) v
+  ];
+  if (kind == DeltaKind.prepend) {
+    result.insertAll(0, added);
+  } else {
+    result.addAll(added);
+  }
+  return result;
+}
