@@ -699,6 +699,7 @@ class $BatchService {
             // Parts of an earlier queued change the batch did not carry
             // still have to sync.
             sentBodyOnly: true,
+            partial: request.fields?.isNotEmpty ?? false,
           );
         } else if (request.isCreate) {
           await client.db.upsertServerRecords(
@@ -708,12 +709,22 @@ class $BatchService {
           );
         } else {
           // Queued local changes of the fields this request set are older,
-          // unless they were made while the batch was in flight.
+          // unless they were made while the batch was in flight: the row
+          // changed and the field's value changed or it was not queued yet
+          // (an edit back to the old value counts too).
           final prior = before[key];
+          int? revOf(Map<String, dynamic>? r) =>
+              (r?[RecordMeta.pendingRev] as num?)?.toInt();
+          final revChanged =
+              prior != null && row != null && revOf(row) != revOf(prior);
+          final queuedBefore = <Object?>{
+            if (prior != null && RecordMeta.isPending(prior))
+              ...(prior[RecordMeta.pendingFields] as List? ?? const []),
+          };
           bool editedMeanwhile(String field) =>
-              prior != null &&
-              row != null &&
-              jsonEncode(row[field]) != jsonEncode(prior[field]);
+              revChanged &&
+              (jsonEncode(row[field]) != jsonEncode(prior[field]) ||
+                  !queuedBefore.contains(field));
           await client.db.acceptServerWrite(
             request.collection,
             id,

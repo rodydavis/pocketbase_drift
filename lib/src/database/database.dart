@@ -1660,8 +1660,13 @@ class DataBase extends _$DataBase {
   ///
   /// With [sentBodyOnly] the request carried only [sentBody] (a batch
   /// operation written over an earlier queued change): the pending parts it
-  /// did not carry stay pending even when the row did not change meanwhile;
-  /// a field it set is done when the server now holds the local value.
+  /// did not carry stay pending even when the row did not change meanwhile.
+  /// A plain field of [sentBody] is done when the row did not change, when
+  /// its local value is still the one sent (the server may store it in
+  /// another form or not return it, e.g. dates, passwords) or when the
+  /// server now holds the local value. [partial] means [server] carries a
+  /// `fields` projection: it is merged into the row, and fields it lacks
+  /// keep their local values.
   Future<void> completePendingSync(
     String service,
     String id,
@@ -1670,17 +1675,22 @@ class DataBase extends _$DataBase {
     List<Map<String, dynamic>> sentFiles = const [],
     Map<String, dynamic> sentBody = const {},
     bool sentBodyOnly = false,
+    bool partial = false,
   }) {
     return transaction(() async {
       final row = await rowById(service, id);
       if (row == null) return;
 
       final renamed = await _renameUploadedBlobs(id, row, server, sentFiles);
-      final serverData = RecordMeta.strip(server)..remove('expand');
+      final response = RecordMeta.strip(server)..remove('expand');
+      final serverData =
+          partial ? {...RecordMeta.strip(row), ...response} : response;
 
       final rev = (row[RecordMeta.pendingRev] as num?)?.toInt();
       final localOnly = RecordMeta.flag(row[RecordMeta.noSync]);
-      if ((rev == sentRev && !sentBodyOnly) ||
+      final unchanged = rev == sentRev;
+      if ((unchanged &&
+              (!sentBodyOnly || RecordMeta.flag(row[RecordMeta.isNew]))) ||
           (!RecordMeta.isPending(row) && !localOnly)) {
         serverData[RecordMeta.synced] = true;
         await $create(service, {...serverData, 'id': id}, validate: false);
@@ -1731,6 +1741,7 @@ class DataBase extends _$DataBase {
       final kinds = row[RecordMeta.pendingDeltas];
       final pendingNow = <String>[];
       final nextKinds = <String, String>{};
+      final nextBase = <String, dynamic>{};
       for (final field in changed) {
         final kind = kinds is Map ? kinds[field] : null;
         if (kind is String &&
@@ -1746,6 +1757,16 @@ class DataBase extends _$DataBase {
           final expected =
               applyRequestBody(collection, {field: base[field]}, sent)
                   .data[field];
+          if (!response.containsKey(field)) {
+            // Not in the response (`fields` projection): the server value
+            // is unknown, so the base becomes what it holds of the change.
+            next[field] = local(field);
+            if (jsonEncode(local(field)) == jsonEncode(expected)) continue;
+            nextBase[field] = expected;
+            nextKinds[field] = kind;
+            pendingNow.add(field);
+            continue;
+          }
           final value =
               rebaseDelta(kind, expected, local(field), serverData[field]);
           next[field] = value;
@@ -1753,11 +1774,17 @@ class DataBase extends _$DataBase {
           nextKinds[field] = kind;
         } else if (row.containsKey(field)) {
           final value = local(field);
+          if (sentBody.containsKey(field) &&
+              (unchanged ||
+                  jsonEncode(value) == jsonEncode(sentBody[field]) ||
+                  jsonEncode(value) == jsonEncode(serverData[field]))) {
+            continue; // done: the cache takes the server's form
+          }
           next[field] = value;
-          if (sentBodyOnly &&
-              sentBody.containsKey(field) &&
-              jsonEncode(value) == jsonEncode(serverData[field])) {
-            continue;
+          if (!response.containsKey(field) &&
+              base is Map &&
+              base.containsKey(field)) {
+            nextBase[field] = base[field];
           }
         } else {
           next.remove(field);
@@ -1777,14 +1804,13 @@ class DataBase extends _$DataBase {
         return;
       }
       // The server holds these values now.
-      final nextBase = <String, dynamic>{
-        for (final field in [
-          ...pendingNow,
-          for (final f in unsent)
-            if (f['field'] is String) baseFieldName(f['field'] as String),
-        ])
-          if (serverData.containsKey(field)) field: serverData[field],
-      };
+      for (final field in [
+        ...pendingNow,
+        for (final f in unsent)
+          if (f['field'] is String) baseFieldName(f['field'] as String),
+      ]) {
+        if (response.containsKey(field)) nextBase[field] = response[field];
+      }
       next
         ..[RecordMeta.deleted] = false
         ..[RecordMeta.pendingFields] = pendingNow;

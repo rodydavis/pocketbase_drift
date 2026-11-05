@@ -968,8 +968,8 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
         return;
 
       case RequestPolicy.cacheFirst:
-        final queued = await writeLocalDelete(id, sync: true);
-        if (queued && connectivity.canReachServer) unawaited(pushPending(id));
+        await writeLocalDelete(id, sync: true);
+        if (connectivity.canReachServer) unawaited(pushPending(id));
         return;
     }
   }
@@ -1142,6 +1142,8 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
     if (owner != null && owner != _owner) return PushOutcome.skipped;
 
     final rev = (row[RecordMeta.pendingRev] as num?)?.toInt();
+    // A `fields` projection returns only part of the record.
+    final partial = '${query['fields'] ?? ''}'.isNotEmpty;
     final operation = RecordMeta.flag(row[RecordMeta.deleted])
         ? SyncOperation.delete
         : RecordMeta.flag(row[RecordMeta.isNew])
@@ -1183,7 +1185,7 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
             );
           }
           await client.db.completePendingSync(service, id, rev, result.toJson(),
-              sentFiles: _sentFiles(parts));
+              sentFiles: _sentFiles(parts), sentBody: body, partial: partial);
         case SyncOperation.update:
           final fileFields = await _fileFieldNames();
           final parts = await _pendingParts(id, row, fileFields);
@@ -1199,7 +1201,7 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
             uploads: parts.isNotEmpty,
           );
           await client.db.completePendingSync(service, id, rev, result.toJson(),
-              sentFiles: _sentFiles(parts), sentBody: body);
+              sentFiles: _sentFiles(parts), sentBody: body, partial: partial);
       }
       client.connectivity.reportNetworkSuccess();
       client.logger.fine('Synced ${operation.name} of $service/$id');
