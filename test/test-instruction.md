@@ -14,6 +14,8 @@ superuser `test@admin.com` / `Password123` on first start.
    start from a clean server.
 2. From the repository root, run the tests: `flutter test`
    (or a single file, e.g. `flutter test test/services/records_crud_test.dart`).
+   Set `PB_URL` to use another server address (see `test/test_server.dart`),
+   for example `PB_URL=http://127.0.0.1:8091 flutter test`.
 
 `dart_test.yaml` sets `concurrency: 1`, so `flutter test` runs the test files
 one at a time. All files share one server and its collections, and the

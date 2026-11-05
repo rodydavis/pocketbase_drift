@@ -5,6 +5,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pocketbase_drift/pocketbase_drift.dart';
 
+import 'test_server.dart';
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   io.HttpOverrides.global = null;
@@ -19,7 +21,7 @@ void main() {
             (MethodCall methodCall) async => ['wifi']);
 
     client = $PocketBase.database(
-      'http://127.0.0.1:8090',
+      testServerUrl,
       connection: DatabaseConnection(NativeDatabase.memory()),
     );
 
@@ -225,9 +227,8 @@ void main() {
 
       // Assert: The pending-delete post should still exist (will be handled
       // by retry), but only visible when explicitly including tombstones.
-      final tombstones = await client.db
-          .$query('posts', includeDeleted: true)
-          .get();
+      final tombstones =
+          await client.db.$query('posts', includeDeleted: true).get();
       expect(tombstones.length, 1);
       expect(tombstones.first['id'], 'pending_delete_post');
 

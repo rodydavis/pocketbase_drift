@@ -10,6 +10,7 @@ import 'package:pocketbase_drift/pocketbase_drift.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../test_data/collections.json.dart';
+import '../test_server.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -17,7 +18,7 @@ void main() {
 
   const username = 'test@admin.com';
   const password = 'Password123';
-  const url = 'http://127.0.0.1:8090';
+  final url = testServerUrl;
 
   late final $PocketBase client;
   late final db = client.db;

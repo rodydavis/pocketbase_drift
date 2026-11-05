@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 
 import '../test_data/collections.json.dart';
+import '../test_server.dart';
 
 http.MultipartFile _createDummyFile(
     String fieldName, String filename, String content) {
@@ -26,7 +27,7 @@ void main() {
 
   const username = 'test@admin.com';
   const password = 'Password123';
-  const url = 'http://127.0.0.1:8090';
+  final url = testServerUrl;
 
   late $PocketBase client;
   late $RecordService ultimateService;

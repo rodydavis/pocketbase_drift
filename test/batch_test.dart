@@ -5,6 +5,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pocketbase_drift/pocketbase_drift.dart';
 
+import 'test_server.dart';
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   io.HttpOverrides.global = null;
@@ -19,7 +21,7 @@ void main() {
             (MethodCall methodCall) async => ['wifi']);
 
     client = $PocketBase.database(
-      'http://127.0.0.1:8090',
+      testServerUrl,
       connection: DatabaseConnection(NativeDatabase.memory()),
     );
 
@@ -365,9 +367,8 @@ void main() {
 
       // Verify final state
       final posts = await client.db.$query('posts').get();
-      final comments = await client.db
-          .$query('comments', includeDeleted: true)
-          .get();
+      final comments =
+          await client.db.$query('comments', includeDeleted: true).get();
       final tags = await client.db.$query('tags').get();
 
       expect(posts.length, 2); // Original + new

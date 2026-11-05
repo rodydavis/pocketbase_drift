@@ -8,6 +8,7 @@ import 'package:logging/logging.dart';
 import 'package:pocketbase_drift/pocketbase_drift.dart';
 
 import '../test_data/collections.json.dart';
+import '../test_server.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -15,7 +16,7 @@ void main() {
   group('Offline Sync Tests', () {
     late $PocketBase client;
     late PocketBase serverClient;
-    const url = 'http://127.0.0.1:8090';
+    final url = testServerUrl;
     final collections = [...offlineCollections]
         .map((e) => CollectionModel.fromJson(jsonDecode(jsonEncode(e))))
         .toList();
