@@ -97,6 +97,7 @@ This release fixes the defects of the 2026-11-04 review (Redroid device lab and 
 - **`tool/device_lab/`.** Android profile-mode harness. It measures UI-isolate blocking, the image cache and the probes. It is not part of the package API.
 - **`example/android` regenerated.** Gradle 9, AGP 9, Kotlin DSL. The INTERNET permission is in the main manifest. Cleartext HTTP is allowed only in debug and profile builds.
 - **Drift 2.35.** `drift: ^2.35.3` and `drift_dev: ^2.35.2`. The generated code uses `$_getPrefetchedDataByColumns`, new in drift 2.35.3.
+- **PocketBase Dart SDK 0.25.3.** `pocketbase: ^0.25.3`. SDK 0.25.2 closes the realtime connection after 315 seconds without messages and reconnects (a workaround for network connections that end without notice). The package refreshes its live queries after each reconnect.
 - **`PB_URL`.** All server-backed tests read the server address from `PB_URL` (`test/test_server.dart`, default `http://127.0.0.1:8090`).
 - **New tests.** `test/services/offline_delete_test.dart`, `test/services/watch_scope_test.dart`, `test/services/delta_sync_test.dart`, `test/files/blob_cache_limit_test.dart` and `test/database_migration_test.dart` (drift `SchemaVerifier`, v2 → v4 and v3 → v4; schema helpers in `test/generated_migrations/`; `drift_schemas/drift_schema_v3.json` added).
 
