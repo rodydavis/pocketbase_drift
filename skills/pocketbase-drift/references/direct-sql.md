@@ -27,12 +27,15 @@ All PocketBase records are stored in a generic `services` table:
 
 **Primary Key**: `(id, service)`
 
-**Indexes**: `idx_services_service` on `service`; `idx_blob_files_record` on `BlobFiles (recordId, filename)`; `idx_blob_files_access` on `BlobFiles (lastAccess, size, recordId)` (covering index for the file cache LRU)
+**Indexes**: `idx_services_service` on `service`; `idx_blob_files_record` on `BlobFiles (recordId, filename)`; `idx_blob_file_stats_access` on `BlobFileStats (lastAccess, size)` (file cache LRU)
 
 Additional tables:
-- `BlobFiles` - Cached file/image blobs (`id`, `recordId`, `filename`, `data`, `expiration`, `created`, `updated`, `size`, `lastAccess`). Thumbs are stored under `filename?thumb=<spec>`. `size` is the byte length of `data`; `lastAccess` is the last write or cache hit (LRU order of `maxFileCacheBytes`). Read `size` and `lastAccess` through `idx_blob_files_access` (for example `SELECT SUM(size) FROM BlobFiles`): columns after `data` are slow to read from the table rows. `client.db.fileCacheBytes()` returns the total size.
+- `BlobFiles` - Cached file/image blobs (`id`, `recordId`, `filename`, `data`, `expiration`, `created`, `updated`; unchanged from 0.6.0). Thumbs are stored under `filename?thumb=<spec>`.
+- `BlobFileStats` - Size and last use of each blob for `maxFileCacheBytes`: `fileId` (`BlobFiles.id`, primary key), `size` (bytes), `lastAccess` (last write or cache hit; `null` for blobs cached before the upgrade to 0.7.0, which are evicted first). Kept apart from `BlobFiles` so that a cache hit does not rewrite the blob row. The trigger `blob_files_delete` deletes the stats row when its blob is deleted. `client.db.fileCacheBytes()` returns `SUM(size)`.
 - `CachedResponses` - Cached API responses for custom routes (`requestKey`, `responseData`, `cachedAt`)
-- `text_entries` - FTS5 index of `services.data`
+- `text_entries` - FTS5 index (external content) of `services.data` without the sync bookkeeping keys `retryCount`, `pendingFields`, `pendingFiles`, `pendingOwner`, `pendingRev`, `syncError`, `pendingBase`, `baseUpdated`, `pendingDeltas` (`synced`, `isNew`, `deleted`, `noSync` stay)
+
+Write blobs only through `client.db.setFile(recordId, filename, bytes)`: it also writes the `BlobFileStats` row. A blob inserted into `BlobFiles` with raw SQL has no stats row. The file cache limit does not count it and never evicts it.
 
 ## Bookkeeping Keys (RecordMeta)
 
@@ -265,6 +268,8 @@ final results = await client.db.customSelect('''
 ```
 
 This raw query also returns tombstones and unsynced rows of other accounts. `client.db.search(query, service: 'posts')` excludes them.
+
+The triggers on `services` index the record JSON without the sync bookkeeping keys. **Do not run the FTS5 `rebuild` command** (`INSERT INTO text_entries(text_entries) VALUES ('rebuild')`): with external content it reads `services.data` as it is and indexes the bookkeeping keys too (for example the old values in `pendingBase`). The v4 migration re-indexes all records.
 
 ## Transactions
 

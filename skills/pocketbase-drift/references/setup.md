@@ -225,7 +225,7 @@ client.logging = true; // Enables detailed logging
 | `requestPolicy` | `cacheAndNetwork` | Default policy for all service methods |
 | `localSyncRetryCount` | `5` | Rejections before a pending change is parked |
 | `requestTimeout` | `15 s` | Limit for single-record reads and writes without file uploads. `null` disables it. |
-| `maxFileCacheBytes` | `$PocketBase.defaultMaxFileCacheBytes` (128 MB; 32 MB on the web) | Size limit of the file blob cache. Least recently used blobs are deleted first; blobs of pending and local-only records are never deleted. `null` disables it. See `files.md`. |
+| `maxFileCacheBytes` | `$PocketBase.defaultMaxFileCacheBytes` (128 MB; 32 MB on the web) | Size limit of the file blob cache. Eviction deletes blobs larger than 90% of the limit first, then the least recently used ones; blobs of pending and local-only records are never deleted. Files larger than 90% of the limit are not cached (unsynced uploads are). `null` disables it. See `files.md`. |
 | `connection` | Native: background isolate | Custom Drift `DatabaseConnection` |
 | `connectivityProbeTimeout` | `5 s` | Timeout of a server health probe |
 | `connectivityOnlineProbeInterval` | `60 s` | Probe interval while online |

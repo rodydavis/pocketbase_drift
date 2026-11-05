@@ -420,7 +420,7 @@ Batch rules:
 - `cacheAndNetwork`: a rejected batch throws, and nothing is stored. Only an unreachable server queues the operations. Each queued operation syncs individually. A queued delete of a record that is not cached returns status 204.
 - `networkOnly` and `networkFirst`: when the device is offline, `send` throws `ClientException` with status 0. `networkOnly` updates the cache only for records with a queued local change.
 - `cacheFirst`: the operations are written to the cache as pending and sent in the background.
-- A batch update of a record with an unsynced local change does not mark the whole change as synced. Fields, increments and uploads that the batch did not send still sync. A value that the batch set is not overwritten later by the older queued value. Edits made while the batch is in flight stay pending.
+- A batch update of a record with an unsynced local change does not mark the whole change as synced. Fields, increments and uploads that the batch did not send still sync. A value that the batch set is not overwritten later by the older queued value. An edit made while an online batch is in flight stays pending, also when it restores the old value. A field that the batch sent is done also when the server stores it in another form (dates) or does not return it (`password`). With `fields:`, the cached record keeps its other fields.
 
 ## Sync Status and Failures
 

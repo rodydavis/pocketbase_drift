@@ -167,6 +167,11 @@ Search covers all text fields in the record's JSON data:
 Search excludes:
 - Records deleted offline whose deletion is not synced yet
 - Unsynced changes of other accounts. After logout, pending changes stay in the cache (`pendingOwner`), but only the account that wrote them sees them in search results.
+- The sync bookkeeping keys: `retryCount`, `pendingFields`, `pendingFiles`, `pendingOwner`, `pendingRev`, `syncError`, `pendingBase`, `baseUpdated`, `pendingDeltas` are not indexed (`synced`, `isNew`, `deleted` and `noSync` stay). A record with a pending local edit is found by its new value, not by its old value in `pendingBase`.
+
+An open `search(...).watch()` re-runs on every write to the `services` table, follows an account switch without a new listen, and completes when the database closes.
+
+The FTS5 table `text_entries` uses external content (`services`). Triggers keep it current and leave out the bookkeeping keys. **Do not run the FTS5 `rebuild` command** on it: it would index the raw JSON, bookkeeping keys included. The v4 migration re-indexes all records.
 
 ## Performance Tips
 

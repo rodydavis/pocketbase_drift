@@ -79,7 +79,7 @@ This library extends the official PocketBase Dart SDK to provide a seamless offl
 *   **Batch Requests**: Execute multiple create, update, delete, and upsert operations in a single transactional request with offline support.
 *   **Authentication Persistence**: User authentication state is persisted locally using `shared_preferences`, keeping users logged in across app sessions.
 *   **Cross-Platform Support**: Works across all Flutter-supported platforms, including mobile (iOS, Android), web, and desktop (macOS, Windows, Linux).
-*   **File & Image Caching**: Includes a `PocketBaseImageProvider` that caches images in the local database for offline display. The file cache has a size limit (`maxFileCacheBytes`, least recently used files go first) and never deletes the files of unsynced changes or local-only records.
+*   **File & Image Caching**: Includes a `PocketBaseImageProvider` that caches images in the local database for offline display. The file cache has a size limit (`maxFileCacheBytes`, least recently used files go first, after oversized ones) and never deletes the files of unsynced changes or local-only records.
 -   **Robust & Performant**: The database runs in a background isolate, relations are expanded with one query per relation field, record watchers re-run only for writes to their own and expanded collections, and files are downloaded once and shared between concurrent requests.
 -   **Cache TTL & Maintenance**: Configurable time-to-live for cached data with automatic cleanup of expired synced records, a file cache size limit and return of free database pages to the file system.
 
@@ -328,7 +328,8 @@ A queued update merges with the changes that other devices made to the same reco
 - **Modifier edits**: when every local edit of a field was a modifier, sync sends the change relative to the server value that the first edit was made on (`pendingBase`). A number sends its difference (`n+: 2`, or `n-` for a negative difference). A multi-value relation, select or file field sends the added values as `f+` (`+f` for prepends) and the removed values as `f-`. Increments, appends, removals and file uploads of other devices stay. The field must be in the collection schema (`setSchema`).
 - **Plain sets**: when the pending history of a field has a plain set (`n: 5`, `tags: [...]`), sync sends the absolute value: the last write wins. Single-value relation, select and file fields, JSON fields and text fields always send their absolute value. Pending rows written before 0.7.0 (no `pendingBase`) send absolute values.
 - **Online writes**: an online update of a record with a queued edit removes the fields it set from the queue. An online modifier (`n+: 1` with `networkFirst` or `cacheAndNetwork`) of a field with a queued modifier edit keeps both changes.
-- **Batches**: a batch update does not mark the queued change of the record as synced. The fields, increments and uploads that the batch did not send still sync. A value that the batch set is not overwritten later by the older queued value. Edits made while the batch is in flight stay pending.
+- **Batches**: a batch update does not mark the queued change of the record as synced. The fields, increments and uploads that the batch did not send still sync. A value that the batch set is not overwritten later by the older queued value. An edit made while an online batch is in flight stays pending, also when it restores the old value.
+- **Sent fields**: a field that a push or a batch sent is not sent again when the server stores it in another form (dates) or does not return it (the `password` of an auth record). With a `fields:` projection, the cached record keeps its other fields and queued increments are not lost.
 - **Limits**: mixed append and prepend edits are sent as an append. Float differences can have rounding errors.
 
 For counters (likes, stock, views), use the `+`/`-` modifiers. Queued modifier edits merge; plain sets are last-write-wins.
@@ -637,7 +638,7 @@ for (final result in results) {
 - `cacheFirst`: the operations are written to the cache as pending and the batch is sent in the background. If the server rejects the batch, the operations sync individually.
 - `cacheOnly`: the operations are written to the cache as local-only (`noSync`).
 
-**Queued changes**: a batch update of a record with an unsynced local change does not mark the whole change as synced. The fields, increments and uploads that the batch did not send still sync. A value that the batch set is not overwritten later by the older queued value. Edits made while the batch is in flight stay pending.
+**Queued changes**: a batch update of a record with an unsynced local change does not mark the whole change as synced. The fields, increments and uploads that the batch did not send still sync. A value that the batch set is not overwritten later by the older queued value. An edit made while an online batch is in flight stays pending, also when it restores the old value. A field that the batch sent is done also when the server stores it in another form (dates) or does not return it (`password`).
 
 ### Local Full-Text Search
 
@@ -648,6 +649,8 @@ final results = await client.collection('posts').search('flutter').get();
 // Search across all collections
 final globalResults = await client.search('flutter').get();
 ```
+
+The index holds the record JSON without the sync bookkeeping keys (`pendingBase`, `pendingFields`, ...). A record with a pending local edit is found by its new value, not by its old one.
 
 ### Local Filters
 
@@ -733,11 +736,12 @@ final client = $PocketBase.database(
 );
 ```
 
-- After each blob write (a download or the cached copy of an upload), eviction runs in the background. One run at a time. It deletes the least recently used blobs until the cache holds at most 90% of the limit.
-- A cache hit marks a blob as used, at most once per hour per blob. A file that the server renamed after a push counts as used now.
-- The blobs of pending and local-only (`noSync`) records are never deleted: they are the only copy. This includes the pending uploads of another account. When these blobs alone keep the cache above the limit, eviction pauses until the cache grows by 10% of the limit or a sync pass ends.
-- A download larger than the limit is returned but not cached. An unsynced upload larger than the limit is stored.
+- After each blob write (a download or the cached copy of an upload), eviction runs in the background. One run at a time. It deletes blobs until the cache holds at most 90% of the limit (the eviction target): first the blobs larger than the target, then the least recently used ones.
+- A cache hit marks a blob as used, at most once per hour per blob. A file that the server renamed after a push counts as used now. Blobs cached before the upgrade to 0.7.0 have no last-use time and are evicted first.
+- The blobs of pending and local-only (`noSync`) records are never deleted: they are the only copy. This includes the pending uploads of another account. The blobs of a record deleted with `cacheOnly` can be deleted. When the pinned blobs alone keep the cache above the limit, eviction pauses until the cache grows by 10% of the limit or a sync pass ends.
+- A file larger than 90% of the limit is returned but not cached: downloads, and the copies of uploads that the server accepted. Unsynced uploads are always stored. `client.fitsFileCache(bytes)` tells if a file of that size goes into the cache.
 - `client.enforceFileCacheLimit()` applies the limit now. `client.db.fileCacheBytes()` returns the cache size in bytes. `runMaintenance()` also applies the limit (see [Running Maintenance](#running-maintenance)).
+- Write blobs only through `client.db.setFile`. It also writes the size and last use of the blob (table `BlobFileStats`). A blob inserted into `BlobFiles` with raw SQL has no stats row: the limit does not count it and never evicts it.
 
 ### Custom API Route Caching
 
@@ -884,13 +888,14 @@ All PocketBase records are stored in a generic `services` table with the followi
 **Primary Key**: `(id, service)`. **Index**: `idx_services_service` on `service`.
 
 Additional tables:
-- `BlobFiles` - Cached file/image blobs: `recordId`, `filename`, `data`, `expiration`, `created`, `updated`, `size` (byte length of `data`) and `lastAccess` (last write or cache hit, for the LRU order). Index `idx_blob_files_record` on `recordId, filename`; covering index `idx_blob_files_access` on `lastAccess, size, recordId`. In raw SQL, read `size` and `lastAccess` through that index (for example `SELECT SUM(size) FROM BlobFiles`): the columns after `data` are slow to read from the table rows.
+- `BlobFiles` - Cached file/image blobs: `id`, `recordId`, `filename`, `data`, `expiration`, `created`, `updated` (unchanged from 0.6.0). Index `idx_blob_files_record` on `recordId, filename`.
+- `BlobFileStats` - Size and last use of each blob for the file cache limit: `fileId` (`BlobFiles.id`, primary key), `size` (bytes) and `lastAccess` (last write or cache hit; `null` for blobs cached before 0.7.0). Index `idx_blob_file_stats_access` on `lastAccess, size`. The trigger `blob_files_delete` deletes the stats row when its blob is deleted. Only `client.db.setFile` writes a stats row: a blob inserted with raw SQL is never evicted.
 - `CachedResponses` - Cached API responses for custom routes
-- `text_entries` - Full-text search index (FTS5)
+- `text_entries` - Full-text search index (FTS5) of the record JSON without the sync bookkeeping keys (`synced`, `isNew`, `deleted` and `noSync` stay). The triggers on `services` keep it current. Do not run the FTS5 `rebuild` command: it would index the raw JSON, bookkeeping included.
 
 The bookkeeping keys in `data` are `synced`, `isNew`, `deleted`, `noSync`, `retryCount`, `pendingFields`, `pendingFiles`, `pendingOwner`, `pendingRev`, `syncError`, `pendingBase`, `baseUpdated` and `pendingDeltas`. Use the `RecordMeta` constants instead of string literals. `RecordMeta.isPending(data)` tells if a row holds an unsynced change. `RecordMeta.strip(data)` returns a copy without the bookkeeping keys.
 
-On mobile and desktop, the database runs SQLite in a background isolate (`NativeDatabase.createInBackground`, WAL mode), so queries do not block the UI isolate. A database with `inMemory: true` runs on the calling isolate.
+On mobile and desktop, the database runs SQLite in a background isolate (`NativeDatabase.createInBackground`, WAL mode, `journal_size_limit` 8 MB), so queries do not block the UI isolate. A database with `inMemory: true` runs on the calling isolate.
 
 ### Running Raw SQL Queries
 

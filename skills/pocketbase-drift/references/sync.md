@@ -40,9 +40,9 @@ Records have these sync-related fields in their `data`. Use the `RecordMeta` con
 | `syncError` | map | Set when the change is parked: `status`, `message`, `data`, `at` |
 | `pendingBase` | map | Server value of each pending field when it first became pending (`{field: value}`) |
 | `baseUpdated` | string | Server `updated` value of the row when its pending change started |
-| `pendingDeltas` | map | Pending fields whose every local edit was a modifier, with the kind: `number`, `append`, `prepend` or `remove`. Sync sends these fields as modifiers. |
+| `pendingDeltas` | map | Pending fields whose every local edit was a modifier, with the kind: a `DeltaKind` value (`DeltaKind.number`, `.append`, `.prepend`, `.remove`; the strings `number`, `append`, `prepend`, `remove`). Sync sends these fields as modifiers. |
 
-Helpers: `RecordMeta.isPending(data)`, `RecordMeta.flag(value)` (reads `true`/`1`), `RecordMeta.strip(data)` (removes the bookkeeping keys).
+Helpers: `RecordMeta.isPending(data)`, `RecordMeta.flag(value)` (reads `true`/`1`), `RecordMeta.strip(data)` (removes the bookkeeping keys). `DeltaKind` is exported.
 
 ## Checking Sync Status
 
@@ -85,6 +85,7 @@ Rules of a sync pass:
 - **Updates are partial:** An update sends only the fields in `pendingFields`. Changes made on other devices to other fields stay on the server. A field changed only with `+`/`-` modifiers is sent as a modifier (see "Conflict Handling").
 - **Creates send the whole record.** If an earlier attempt created the record and the response was lost (id already exists), the create becomes an update.
 - **Files are sent once:** New files go as multipart parts with the create or update. Later edits do not upload them again.
+- **Sent fields are done:** a field that a push or a batch sent is not sent again when the server stores it in another form (dates) or does not return it (the `password` of an auth record). With a `fields:` projection (`pushPending(id, query: {'fields': ...})`, or a batch update with `fields`), the cached record keeps its other fields and queued increments are not lost.
 - **Stops early:** The pass stops when the server becomes unreachable. The remaining changes sync on the next pass.
 - **Never throws.** Rejections are reported on `client.syncFailures`.
 
@@ -354,7 +355,7 @@ pocketbase_drift merges a queued update with the server per field:
 - **Modifier edits merge.** When every local edit of a field was a modifier (`n+`/`n-` for numbers; `f+`, `+f`, `f-` for multi-value relation, select and file fields), sync sends the change from `pendingBase` as modifiers: numbers send their difference (`n+: 2`; a negative difference as `n-`), multi-value fields send the added values as `f+` (`+f` for prepends) and the removed values as `f-`. Increments, appends, removals and file uploads of other devices stay. The field must be in the cached collection schema.
 - **Plain sets are last-write-wins.** A field with a plain set (`n: 5`, `tags: [...]`) anywhere in its pending history sends its absolute value. Single-value relation, select and file fields, JSON fields and text fields always send their absolute value. Pending rows written before 0.7.0 (no `pendingBase`) send absolute values.
 - **Online writes:** an online update removes the fields it set from the queued edit. An online modifier (`n+: 1` with `networkFirst` or `cacheAndNetwork`) of a field with a queued modifier edit keeps both. An online plain set supersedes the queued edit of that field.
-- **Batches:** a batch update does not mark the queued change as synced. Fields, increments and uploads that the batch did not send still sync. A value that the batch set is not overwritten later by the older queued value (also with `networkOnly`). Edits made while the batch is in flight stay pending.
+- **Batches:** a batch update does not mark the queued change as synced. Fields, increments and uploads that the batch did not send still sync. A value that the batch set is not overwritten later by the older queued value (also with `networkOnly`). An edit made while an online batch is in flight stays pending, also when it restores the old value.
 - Until the change syncs, list refreshes and realtime events do not overwrite the locally changed fields.
 - A realtime delete keeps a row with pending edits. The sync then gets 404, drops the local edit and emits `SyncFailure(dropped: true)` on `client.syncFailures`.
 - Limits: mixed append and prepend edits are sent as an append. Float differences can have rounding errors.

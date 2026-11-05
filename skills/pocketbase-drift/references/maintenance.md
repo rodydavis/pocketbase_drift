@@ -84,6 +84,8 @@ final released = await client.db.compact(full: true); // pages released
 await client.db.compact(maxPages: 4096);
 ```
 
+`compact()` also truncates the WAL file. Native connections set `PRAGMA journal_size_limit` to 8 MB, so the WAL shrinks back to 8 MB at a checkpoint after a large write.
+
 ## When to Run Maintenance
 
 ### On App Startup
@@ -210,9 +212,9 @@ for (final row in counts) {
   print('${row.read<String>('service')}: ${row.read<int>('count')} records');
 }
 
-// Count file blobs and their size (reads the covering index, not the blobs)
+// Count file blobs and their size (BlobFileStats: no blob is read)
 final files = await client.db.customSelect(
-  "SELECT COUNT(*) as count, COALESCE(SUM(size), 0) as bytes FROM BlobFiles",
+  "SELECT COUNT(*) as count, COALESCE(SUM(size), 0) as bytes FROM BlobFileStats",
 ).getSingle();
 print('Cached files: ${files.read<int>('count')}, ${files.read<int>('bytes')} bytes');
 
@@ -243,7 +245,7 @@ await client.runMaintenance();
 
 ### Large Files
 
-Use the file cache size limit, not manual SQL. The package deletes the least recently used blobs and never deletes the blobs of pending or local-only records:
+Use the file cache size limit, not manual SQL. The package deletes the blobs larger than the eviction target first, then the least recently used ones, and never deletes the blobs of pending or local-only records. Raw `DELETE FROM BlobFiles` is safe for the stats (the trigger `blob_files_delete` removes their rows), but a blob inserted with raw SQL has no stats row and is never evicted: write blobs through `client.db.setFile`.
 
 ```dart
 final client = $PocketBase.database(
