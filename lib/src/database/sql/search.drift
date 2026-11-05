@@ -7,20 +7,24 @@ CREATE VIRTUAL TABLE text_entries USING fts5 (
     content_rowid=rowid
 );
 
--- Triggers to keep entries and fts5 index in sync.
+-- Triggers to keep entries and fts5 index in sync. The index leaves out
+-- the sync bookkeeping keys (RecordMeta) that hold values or names (e.g.
+-- the old values in pendingBase), so search matches only the record
+-- itself. External content: 'delete' must pass the same text that was
+-- indexed, so all three triggers use the same json_remove(...).
 CREATE TRIGGER services_insert AFTER INSERT ON services BEGIN
-  INSERT INTO text_entries(rowid, data) VALUES (new.rowid, new.data);
+  INSERT INTO text_entries(rowid, data) VALUES (new.rowid, json_remove(new.data, '$.retryCount', '$.pendingFields', '$.pendingFiles', '$.pendingOwner', '$.pendingRev', '$.syncError', '$.pendingBase', '$.baseUpdated', '$.pendingDeltas'));
 END;
 
 CREATE TRIGGER services_delete AFTER DELETE ON services BEGIN
-  INSERT INTO text_entries(text_entries, rowid, data) VALUES ('delete', old.rowid, old.data);
+  INSERT INTO text_entries(text_entries, rowid, data) VALUES ('delete', old.rowid, json_remove(old.data, '$.retryCount', '$.pendingFields', '$.pendingFiles', '$.pendingOwner', '$.pendingRev', '$.syncError', '$.pendingBase', '$.baseUpdated', '$.pendingDeltas'));
 END;
 
 -- Only re-index when the record JSON changes (not for bookkeeping columns
 -- such as cachedAt).
 CREATE TRIGGER services_update AFTER UPDATE OF data ON services BEGIN
-  INSERT INTO text_entries(text_entries, rowid, data) VALUES ('delete', old.rowid, old.data);
-  INSERT INTO text_entries(rowid, data) VALUES (new.rowid, new.data);
+  INSERT INTO text_entries(text_entries, rowid, data) VALUES ('delete', old.rowid, json_remove(old.data, '$.retryCount', '$.pendingFields', '$.pendingFiles', '$.pendingOwner', '$.pendingRev', '$.syncError', '$.pendingBase', '$.baseUpdated', '$.pendingDeltas'));
+  INSERT INTO text_entries(rowid, data) VALUES (new.rowid, json_remove(new.data, '$.retryCount', '$.pendingFields', '$.pendingFiles', '$.pendingOwner', '$.pendingRev', '$.syncError', '$.pendingBase', '$.baseUpdated', '$.pendingDeltas'));
 END;
 
 -- Full text search query. Tombstones (offline deletes pending sync) are

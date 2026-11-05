@@ -354,169 +354,6 @@ class ServicesCompanion extends UpdateCompanion<Service> {
   }
 }
 
-class TextEntries extends Table
-    with
-        TableInfo<TextEntries, TextEntry>,
-        VirtualTableInfo<TextEntries, TextEntry> {
-  @override
-  final GeneratedDatabase attachedDatabase;
-  final String? _alias;
-  TextEntries(this.attachedDatabase, [this._alias]);
-  static const VerificationMeta _dataMeta = const VerificationMeta('data');
-  late final GeneratedColumn<String> data = GeneratedColumn<String>(
-      'data', aliasedName, false,
-      type: DriftSqlType.string,
-      requiredDuringInsert: true,
-      $customConstraints: '');
-  @override
-  List<GeneratedColumn> get $columns => [data];
-  @override
-  String get aliasedName => _alias ?? actualTableName;
-  @override
-  String get actualTableName => $name;
-  static const String $name = 'text_entries';
-  @override
-  VerificationContext validateIntegrity(Insertable<TextEntry> instance,
-      {bool isInserting = false}) {
-    final context = VerificationContext();
-    final data = instance.toColumns(true);
-    if (data.containsKey('data')) {
-      context.handle(
-          _dataMeta, this.data.isAcceptableOrUnknown(data['data']!, _dataMeta));
-    } else if (isInserting) {
-      context.missing(_dataMeta);
-    }
-    return context;
-  }
-
-  @override
-  Set<GeneratedColumn> get $primaryKey => const {};
-  @override
-  TextEntry map(Map<String, dynamic> data, {String? tablePrefix}) {
-    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
-    return TextEntry(
-      data: attachedDatabase.typeMapping
-          .read(DriftSqlType.string, data['${effectivePrefix}data'])!,
-    );
-  }
-
-  @override
-  TextEntries createAlias(String alias) {
-    return TextEntries(attachedDatabase, alias);
-  }
-
-  @override
-  bool get dontWriteConstraints => true;
-  @override
-  String get moduleAndArgs =>
-      'fts5(data, content=services, content_rowid=rowid)';
-}
-
-class TextEntry extends DataClass implements Insertable<TextEntry> {
-  final String data;
-  const TextEntry({required this.data});
-  @override
-  Map<String, Expression> toColumns(bool nullToAbsent) {
-    final map = <String, Expression>{};
-    map['data'] = Variable<String>(data);
-    return map;
-  }
-
-  TextEntriesCompanion toCompanion(bool nullToAbsent) {
-    return TextEntriesCompanion(
-      data: Value(data),
-    );
-  }
-
-  factory TextEntry.fromJson(Map<String, dynamic> json,
-      {ValueSerializer? serializer}) {
-    serializer ??= driftRuntimeOptions.defaultSerializer;
-    return TextEntry(
-      data: serializer.fromJson<String>(json['data']),
-    );
-  }
-  @override
-  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
-    serializer ??= driftRuntimeOptions.defaultSerializer;
-    return <String, dynamic>{
-      'data': serializer.toJson<String>(data),
-    };
-  }
-
-  TextEntry copyWith({String? data}) => TextEntry(
-        data: data ?? this.data,
-      );
-  TextEntry copyWithCompanion(TextEntriesCompanion data) {
-    return TextEntry(
-      data: data.data.present ? data.data.value : this.data,
-    );
-  }
-
-  @override
-  String toString() {
-    return (StringBuffer('TextEntry(')
-          ..write('data: $data')
-          ..write(')'))
-        .toString();
-  }
-
-  @override
-  int get hashCode => data.hashCode;
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) || (other is TextEntry && other.data == this.data);
-}
-
-class TextEntriesCompanion extends UpdateCompanion<TextEntry> {
-  final Value<String> data;
-  final Value<int> rowid;
-  const TextEntriesCompanion({
-    this.data = const Value.absent(),
-    this.rowid = const Value.absent(),
-  });
-  TextEntriesCompanion.insert({
-    required String data,
-    this.rowid = const Value.absent(),
-  }) : data = Value(data);
-  static Insertable<TextEntry> custom({
-    Expression<String>? data,
-    Expression<int>? rowid,
-  }) {
-    return RawValuesInsertable({
-      if (data != null) 'data': data,
-      if (rowid != null) 'rowid': rowid,
-    });
-  }
-
-  TextEntriesCompanion copyWith({Value<String>? data, Value<int>? rowid}) {
-    return TextEntriesCompanion(
-      data: data ?? this.data,
-      rowid: rowid ?? this.rowid,
-    );
-  }
-
-  @override
-  Map<String, Expression> toColumns(bool nullToAbsent) {
-    final map = <String, Expression>{};
-    if (data.present) {
-      map['data'] = Variable<String>(data.value);
-    }
-    if (rowid.present) {
-      map['rowid'] = Variable<int>(rowid.value);
-    }
-    return map;
-  }
-
-  @override
-  String toString() {
-    return (StringBuffer('TextEntriesCompanion(')
-          ..write('data: $data, ')
-          ..write('rowid: $rowid')
-          ..write(')'))
-        .toString();
-  }
-}
-
 class $BlobFilesTable extends BlobFiles
     with TableInfo<$BlobFilesTable, BlobFile> {
   @override
@@ -570,31 +407,9 @@ class $BlobFilesTable extends BlobFiles
   late final GeneratedColumn<String> updated = GeneratedColumn<String>(
       'updated', aliasedName, true,
       type: DriftSqlType.string, requiredDuringInsert: false);
-  static const VerificationMeta _sizeMeta = const VerificationMeta('size');
   @override
-  late final GeneratedColumn<int> size = GeneratedColumn<int>(
-      'size', aliasedName, false,
-      type: DriftSqlType.int,
-      requiredDuringInsert: false,
-      defaultValue: const Constant(0));
-  static const VerificationMeta _lastAccessMeta =
-      const VerificationMeta('lastAccess');
-  @override
-  late final GeneratedColumn<DateTime> lastAccess = GeneratedColumn<DateTime>(
-      'lastAccess', aliasedName, true,
-      type: DriftSqlType.dateTime, requiredDuringInsert: false);
-  @override
-  List<GeneratedColumn> get $columns => [
-        id,
-        recordId,
-        filename,
-        data,
-        expiration,
-        created,
-        updated,
-        size,
-        lastAccess
-      ];
+  List<GeneratedColumn> get $columns =>
+      [id, recordId, filename, data, expiration, created, updated];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -640,16 +455,6 @@ class $BlobFilesTable extends BlobFiles
       context.handle(_updatedMeta,
           updated.isAcceptableOrUnknown(data['updated']!, _updatedMeta));
     }
-    if (data.containsKey('size')) {
-      context.handle(
-          _sizeMeta, size.isAcceptableOrUnknown(data['size']!, _sizeMeta));
-    }
-    if (data.containsKey('lastAccess')) {
-      context.handle(
-          _lastAccessMeta,
-          lastAccess.isAcceptableOrUnknown(
-              data['lastAccess']!, _lastAccessMeta));
-    }
     return context;
   }
 
@@ -673,10 +478,6 @@ class $BlobFilesTable extends BlobFiles
           .read(DriftSqlType.string, data['${effectivePrefix}created']),
       updated: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}updated']),
-      size: attachedDatabase.typeMapping
-          .read(DriftSqlType.int, data['${effectivePrefix}size'])!,
-      lastAccess: attachedDatabase.typeMapping
-          .read(DriftSqlType.dateTime, data['${effectivePrefix}lastAccess']),
     );
   }
 
@@ -694,12 +495,6 @@ class BlobFile extends DataClass implements Insertable<BlobFile> {
   final DateTime? expiration;
   final String? created;
   final String? updated;
-
-  /// Byte length of [data], so cache size queries never read the blobs.
-  final int size;
-
-  /// Last write or cache hit; LRU eviction removes the oldest first.
-  final DateTime? lastAccess;
   const BlobFile(
       {required this.id,
       required this.recordId,
@@ -707,9 +502,7 @@ class BlobFile extends DataClass implements Insertable<BlobFile> {
       required this.data,
       this.expiration,
       this.created,
-      this.updated,
-      required this.size,
-      this.lastAccess});
+      this.updated});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -725,10 +518,6 @@ class BlobFile extends DataClass implements Insertable<BlobFile> {
     }
     if (!nullToAbsent || updated != null) {
       map['updated'] = Variable<String>(updated);
-    }
-    map['size'] = Variable<int>(size);
-    if (!nullToAbsent || lastAccess != null) {
-      map['lastAccess'] = Variable<DateTime>(lastAccess);
     }
     return map;
   }
@@ -748,10 +537,6 @@ class BlobFile extends DataClass implements Insertable<BlobFile> {
       updated: updated == null && nullToAbsent
           ? const Value.absent()
           : Value(updated),
-      size: Value(size),
-      lastAccess: lastAccess == null && nullToAbsent
-          ? const Value.absent()
-          : Value(lastAccess),
     );
   }
 
@@ -766,8 +551,6 @@ class BlobFile extends DataClass implements Insertable<BlobFile> {
       expiration: serializer.fromJson<DateTime?>(json['expiration']),
       created: serializer.fromJson<String?>(json['created']),
       updated: serializer.fromJson<String?>(json['updated']),
-      size: serializer.fromJson<int>(json['size']),
-      lastAccess: serializer.fromJson<DateTime?>(json['lastAccess']),
     );
   }
   @override
@@ -781,8 +564,6 @@ class BlobFile extends DataClass implements Insertable<BlobFile> {
       'expiration': serializer.toJson<DateTime?>(expiration),
       'created': serializer.toJson<String?>(created),
       'updated': serializer.toJson<String?>(updated),
-      'size': serializer.toJson<int>(size),
-      'lastAccess': serializer.toJson<DateTime?>(lastAccess),
     };
   }
 
@@ -793,9 +574,7 @@ class BlobFile extends DataClass implements Insertable<BlobFile> {
           Uint8List? data,
           Value<DateTime?> expiration = const Value.absent(),
           Value<String?> created = const Value.absent(),
-          Value<String?> updated = const Value.absent(),
-          int? size,
-          Value<DateTime?> lastAccess = const Value.absent()}) =>
+          Value<String?> updated = const Value.absent()}) =>
       BlobFile(
         id: id ?? this.id,
         recordId: recordId ?? this.recordId,
@@ -804,8 +583,6 @@ class BlobFile extends DataClass implements Insertable<BlobFile> {
         expiration: expiration.present ? expiration.value : this.expiration,
         created: created.present ? created.value : this.created,
         updated: updated.present ? updated.value : this.updated,
-        size: size ?? this.size,
-        lastAccess: lastAccess.present ? lastAccess.value : this.lastAccess,
       );
   BlobFile copyWithCompanion(BlobFilesCompanion data) {
     return BlobFile(
@@ -817,9 +594,6 @@ class BlobFile extends DataClass implements Insertable<BlobFile> {
           data.expiration.present ? data.expiration.value : this.expiration,
       created: data.created.present ? data.created.value : this.created,
       updated: data.updated.present ? data.updated.value : this.updated,
-      size: data.size.present ? data.size.value : this.size,
-      lastAccess:
-          data.lastAccess.present ? data.lastAccess.value : this.lastAccess,
     );
   }
 
@@ -832,24 +606,14 @@ class BlobFile extends DataClass implements Insertable<BlobFile> {
           ..write('data: $data, ')
           ..write('expiration: $expiration, ')
           ..write('created: $created, ')
-          ..write('updated: $updated, ')
-          ..write('size: $size, ')
-          ..write('lastAccess: $lastAccess')
+          ..write('updated: $updated')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(
-      id,
-      recordId,
-      filename,
-      $driftBlobEquality.hash(data),
-      expiration,
-      created,
-      updated,
-      size,
-      lastAccess);
+  int get hashCode => Object.hash(id, recordId, filename,
+      $driftBlobEquality.hash(data), expiration, created, updated);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -860,9 +624,7 @@ class BlobFile extends DataClass implements Insertable<BlobFile> {
           $driftBlobEquality.equals(other.data, this.data) &&
           other.expiration == this.expiration &&
           other.created == this.created &&
-          other.updated == this.updated &&
-          other.size == this.size &&
-          other.lastAccess == this.lastAccess);
+          other.updated == this.updated);
 }
 
 class BlobFilesCompanion extends UpdateCompanion<BlobFile> {
@@ -873,8 +635,6 @@ class BlobFilesCompanion extends UpdateCompanion<BlobFile> {
   final Value<DateTime?> expiration;
   final Value<String?> created;
   final Value<String?> updated;
-  final Value<int> size;
-  final Value<DateTime?> lastAccess;
   const BlobFilesCompanion({
     this.id = const Value.absent(),
     this.recordId = const Value.absent(),
@@ -883,8 +643,6 @@ class BlobFilesCompanion extends UpdateCompanion<BlobFile> {
     this.expiration = const Value.absent(),
     this.created = const Value.absent(),
     this.updated = const Value.absent(),
-    this.size = const Value.absent(),
-    this.lastAccess = const Value.absent(),
   });
   BlobFilesCompanion.insert({
     this.id = const Value.absent(),
@@ -894,8 +652,6 @@ class BlobFilesCompanion extends UpdateCompanion<BlobFile> {
     this.expiration = const Value.absent(),
     this.created = const Value.absent(),
     this.updated = const Value.absent(),
-    this.size = const Value.absent(),
-    this.lastAccess = const Value.absent(),
   })  : recordId = Value(recordId),
         filename = Value(filename),
         data = Value(data);
@@ -907,8 +663,6 @@ class BlobFilesCompanion extends UpdateCompanion<BlobFile> {
     Expression<DateTime>? expiration,
     Expression<String>? created,
     Expression<String>? updated,
-    Expression<int>? size,
-    Expression<DateTime>? lastAccess,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -918,8 +672,6 @@ class BlobFilesCompanion extends UpdateCompanion<BlobFile> {
       if (expiration != null) 'expiration': expiration,
       if (created != null) 'created': created,
       if (updated != null) 'updated': updated,
-      if (size != null) 'size': size,
-      if (lastAccess != null) 'lastAccess': lastAccess,
     });
   }
 
@@ -930,9 +682,7 @@ class BlobFilesCompanion extends UpdateCompanion<BlobFile> {
       Value<Uint8List>? data,
       Value<DateTime?>? expiration,
       Value<String?>? created,
-      Value<String?>? updated,
-      Value<int>? size,
-      Value<DateTime?>? lastAccess}) {
+      Value<String?>? updated}) {
     return BlobFilesCompanion(
       id: id ?? this.id,
       recordId: recordId ?? this.recordId,
@@ -941,8 +691,6 @@ class BlobFilesCompanion extends UpdateCompanion<BlobFile> {
       expiration: expiration ?? this.expiration,
       created: created ?? this.created,
       updated: updated ?? this.updated,
-      size: size ?? this.size,
-      lastAccess: lastAccess ?? this.lastAccess,
     );
   }
 
@@ -970,12 +718,6 @@ class BlobFilesCompanion extends UpdateCompanion<BlobFile> {
     if (updated.present) {
       map['updated'] = Variable<String>(updated.value);
     }
-    if (size.present) {
-      map['size'] = Variable<int>(size.value);
-    }
-    if (lastAccess.present) {
-      map['lastAccess'] = Variable<DateTime>(lastAccess.value);
-    }
     return map;
   }
 
@@ -988,7 +730,231 @@ class BlobFilesCompanion extends UpdateCompanion<BlobFile> {
           ..write('data: $data, ')
           ..write('expiration: $expiration, ')
           ..write('created: $created, ')
-          ..write('updated: $updated, ')
+          ..write('updated: $updated')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $BlobFileStatsTable extends BlobFileStats
+    with TableInfo<$BlobFileStatsTable, BlobFileStat> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $BlobFileStatsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _fileIdMeta = const VerificationMeta('fileId');
+  @override
+  late final GeneratedColumn<int> fileId = GeneratedColumn<int>(
+      'fileId', aliasedName, false,
+      type: DriftSqlType.int, requiredDuringInsert: false);
+  static const VerificationMeta _sizeMeta = const VerificationMeta('size');
+  @override
+  late final GeneratedColumn<int> size = GeneratedColumn<int>(
+      'size', aliasedName, false,
+      type: DriftSqlType.int, requiredDuringInsert: true);
+  static const VerificationMeta _lastAccessMeta =
+      const VerificationMeta('lastAccess');
+  @override
+  late final GeneratedColumn<DateTime> lastAccess = GeneratedColumn<DateTime>(
+      'lastAccess', aliasedName, true,
+      type: DriftSqlType.dateTime, requiredDuringInsert: false);
+  @override
+  List<GeneratedColumn> get $columns => [fileId, size, lastAccess];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'BlobFileStats';
+  @override
+  VerificationContext validateIntegrity(Insertable<BlobFileStat> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('fileId')) {
+      context.handle(_fileIdMeta,
+          fileId.isAcceptableOrUnknown(data['fileId']!, _fileIdMeta));
+    }
+    if (data.containsKey('size')) {
+      context.handle(
+          _sizeMeta, size.isAcceptableOrUnknown(data['size']!, _sizeMeta));
+    } else if (isInserting) {
+      context.missing(_sizeMeta);
+    }
+    if (data.containsKey('lastAccess')) {
+      context.handle(
+          _lastAccessMeta,
+          lastAccess.isAcceptableOrUnknown(
+              data['lastAccess']!, _lastAccessMeta));
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {fileId};
+  @override
+  BlobFileStat map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return BlobFileStat(
+      fileId: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}fileId'])!,
+      size: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}size'])!,
+      lastAccess: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}lastAccess']),
+    );
+  }
+
+  @override
+  $BlobFileStatsTable createAlias(String alias) {
+    return $BlobFileStatsTable(attachedDatabase, alias);
+  }
+}
+
+class BlobFileStat extends DataClass implements Insertable<BlobFileStat> {
+  /// `BlobFiles.id`.
+  final int fileId;
+
+  /// Byte length of the blob.
+  final int size;
+
+  /// Last write or cache hit; `null` (blobs cached before the upgrade to
+  /// 0.7.0) counts as the oldest.
+  final DateTime? lastAccess;
+  const BlobFileStat(
+      {required this.fileId, required this.size, this.lastAccess});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['fileId'] = Variable<int>(fileId);
+    map['size'] = Variable<int>(size);
+    if (!nullToAbsent || lastAccess != null) {
+      map['lastAccess'] = Variable<DateTime>(lastAccess);
+    }
+    return map;
+  }
+
+  BlobFileStatsCompanion toCompanion(bool nullToAbsent) {
+    return BlobFileStatsCompanion(
+      fileId: Value(fileId),
+      size: Value(size),
+      lastAccess: lastAccess == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastAccess),
+    );
+  }
+
+  factory BlobFileStat.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return BlobFileStat(
+      fileId: serializer.fromJson<int>(json['fileId']),
+      size: serializer.fromJson<int>(json['size']),
+      lastAccess: serializer.fromJson<DateTime?>(json['lastAccess']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'fileId': serializer.toJson<int>(fileId),
+      'size': serializer.toJson<int>(size),
+      'lastAccess': serializer.toJson<DateTime?>(lastAccess),
+    };
+  }
+
+  BlobFileStat copyWith(
+          {int? fileId,
+          int? size,
+          Value<DateTime?> lastAccess = const Value.absent()}) =>
+      BlobFileStat(
+        fileId: fileId ?? this.fileId,
+        size: size ?? this.size,
+        lastAccess: lastAccess.present ? lastAccess.value : this.lastAccess,
+      );
+  BlobFileStat copyWithCompanion(BlobFileStatsCompanion data) {
+    return BlobFileStat(
+      fileId: data.fileId.present ? data.fileId.value : this.fileId,
+      size: data.size.present ? data.size.value : this.size,
+      lastAccess:
+          data.lastAccess.present ? data.lastAccess.value : this.lastAccess,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('BlobFileStat(')
+          ..write('fileId: $fileId, ')
+          ..write('size: $size, ')
+          ..write('lastAccess: $lastAccess')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(fileId, size, lastAccess);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is BlobFileStat &&
+          other.fileId == this.fileId &&
+          other.size == this.size &&
+          other.lastAccess == this.lastAccess);
+}
+
+class BlobFileStatsCompanion extends UpdateCompanion<BlobFileStat> {
+  final Value<int> fileId;
+  final Value<int> size;
+  final Value<DateTime?> lastAccess;
+  const BlobFileStatsCompanion({
+    this.fileId = const Value.absent(),
+    this.size = const Value.absent(),
+    this.lastAccess = const Value.absent(),
+  });
+  BlobFileStatsCompanion.insert({
+    this.fileId = const Value.absent(),
+    required int size,
+    this.lastAccess = const Value.absent(),
+  }) : size = Value(size);
+  static Insertable<BlobFileStat> custom({
+    Expression<int>? fileId,
+    Expression<int>? size,
+    Expression<DateTime>? lastAccess,
+  }) {
+    return RawValuesInsertable({
+      if (fileId != null) 'fileId': fileId,
+      if (size != null) 'size': size,
+      if (lastAccess != null) 'lastAccess': lastAccess,
+    });
+  }
+
+  BlobFileStatsCompanion copyWith(
+      {Value<int>? fileId, Value<int>? size, Value<DateTime?>? lastAccess}) {
+    return BlobFileStatsCompanion(
+      fileId: fileId ?? this.fileId,
+      size: size ?? this.size,
+      lastAccess: lastAccess ?? this.lastAccess,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (fileId.present) {
+      map['fileId'] = Variable<int>(fileId.value);
+    }
+    if (size.present) {
+      map['size'] = Variable<int>(size.value);
+    }
+    if (lastAccess.present) {
+      map['lastAccess'] = Variable<DateTime>(lastAccess.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('BlobFileStatsCompanion(')
+          ..write('fileId: $fileId, ')
           ..write('size: $size, ')
           ..write('lastAccess: $lastAccess')
           ..write(')'))
@@ -1243,29 +1209,196 @@ class CachedResponsesCompanion extends UpdateCompanion<CachedResponse> {
   }
 }
 
+class TextEntries extends Table
+    with
+        TableInfo<TextEntries, TextEntry>,
+        VirtualTableInfo<TextEntries, TextEntry> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  TextEntries(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _dataMeta = const VerificationMeta('data');
+  late final GeneratedColumn<String> data = GeneratedColumn<String>(
+      'data', aliasedName, false,
+      type: DriftSqlType.string,
+      requiredDuringInsert: true,
+      $customConstraints: '');
+  @override
+  List<GeneratedColumn> get $columns => [data];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'text_entries';
+  @override
+  VerificationContext validateIntegrity(Insertable<TextEntry> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('data')) {
+      context.handle(
+          _dataMeta, this.data.isAcceptableOrUnknown(data['data']!, _dataMeta));
+    } else if (isInserting) {
+      context.missing(_dataMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => const {};
+  @override
+  TextEntry map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return TextEntry(
+      data: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}data'])!,
+    );
+  }
+
+  @override
+  TextEntries createAlias(String alias) {
+    return TextEntries(attachedDatabase, alias);
+  }
+
+  @override
+  bool get dontWriteConstraints => true;
+  @override
+  String get moduleAndArgs =>
+      'fts5(data, content=services, content_rowid=rowid)';
+}
+
+class TextEntry extends DataClass implements Insertable<TextEntry> {
+  final String data;
+  const TextEntry({required this.data});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['data'] = Variable<String>(data);
+    return map;
+  }
+
+  TextEntriesCompanion toCompanion(bool nullToAbsent) {
+    return TextEntriesCompanion(
+      data: Value(data),
+    );
+  }
+
+  factory TextEntry.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return TextEntry(
+      data: serializer.fromJson<String>(json['data']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'data': serializer.toJson<String>(data),
+    };
+  }
+
+  TextEntry copyWith({String? data}) => TextEntry(
+        data: data ?? this.data,
+      );
+  TextEntry copyWithCompanion(TextEntriesCompanion data) {
+    return TextEntry(
+      data: data.data.present ? data.data.value : this.data,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('TextEntry(')
+          ..write('data: $data')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => data.hashCode;
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) || (other is TextEntry && other.data == this.data);
+}
+
+class TextEntriesCompanion extends UpdateCompanion<TextEntry> {
+  final Value<String> data;
+  final Value<int> rowid;
+  const TextEntriesCompanion({
+    this.data = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  TextEntriesCompanion.insert({
+    required String data,
+    this.rowid = const Value.absent(),
+  }) : data = Value(data);
+  static Insertable<TextEntry> custom({
+    Expression<String>? data,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (data != null) 'data': data,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  TextEntriesCompanion copyWith({Value<String>? data, Value<int>? rowid}) {
+    return TextEntriesCompanion(
+      data: data ?? this.data,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (data.present) {
+      map['data'] = Variable<String>(data.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('TextEntriesCompanion(')
+          ..write('data: $data, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$DataBase extends GeneratedDatabase {
   _$DataBase(QueryExecutor e) : super(e);
   $DataBaseManager get managers => $DataBaseManager(this);
   late final $ServicesTable services = $ServicesTable(this);
-  late final TextEntries textEntries = TextEntries(this);
-  late final Trigger servicesInsert = Trigger(
-      'CREATE TRIGGER services_insert AFTER INSERT ON services BEGIN INSERT INTO text_entries ("rowid", data) VALUES (new."rowid", new.data);END',
-      'services_insert');
-  late final Trigger servicesDelete = Trigger(
-      'CREATE TRIGGER services_delete AFTER DELETE ON services BEGIN INSERT INTO text_entries (text_entries, "rowid", data) VALUES (\'delete\', old."rowid", old.data);END',
-      'services_delete');
-  late final Trigger servicesUpdate = Trigger(
-      'CREATE TRIGGER services_update AFTER UPDATE OF data ON services BEGIN INSERT INTO text_entries (text_entries, "rowid", data) VALUES (\'delete\', old."rowid", old.data);INSERT INTO text_entries ("rowid", data) VALUES (new."rowid", new.data);END',
-      'services_update');
   late final $BlobFilesTable blobFiles = $BlobFilesTable(this);
+  late final $BlobFileStatsTable blobFileStats = $BlobFileStatsTable(this);
+  late final Trigger blobFilesDelete = Trigger(
+      'CREATE TRIGGER blob_files_delete AFTER DELETE ON BlobFiles BEGIN DELETE FROM BlobFileStats WHERE fileId = old.id;END',
+      'blob_files_delete');
   late final $CachedResponsesTable cachedResponses =
       $CachedResponsesTable(this);
   late final Index idxServicesService = Index('idx_services_service',
       'CREATE INDEX idx_services_service ON Services (service)');
   late final Index idxBlobFilesRecord = Index('idx_blob_files_record',
       'CREATE INDEX idx_blob_files_record ON BlobFiles (recordId, filename)');
-  late final Index idxBlobFilesAccess = Index('idx_blob_files_access',
-      'CREATE INDEX idx_blob_files_access ON BlobFiles (lastAccess, size, recordId)');
+  late final Index idxBlobFileStatsAccess = Index('idx_blob_file_stats_access',
+      'CREATE INDEX idx_blob_file_stats_access ON BlobFileStats (lastAccess, size)');
+  late final TextEntries textEntries = TextEntries(this);
+  late final Trigger servicesInsert = Trigger(
+      'CREATE TRIGGER services_insert AFTER INSERT ON services BEGIN INSERT INTO text_entries ("rowid", data) VALUES (new."rowid", json_remove(new.data, \'\$.retryCount\', \'\$.pendingFields\', \'\$.pendingFiles\', \'\$.pendingOwner\', \'\$.pendingRev\', \'\$.syncError\', \'\$.pendingBase\', \'\$.baseUpdated\', \'\$.pendingDeltas\'));END',
+      'services_insert');
+  late final Trigger servicesDelete = Trigger(
+      'CREATE TRIGGER services_delete AFTER DELETE ON services BEGIN INSERT INTO text_entries (text_entries, "rowid", data) VALUES (\'delete\', old."rowid", json_remove(old.data, \'\$.retryCount\', \'\$.pendingFields\', \'\$.pendingFiles\', \'\$.pendingOwner\', \'\$.pendingRev\', \'\$.syncError\', \'\$.pendingBase\', \'\$.baseUpdated\', \'\$.pendingDeltas\'));END',
+      'services_delete');
+  late final Trigger servicesUpdate = Trigger(
+      'CREATE TRIGGER services_update AFTER UPDATE OF data ON services BEGIN INSERT INTO text_entries (text_entries, "rowid", data) VALUES (\'delete\', old."rowid", json_remove(old.data, \'\$.retryCount\', \'\$.pendingFields\', \'\$.pendingFiles\', \'\$.pendingOwner\', \'\$.pendingRev\', \'\$.syncError\', \'\$.pendingBase\', \'\$.baseUpdated\', \'\$.pendingDeltas\'));INSERT INTO text_entries ("rowid", data) VALUES (new."rowid", json_remove(new.data, \'\$.retryCount\', \'\$.pendingFields\', \'\$.pendingFiles\', \'\$.pendingOwner\', \'\$.pendingRev\', \'\$.syncError\', \'\$.pendingBase\', \'\$.baseUpdated\', \'\$.pendingDeltas\'));END',
+      'services_update');
   Selectable<SearchResult> _search(String query, String? owner) {
     return customSelect(
         'SELECT"record"."id" AS "nested_0.id", "record"."data" AS "nested_0.data", "record"."service" AS "nested_0.service", "record"."created" AS "nested_0.created", "record"."updated" AS "nested_0.updated", "record"."cachedAt" AS "nested_0.cachedAt" FROM text_entries INNER JOIN services AS record ON record."rowid" = text_entries."rowid" WHERE text_entries MATCH ?1 AND(json_extract(record.data, \'\$.deleted\') IS NULL OR json_extract(record.data, \'\$.deleted\') = 0)AND(json_extract(record.data, \'\$.pendingOwner\') IS NULL OR json_extract(record.data, \'\$.pendingOwner\') = ?2)ORDER BY rank',
@@ -1304,19 +1437,28 @@ abstract class _$DataBase extends GeneratedDatabase {
   @override
   List<DatabaseSchemaEntity> get allSchemaEntities => [
         services,
-        textEntries,
-        servicesInsert,
-        servicesDelete,
-        servicesUpdate,
         blobFiles,
+        blobFileStats,
+        blobFilesDelete,
         cachedResponses,
         idxServicesService,
         idxBlobFilesRecord,
-        idxBlobFilesAccess
+        idxBlobFileStatsAccess,
+        textEntries,
+        servicesInsert,
+        servicesDelete,
+        servicesUpdate
       ];
   @override
   StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules(
         [
+          WritePropagation(
+            on: TableUpdateQuery.onTableName('BlobFiles',
+                limitUpdateKind: UpdateKind.delete),
+            result: [
+              TableUpdate('BlobFileStats', kind: UpdateKind.delete),
+            ],
+          ),
           WritePropagation(
             on: TableUpdateQuery.onTableName('Services',
                 limitUpdateKind: UpdateKind.insert),
@@ -1611,112 +1753,6 @@ typedef $$ServicesTableProcessedTableManager = ProcessedTableManager<
     (Service, $$ServicesTableReferences),
     Service,
     PrefetchHooks Function({bool blobFilesRefs})>;
-typedef $TextEntriesCreateCompanionBuilder = TextEntriesCompanion Function({
-  required String data,
-  Value<int> rowid,
-});
-typedef $TextEntriesUpdateCompanionBuilder = TextEntriesCompanion Function({
-  Value<String> data,
-  Value<int> rowid,
-});
-
-class $TextEntriesFilterComposer extends Composer<_$DataBase, TextEntries> {
-  $TextEntriesFilterComposer({
-    required super.$db,
-    required super.$table,
-    super.joinBuilder,
-    super.$addJoinBuilderToRootComposer,
-    super.$removeJoinBuilderFromRootComposer,
-  });
-  ColumnFilters<String> get data => $composableBuilder(
-      column: $table.data, builder: (column) => ColumnFilters(column));
-}
-
-class $TextEntriesOrderingComposer extends Composer<_$DataBase, TextEntries> {
-  $TextEntriesOrderingComposer({
-    required super.$db,
-    required super.$table,
-    super.joinBuilder,
-    super.$addJoinBuilderToRootComposer,
-    super.$removeJoinBuilderFromRootComposer,
-  });
-  ColumnOrderings<String> get data => $composableBuilder(
-      column: $table.data, builder: (column) => ColumnOrderings(column));
-}
-
-class $TextEntriesAnnotationComposer extends Composer<_$DataBase, TextEntries> {
-  $TextEntriesAnnotationComposer({
-    required super.$db,
-    required super.$table,
-    super.joinBuilder,
-    super.$addJoinBuilderToRootComposer,
-    super.$removeJoinBuilderFromRootComposer,
-  });
-  GeneratedColumn<String> get data =>
-      $composableBuilder(column: $table.data, builder: (column) => column);
-}
-
-class $TextEntriesTableManager extends RootTableManager<
-    _$DataBase,
-    TextEntries,
-    TextEntry,
-    $TextEntriesFilterComposer,
-    $TextEntriesOrderingComposer,
-    $TextEntriesAnnotationComposer,
-    $TextEntriesCreateCompanionBuilder,
-    $TextEntriesUpdateCompanionBuilder,
-    (TextEntry, BaseReferences<_$DataBase, TextEntries, TextEntry>),
-    TextEntry,
-    PrefetchHooks Function()> {
-  $TextEntriesTableManager(_$DataBase db, TextEntries table)
-      : super(TableManagerState(
-          db: db,
-          table: table,
-          createFilteringComposer: () =>
-              $TextEntriesFilterComposer($db: db, $table: table),
-          createOrderingComposer: () =>
-              $TextEntriesOrderingComposer($db: db, $table: table),
-          createComputedFieldComposer: () =>
-              $TextEntriesAnnotationComposer($db: db, $table: table),
-          updateCompanionCallback: ({
-            Value<String> data = const Value.absent(),
-            Value<int> rowid = const Value.absent(),
-          }) =>
-              TextEntriesCompanion(
-            data: data,
-            rowid: rowid,
-          ),
-          createCompanionCallback: ({
-            required String data,
-            Value<int> rowid = const Value.absent(),
-          }) =>
-              TextEntriesCompanion.insert(
-            data: data,
-            rowid: rowid,
-          ),
-          withReferenceMapper: (p0) => p0
-              .map((e) => (
-                    e.readTable<TextEntries, TextEntry>(table),
-                    BaseReferences<_$DataBase, TextEntries, TextEntry>(
-                        db, table, e)
-                  ))
-              .toList(),
-          prefetchHooksCallback: null,
-        ));
-}
-
-typedef $TextEntriesProcessedTableManager = ProcessedTableManager<
-    _$DataBase,
-    TextEntries,
-    TextEntry,
-    $TextEntriesFilterComposer,
-    $TextEntriesOrderingComposer,
-    $TextEntriesAnnotationComposer,
-    $TextEntriesCreateCompanionBuilder,
-    $TextEntriesUpdateCompanionBuilder,
-    (TextEntry, BaseReferences<_$DataBase, TextEntries, TextEntry>),
-    TextEntry,
-    PrefetchHooks Function()>;
 typedef $$BlobFilesTableCreateCompanionBuilder = BlobFilesCompanion Function({
   Value<int> id,
   required String recordId,
@@ -1725,8 +1761,6 @@ typedef $$BlobFilesTableCreateCompanionBuilder = BlobFilesCompanion Function({
   Value<DateTime?> expiration,
   Value<String?> created,
   Value<String?> updated,
-  Value<int> size,
-  Value<DateTime?> lastAccess,
 });
 typedef $$BlobFilesTableUpdateCompanionBuilder = BlobFilesCompanion Function({
   Value<int> id,
@@ -1736,8 +1770,6 @@ typedef $$BlobFilesTableUpdateCompanionBuilder = BlobFilesCompanion Function({
   Value<DateTime?> expiration,
   Value<String?> created,
   Value<String?> updated,
-  Value<int> size,
-  Value<DateTime?> lastAccess,
 });
 
 final class $$BlobFilesTableReferences
@@ -1785,12 +1817,6 @@ class $$BlobFilesTableFilterComposer
 
   ColumnFilters<String> get updated => $composableBuilder(
       column: $table.updated, builder: (column) => ColumnFilters(column));
-
-  ColumnFilters<int> get size => $composableBuilder(
-      column: $table.size, builder: (column) => ColumnFilters(column));
-
-  ColumnFilters<DateTime> get lastAccess => $composableBuilder(
-      column: $table.lastAccess, builder: (column) => ColumnFilters(column));
 
   $$ServicesTableFilterComposer get recordId {
     final $$ServicesTableFilterComposer composer = $composerBuilder(
@@ -1840,12 +1866,6 @@ class $$BlobFilesTableOrderingComposer
   ColumnOrderings<String> get updated => $composableBuilder(
       column: $table.updated, builder: (column) => ColumnOrderings(column));
 
-  ColumnOrderings<int> get size => $composableBuilder(
-      column: $table.size, builder: (column) => ColumnOrderings(column));
-
-  ColumnOrderings<DateTime> get lastAccess => $composableBuilder(
-      column: $table.lastAccess, builder: (column) => ColumnOrderings(column));
-
   $$ServicesTableOrderingComposer get recordId {
     final $$ServicesTableOrderingComposer composer = $composerBuilder(
         composer: this,
@@ -1893,12 +1913,6 @@ class $$BlobFilesTableAnnotationComposer
 
   GeneratedColumn<String> get updated =>
       $composableBuilder(column: $table.updated, builder: (column) => column);
-
-  GeneratedColumn<int> get size =>
-      $composableBuilder(column: $table.size, builder: (column) => column);
-
-  GeneratedColumn<DateTime> get lastAccess => $composableBuilder(
-      column: $table.lastAccess, builder: (column) => column);
 
   $$ServicesTableAnnotationComposer get recordId {
     final $$ServicesTableAnnotationComposer composer = $composerBuilder(
@@ -1951,8 +1965,6 @@ class $$BlobFilesTableTableManager extends RootTableManager<
             Value<DateTime?> expiration = const Value.absent(),
             Value<String?> created = const Value.absent(),
             Value<String?> updated = const Value.absent(),
-            Value<int> size = const Value.absent(),
-            Value<DateTime?> lastAccess = const Value.absent(),
           }) =>
               BlobFilesCompanion(
             id: id,
@@ -1962,8 +1974,6 @@ class $$BlobFilesTableTableManager extends RootTableManager<
             expiration: expiration,
             created: created,
             updated: updated,
-            size: size,
-            lastAccess: lastAccess,
           ),
           createCompanionCallback: ({
             Value<int> id = const Value.absent(),
@@ -1973,8 +1983,6 @@ class $$BlobFilesTableTableManager extends RootTableManager<
             Value<DateTime?> expiration = const Value.absent(),
             Value<String?> created = const Value.absent(),
             Value<String?> updated = const Value.absent(),
-            Value<int> size = const Value.absent(),
-            Value<DateTime?> lastAccess = const Value.absent(),
           }) =>
               BlobFilesCompanion.insert(
             id: id,
@@ -1984,8 +1992,6 @@ class $$BlobFilesTableTableManager extends RootTableManager<
             expiration: expiration,
             created: created,
             updated: updated,
-            size: size,
-            lastAccess: lastAccess,
           ),
           withReferenceMapper: (p0) => p0
               .map((e) => (
@@ -2043,6 +2049,147 @@ typedef $$BlobFilesTableProcessedTableManager = ProcessedTableManager<
     (BlobFile, $$BlobFilesTableReferences),
     BlobFile,
     PrefetchHooks Function({bool recordId})>;
+typedef $$BlobFileStatsTableCreateCompanionBuilder = BlobFileStatsCompanion
+    Function({
+  Value<int> fileId,
+  required int size,
+  Value<DateTime?> lastAccess,
+});
+typedef $$BlobFileStatsTableUpdateCompanionBuilder = BlobFileStatsCompanion
+    Function({
+  Value<int> fileId,
+  Value<int> size,
+  Value<DateTime?> lastAccess,
+});
+
+class $$BlobFileStatsTableFilterComposer
+    extends Composer<_$DataBase, $BlobFileStatsTable> {
+  $$BlobFileStatsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get fileId => $composableBuilder(
+      column: $table.fileId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get size => $composableBuilder(
+      column: $table.size, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get lastAccess => $composableBuilder(
+      column: $table.lastAccess, builder: (column) => ColumnFilters(column));
+}
+
+class $$BlobFileStatsTableOrderingComposer
+    extends Composer<_$DataBase, $BlobFileStatsTable> {
+  $$BlobFileStatsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get fileId => $composableBuilder(
+      column: $table.fileId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get size => $composableBuilder(
+      column: $table.size, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get lastAccess => $composableBuilder(
+      column: $table.lastAccess, builder: (column) => ColumnOrderings(column));
+}
+
+class $$BlobFileStatsTableAnnotationComposer
+    extends Composer<_$DataBase, $BlobFileStatsTable> {
+  $$BlobFileStatsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get fileId =>
+      $composableBuilder(column: $table.fileId, builder: (column) => column);
+
+  GeneratedColumn<int> get size =>
+      $composableBuilder(column: $table.size, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get lastAccess => $composableBuilder(
+      column: $table.lastAccess, builder: (column) => column);
+}
+
+class $$BlobFileStatsTableTableManager extends RootTableManager<
+    _$DataBase,
+    $BlobFileStatsTable,
+    BlobFileStat,
+    $$BlobFileStatsTableFilterComposer,
+    $$BlobFileStatsTableOrderingComposer,
+    $$BlobFileStatsTableAnnotationComposer,
+    $$BlobFileStatsTableCreateCompanionBuilder,
+    $$BlobFileStatsTableUpdateCompanionBuilder,
+    (
+      BlobFileStat,
+      BaseReferences<_$DataBase, $BlobFileStatsTable, BlobFileStat>
+    ),
+    BlobFileStat,
+    PrefetchHooks Function()> {
+  $$BlobFileStatsTableTableManager(_$DataBase db, $BlobFileStatsTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$BlobFileStatsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$BlobFileStatsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$BlobFileStatsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<int> fileId = const Value.absent(),
+            Value<int> size = const Value.absent(),
+            Value<DateTime?> lastAccess = const Value.absent(),
+          }) =>
+              BlobFileStatsCompanion(
+            fileId: fileId,
+            size: size,
+            lastAccess: lastAccess,
+          ),
+          createCompanionCallback: ({
+            Value<int> fileId = const Value.absent(),
+            required int size,
+            Value<DateTime?> lastAccess = const Value.absent(),
+          }) =>
+              BlobFileStatsCompanion.insert(
+            fileId: fileId,
+            size: size,
+            lastAccess: lastAccess,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (
+                    e.readTable<$BlobFileStatsTable, BlobFileStat>(table),
+                    BaseReferences<_$DataBase, $BlobFileStatsTable,
+                        BlobFileStat>(db, table, e)
+                  ))
+              .toList(),
+          prefetchHooksCallback: null,
+        ));
+}
+
+typedef $$BlobFileStatsTableProcessedTableManager = ProcessedTableManager<
+    _$DataBase,
+    $BlobFileStatsTable,
+    BlobFileStat,
+    $$BlobFileStatsTableFilterComposer,
+    $$BlobFileStatsTableOrderingComposer,
+    $$BlobFileStatsTableAnnotationComposer,
+    $$BlobFileStatsTableCreateCompanionBuilder,
+    $$BlobFileStatsTableUpdateCompanionBuilder,
+    (
+      BlobFileStat,
+      BaseReferences<_$DataBase, $BlobFileStatsTable, BlobFileStat>
+    ),
+    BlobFileStat,
+    PrefetchHooks Function()>;
 typedef $$CachedResponsesTableCreateCompanionBuilder = CachedResponsesCompanion
     Function({
   required String requestKey,
@@ -2191,18 +2338,126 @@ typedef $$CachedResponsesTableProcessedTableManager = ProcessedTableManager<
     ),
     CachedResponse,
     PrefetchHooks Function()>;
+typedef $TextEntriesCreateCompanionBuilder = TextEntriesCompanion Function({
+  required String data,
+  Value<int> rowid,
+});
+typedef $TextEntriesUpdateCompanionBuilder = TextEntriesCompanion Function({
+  Value<String> data,
+  Value<int> rowid,
+});
+
+class $TextEntriesFilterComposer extends Composer<_$DataBase, TextEntries> {
+  $TextEntriesFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get data => $composableBuilder(
+      column: $table.data, builder: (column) => ColumnFilters(column));
+}
+
+class $TextEntriesOrderingComposer extends Composer<_$DataBase, TextEntries> {
+  $TextEntriesOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get data => $composableBuilder(
+      column: $table.data, builder: (column) => ColumnOrderings(column));
+}
+
+class $TextEntriesAnnotationComposer extends Composer<_$DataBase, TextEntries> {
+  $TextEntriesAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get data =>
+      $composableBuilder(column: $table.data, builder: (column) => column);
+}
+
+class $TextEntriesTableManager extends RootTableManager<
+    _$DataBase,
+    TextEntries,
+    TextEntry,
+    $TextEntriesFilterComposer,
+    $TextEntriesOrderingComposer,
+    $TextEntriesAnnotationComposer,
+    $TextEntriesCreateCompanionBuilder,
+    $TextEntriesUpdateCompanionBuilder,
+    (TextEntry, BaseReferences<_$DataBase, TextEntries, TextEntry>),
+    TextEntry,
+    PrefetchHooks Function()> {
+  $TextEntriesTableManager(_$DataBase db, TextEntries table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $TextEntriesFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $TextEntriesOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $TextEntriesAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<String> data = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              TextEntriesCompanion(
+            data: data,
+            rowid: rowid,
+          ),
+          createCompanionCallback: ({
+            required String data,
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              TextEntriesCompanion.insert(
+            data: data,
+            rowid: rowid,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (
+                    e.readTable<TextEntries, TextEntry>(table),
+                    BaseReferences<_$DataBase, TextEntries, TextEntry>(
+                        db, table, e)
+                  ))
+              .toList(),
+          prefetchHooksCallback: null,
+        ));
+}
+
+typedef $TextEntriesProcessedTableManager = ProcessedTableManager<
+    _$DataBase,
+    TextEntries,
+    TextEntry,
+    $TextEntriesFilterComposer,
+    $TextEntriesOrderingComposer,
+    $TextEntriesAnnotationComposer,
+    $TextEntriesCreateCompanionBuilder,
+    $TextEntriesUpdateCompanionBuilder,
+    (TextEntry, BaseReferences<_$DataBase, TextEntries, TextEntry>),
+    TextEntry,
+    PrefetchHooks Function()>;
 
 class $DataBaseManager {
   final _$DataBase _db;
   $DataBaseManager(this._db);
   $$ServicesTableTableManager get services =>
       $$ServicesTableTableManager(_db, _db.services);
-  $TextEntriesTableManager get textEntries =>
-      $TextEntriesTableManager(_db, _db.textEntries);
   $$BlobFilesTableTableManager get blobFiles =>
       $$BlobFilesTableTableManager(_db, _db.blobFiles);
+  $$BlobFileStatsTableTableManager get blobFileStats =>
+      $$BlobFileStatsTableTableManager(_db, _db.blobFileStats);
   $$CachedResponsesTableTableManager get cachedResponses =>
       $$CachedResponsesTableTableManager(_db, _db.cachedResponses);
+  $TextEntriesTableManager get textEntries =>
+      $TextEntriesTableManager(_db, _db.textEntries);
 }
 
 class SearchResult {

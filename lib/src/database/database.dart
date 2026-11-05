@@ -122,10 +122,19 @@ const _notDeletedSql =
     "(json_extract(data, '\$.deleted') IS NULL OR json_extract(data, '\$.deleted') = 0)";
 
 /// Record ids whose blobs the LRU never evicts: pending changes (their
-/// uploads are not on the server yet) and local-only rows.
+/// uploads are not on the server yet) and local-only rows, except local-only
+/// tombstones (`cacheOnly` deletes), whose files nothing reads any more.
 const _pinnedRecordsSql = "SELECT id FROM services WHERE service != 'schema' "
     "AND (COALESCE(json_extract(data, '\$.synced'), 1) = 0 "
-    "OR COALESCE(json_extract(data, '\$.noSync'), 0) = 1)";
+    "OR COALESCE(json_extract(data, '\$.noSync'), 0) = 1) "
+    "AND NOT (COALESCE(json_extract(data, '\$.noSync'), 0) = 1 "
+    "AND COALESCE(json_extract(data, '\$.deleted'), 0) = 1)";
+
+/// The text the full-text index holds for a record (see the triggers in
+/// `sql/search.drift`, which must use the same expression).
+const _ftsTextSql = "json_remove(data, '\$.retryCount', '\$.pendingFields', "
+    "'\$.pendingFiles', '\$.pendingOwner', '\$.pendingRev', '\$.syncError', "
+    "'\$.pendingBase', '\$.baseUpdated', '\$.pendingDeltas')";
 
 /// PocketBase timestamp format with millisecond precision:
 /// `2026-11-04 10:00:00.123Z`.
@@ -138,8 +147,8 @@ String pbTimestamp([DateTime? time]) {
 }
 
 @DriftDatabase(
-  tables: [Services, BlobFiles, CachedResponses],
-  include: {'sql/search.drift'},
+  tables: [Services, BlobFiles, BlobFileStats, CachedResponses],
+  include: {'sql/search.drift', 'sql/blob_cache.drift'},
 )
 class DataBase extends _$DataBase {
   DataBase(super.e) : logger = Logger('PocketBaseDrift.db');
@@ -194,26 +203,38 @@ class DataBase extends _$DataBase {
           await m.createTable(cachedResponses);
         }
         if (from < 4) {
-          // Re-index FTS only when the record JSON changes.
-          await m.drop(servicesUpdate);
-          await m.createTrigger(servicesUpdate);
+          // FTS: re-index only when the record JSON changes, and leave out
+          // the sync bookkeeping keys.
+          for (final trigger in [
+            servicesInsert,
+            servicesDelete,
+            servicesUpdate
+          ]) {
+            await m.drop(trigger);
+            await m.createTrigger(trigger);
+          }
+          // Not 'rebuild': with external content it indexes the raw data.
+          await customStatement(
+              "INSERT INTO text_entries(text_entries) VALUES ('delete-all')");
+          await customStatement('INSERT INTO text_entries(rowid, data) '
+              'SELECT rowid, $_ftsTextSql FROM services');
           await m.addColumn(services, services.cachedAt);
           // Existing rows start their TTL at the upgrade.
           await update(services)
               .write(ServicesCompanion(cachedAt: Value(DateTime.now())));
           await m.createIndex(idxServicesService);
           await m.createIndex(idxBlobFilesRecord);
+          await m.createTable(blobFileStats);
+          await m.createIndex(idxBlobFileStatsAccess);
+          await m.createTrigger(blobFilesDelete);
           if (from >= 2) {
-            // Blob cache LRU: size and last access of existing blobs.
-            await m.addColumn(blobFiles, blobFiles.size);
-            await m.addColumn(blobFiles, blobFiles.lastAccess);
-            await customUpdate(
-              'UPDATE BlobFiles SET size = length(data), lastAccess = ?',
-              variables: [Variable<DateTime>(DateTime.now())],
-              updates: {blobFiles},
-            );
+            // Sizes of the cached blobs. length() reads only the record
+            // header, and BlobFiles itself is not written, so the upgrade
+            // costs O(rows), not O(bytes). lastAccess stays null: these
+            // blobs count as the oldest.
+            await customStatement('INSERT INTO BlobFileStats (fileId, size) '
+                'SELECT id, length(data) FROM BlobFiles');
           }
-          await m.createIndex(idxBlobFilesAccess);
         }
       },
     );
@@ -2006,9 +2027,18 @@ class DataBase extends _$DataBase {
         await (update(blobFiles)
               ..where((t) =>
                   t.recordId.equals(recordId) & t.filename.equals(local)))
-            // Uploaded just now: the young end of the LRU order.
-            .write(BlobFilesCompanion(
-                filename: Value(match), lastAccess: Value(DateTime.now())));
+            .write(BlobFilesCompanion(filename: Value(match)));
+        // Uploaded just now: the young end of the LRU order.
+        await customUpdate(
+          'UPDATE BlobFileStats SET lastAccess = ? WHERE fileId IN '
+          '(SELECT id FROM BlobFiles WHERE recordId = ? AND filename = ?)',
+          variables: [
+            Variable<DateTime>(DateTime.now()),
+            Variable<String>(recordId),
+            Variable<String>(match),
+          ],
+          updates: {blobFileStats},
+        );
       }
     }
     return renamed;
@@ -2114,11 +2144,11 @@ class DataBase extends _$DataBase {
         expiration: expires != null ? Value(expires) : const Value.absent(),
         created: Value(now.toUtc().toIso8601String()),
         updated: Value(now.toUtc().toIso8601String()),
-        size: Value(data.length),
-        lastAccess: Value(now),
       );
       // No RETURNING: it would copy the blob back from the database isolate.
-      await into(blobFiles).insert(item);
+      final id = await into(blobFiles).insert(item);
+      await into(blobFileStats).insert(BlobFileStatsCompanion.insert(
+          fileId: Value(id), size: data.length, lastAccess: Value(now)));
     });
   }
 
@@ -2136,20 +2166,21 @@ class DataBase extends _$DataBase {
 
   /// Marks blob [id] as used now (LRU order).
   Future<void> touchFile(int id) => customUpdate(
-        'UPDATE BlobFiles SET lastAccess = ? WHERE id = ?',
+        'UPDATE BlobFileStats SET lastAccess = ? WHERE fileId = ?',
         variables: [Variable<DateTime>(DateTime.now()), Variable<int>(id)],
-        updates: {blobFiles},
+        updates: {blobFileStats},
       );
 
   /// Total byte size of all cached blobs (pinned ones included).
   Future<int> fileCacheBytes() async => (await customSelect(
-        'SELECT COALESCE(SUM(size), 0) AS t FROM BlobFiles',
-        readsFrom: {blobFiles},
+        'SELECT COALESCE(SUM(size), 0) AS t FROM BlobFileStats',
+        readsFrom: {blobFileStats},
       ).getSingle())
           .read<int>('t');
 
   /// When the blob cache holds more than [maxBytes], deletes least recently
   /// used blobs until it holds at most [targetBytes] (default [maxBytes]).
+  /// Blobs larger than [targetBytes] go first: they can never fit.
   /// Never deletes blobs of pending or local-only (`noSync`) records: they
   /// are the only copy. Returns the number of blobs and bytes deleted and
   /// the bytes that remain (more than [maxBytes] when pinned blobs alone
@@ -2161,17 +2192,20 @@ class DataBase extends _$DataBase {
     return transaction(() async {
       final total = await fileCacheBytes();
       if (total <= maxBytes) return (count: 0, bytes: 0, remaining: total);
-      final excess = total - (targetBytes ?? maxBytes);
-      // Running total in LRU order; a blob goes while the bytes before it
-      // are still short of the excess.
+      final target = targetBytes ?? maxBytes;
+      final excess = total - target;
+      // Running total in eviction order; a blob goes while the bytes before
+      // it are still short of the excess.
       final victims = await customSelect(
         'SELECT id, size FROM ('
-        '  SELECT id, size, SUM(size) OVER '
-        '    (ORDER BY COALESCE(lastAccess, 0), id) - size AS before'
-        '  FROM BlobFiles WHERE recordId NOT IN ($_pinnedRecordsSql)'
-        ') WHERE before < ?',
-        variables: [Variable<int>(excess)],
-        readsFrom: {blobFiles, services},
+        '  SELECT s.fileId AS id, s.size AS size, SUM(s.size) OVER (ORDER BY'
+        '    s.size > ?1 DESC, COALESCE(s.lastAccess, 0), s.fileId)'
+        '    - s.size AS before'
+        '  FROM BlobFileStats s JOIN BlobFiles b ON b.id = s.fileId'
+        '  WHERE b.recordId NOT IN ($_pinnedRecordsSql)'
+        ') WHERE before < ?2',
+        variables: [Variable<int>(target), Variable<int>(excess)],
+        readsFrom: {blobFileStats, blobFiles, services},
       ).get();
       var bytes = 0;
       final ids = <int>[];

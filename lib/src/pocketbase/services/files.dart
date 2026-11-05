@@ -175,8 +175,7 @@ class $FileService extends FileService {
     Uint8List bytes,
     Duration? expireAfter,
   ) async {
-    final max = client.maxFileCacheBytes;
-    if (max != null && bytes.length > max) {
+    if (!client.fitsFileCache(bytes.length)) {
       client.logger.fine('Not caching "$blobName": larger than the file cache');
       return;
     }
@@ -190,14 +189,17 @@ class $FileService extends FileService {
     unawaited(client.enforceFileCacheLimit());
   }
 
+  /// When each blob was last marked as used, by blob id.
+  final _touched = <int, DateTime>{};
+
   /// Moves a cache hit to the young end of the LRU order. Writes at most
   /// once per [_touchInterval] per blob, so scrolling a list of cached
   /// images does not write on every frame.
   void _touch(BlobFile blob) {
-    final last = blob.lastAccess;
-    if (last != null && DateTime.now().difference(last) < _touchInterval) {
-      return;
-    }
+    final now = DateTime.now();
+    final last = _touched[blob.id];
+    if (last != null && now.difference(last) < _touchInterval) return;
+    _touched[blob.id] = now;
     client.db.touchFile(blob.id).catchError((Object e) {
       client.logger.fine('Could not update last access of "${blob.filename}"');
     });

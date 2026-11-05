@@ -194,6 +194,9 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
                 : null);
         if (match == null) continue;
         unmatched.remove(match);
+        // The server has the file; a copy above the eviction target would
+        // push every other cached file out.
+        if (!client.fitsFileCache(f.$3.length)) continue;
         await _cacheFileBlob(recordId, match, f.$3);
       }
     }

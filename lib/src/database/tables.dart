@@ -26,8 +26,6 @@ class Services extends Table {
 
 @DataClassName('BlobFile')
 @TableIndex(name: 'idx_blob_files_record', columns: {#recordId, #filename})
-@TableIndex(
-    name: 'idx_blob_files_access', columns: {#lastAccess, #size, #recordId})
 class BlobFiles extends Table with AutoIncrementingPrimaryKey {
   TextColumn get recordId => text().references(Services, #id)();
   TextColumn get filename => text()();
@@ -35,12 +33,29 @@ class BlobFiles extends Table with AutoIncrementingPrimaryKey {
   DateTimeColumn get expiration => dateTime().nullable()();
   TextColumn get created => text().nullable()();
   TextColumn get updated => text().nullable()();
+}
 
-  /// Byte length of [data], so cache size queries never read the blobs.
-  IntColumn get size => integer().withDefault(const Constant(0))();
+/// Size and last use of each [BlobFiles] row, for the LRU file cache.
+///
+/// Kept apart from the blob: SQLite rewrites a whole row, blob included,
+/// on every update, so this bookkeeping in `BlobFiles` would copy the blob
+/// on each cache hit (and on the upgrade that added it). The trigger
+/// `blob_files_delete` deletes the row of a deleted blob.
+@DataClassName('BlobFileStat')
+@TableIndex(name: 'idx_blob_file_stats_access', columns: {#lastAccess, #size})
+class BlobFileStats extends Table {
+  /// `BlobFiles.id`.
+  IntColumn get fileId => integer()();
 
-  /// Last write or cache hit; LRU eviction removes the oldest first.
+  /// Byte length of the blob.
+  IntColumn get size => integer()();
+
+  /// Last write or cache hit; `null` (blobs cached before the upgrade to
+  /// 0.7.0) counts as the oldest.
   DateTimeColumn get lastAccess => dateTime().nullable()();
+
+  @override
+  Set<Column<Object>>? get primaryKey => {fileId};
 }
 
 @DataClassName('CachedResponse')

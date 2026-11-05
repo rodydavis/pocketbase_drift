@@ -66,42 +66,6 @@ class Services extends Table with TableInfo {
   bool get dontWriteConstraints => true;
 }
 
-class TextEntries extends Table with TableInfo, VirtualTableInfo {
-  @override
-  final GeneratedDatabase attachedDatabase;
-  final String? _alias;
-  TextEntries(this.attachedDatabase, [this._alias]);
-  late final GeneratedColumn<String> data = GeneratedColumn<String>(
-      'data', aliasedName, true,
-      type: DriftSqlType.string,
-      requiredDuringInsert: false,
-      $customConstraints: '');
-  @override
-  List<GeneratedColumn> get $columns => [data];
-  @override
-  String get aliasedName => _alias ?? actualTableName;
-  @override
-  String get actualTableName => $name;
-  static const String $name = 'text_entries';
-  @override
-  Set<GeneratedColumn> get $primaryKey => const {};
-  @override
-  Never map(Map<String, dynamic> data, {String? tablePrefix}) {
-    throw UnsupportedError('TableInfo.map in schema verification code');
-  }
-
-  @override
-  TextEntries createAlias(String alias) {
-    return TextEntries(attachedDatabase, alias);
-  }
-
-  @override
-  bool get dontWriteConstraints => true;
-  @override
-  String get moduleAndArgs =>
-      'fts5(data, content=services, content_rowid=rowid)';
-}
-
 class BlobFiles extends Table with TableInfo {
   @override
   final GeneratedDatabase attachedDatabase;
@@ -143,29 +107,9 @@ class BlobFiles extends Table with TableInfo {
       type: DriftSqlType.string,
       requiredDuringInsert: false,
       $customConstraints: 'NULL');
-  late final GeneratedColumn<int> size = GeneratedColumn<int>(
-      'size', aliasedName, false,
-      type: DriftSqlType.int,
-      requiredDuringInsert: false,
-      $customConstraints: 'NOT NULL DEFAULT 0',
-      defaultValue: const CustomExpression('0'));
-  late final GeneratedColumn<int> lastAccess = GeneratedColumn<int>(
-      'lastAccess', aliasedName, true,
-      type: DriftSqlType.int,
-      requiredDuringInsert: false,
-      $customConstraints: 'NULL');
   @override
-  List<GeneratedColumn> get $columns => [
-        id,
-        recordId,
-        filename,
-        data,
-        expiration,
-        created,
-        updated,
-        size,
-        lastAccess
-      ];
+  List<GeneratedColumn> get $columns =>
+      [id, recordId, filename, data, expiration, created, updated];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -183,6 +127,51 @@ class BlobFiles extends Table with TableInfo {
     return BlobFiles(attachedDatabase, alias);
   }
 
+  @override
+  bool get dontWriteConstraints => true;
+}
+
+class BlobFileStats extends Table with TableInfo {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  BlobFileStats(this.attachedDatabase, [this._alias]);
+  late final GeneratedColumn<int> fileId = GeneratedColumn<int>(
+      'fileId', aliasedName, false,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      $customConstraints: 'NOT NULL');
+  late final GeneratedColumn<int> size = GeneratedColumn<int>(
+      'size', aliasedName, false,
+      type: DriftSqlType.int,
+      requiredDuringInsert: true,
+      $customConstraints: 'NOT NULL');
+  late final GeneratedColumn<int> lastAccess = GeneratedColumn<int>(
+      'lastAccess', aliasedName, true,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      $customConstraints: 'NULL');
+  @override
+  List<GeneratedColumn> get $columns => [fileId, size, lastAccess];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'BlobFileStats';
+  @override
+  Set<GeneratedColumn> get $primaryKey => {fileId};
+  @override
+  Never map(Map<String, dynamic> data, {String? tablePrefix}) {
+    throw UnsupportedError('TableInfo.map in schema verification code');
+  }
+
+  @override
+  BlobFileStats createAlias(String alias) {
+    return BlobFileStats(attachedDatabase, alias);
+  }
+
+  @override
+  List<String> get customConstraints => const ['PRIMARY KEY(fileId)'];
   @override
   bool get dontWriteConstraints => true;
 }
@@ -232,46 +221,95 @@ class CachedResponses extends Table with TableInfo {
   bool get dontWriteConstraints => true;
 }
 
+class TextEntries extends Table with TableInfo, VirtualTableInfo {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  TextEntries(this.attachedDatabase, [this._alias]);
+  late final GeneratedColumn<String> data = GeneratedColumn<String>(
+      'data', aliasedName, true,
+      type: DriftSqlType.string,
+      requiredDuringInsert: false,
+      $customConstraints: '');
+  @override
+  List<GeneratedColumn> get $columns => [data];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'text_entries';
+  @override
+  Set<GeneratedColumn> get $primaryKey => const {};
+  @override
+  Never map(Map<String, dynamic> data, {String? tablePrefix}) {
+    throw UnsupportedError('TableInfo.map in schema verification code');
+  }
+
+  @override
+  TextEntries createAlias(String alias) {
+    return TextEntries(attachedDatabase, alias);
+  }
+
+  @override
+  bool get dontWriteConstraints => true;
+  @override
+  String get moduleAndArgs =>
+      'fts5(data, content=services, content_rowid=rowid)';
+}
+
 class DatabaseAtV4 extends GeneratedDatabase {
   DatabaseAtV4(QueryExecutor e) : super(e);
   late final Services services = Services(this);
-  late final TextEntries textEntries = TextEntries(this);
-  late final Trigger servicesInsert = Trigger(
-      'CREATE TRIGGER services_insert AFTER INSERT ON services BEGIN INSERT INTO text_entries ("rowid", data) VALUES (new."rowid", new.data);END',
-      'services_insert');
-  late final Trigger servicesDelete = Trigger(
-      'CREATE TRIGGER services_delete AFTER DELETE ON services BEGIN INSERT INTO text_entries (text_entries, "rowid", data) VALUES (\'delete\', old."rowid", old.data);END',
-      'services_delete');
-  late final Trigger servicesUpdate = Trigger(
-      'CREATE TRIGGER services_update AFTER UPDATE OF data ON services BEGIN INSERT INTO text_entries (text_entries, "rowid", data) VALUES (\'delete\', old."rowid", old.data);INSERT INTO text_entries ("rowid", data) VALUES (new."rowid", new.data);END',
-      'services_update');
   late final BlobFiles blobFiles = BlobFiles(this);
+  late final BlobFileStats blobFileStats = BlobFileStats(this);
+  late final Trigger blobFilesDelete = Trigger(
+      'CREATE TRIGGER blob_files_delete AFTER DELETE ON BlobFiles BEGIN DELETE FROM BlobFileStats WHERE fileId = old.id;END',
+      'blob_files_delete');
   late final CachedResponses cachedResponses = CachedResponses(this);
   late final Index idxServicesService = Index('idx_services_service',
       'CREATE INDEX idx_services_service ON Services (service)');
   late final Index idxBlobFilesRecord = Index('idx_blob_files_record',
       'CREATE INDEX idx_blob_files_record ON BlobFiles (recordId, filename)');
-  late final Index idxBlobFilesAccess = Index('idx_blob_files_access',
-      'CREATE INDEX idx_blob_files_access ON BlobFiles (lastAccess, size, recordId)');
+  late final Index idxBlobFileStatsAccess = Index('idx_blob_file_stats_access',
+      'CREATE INDEX idx_blob_file_stats_access ON BlobFileStats (lastAccess, size)');
+  late final TextEntries textEntries = TextEntries(this);
+  late final Trigger servicesInsert = Trigger(
+      'CREATE TRIGGER services_insert AFTER INSERT ON services BEGIN INSERT INTO text_entries ("rowid", data) VALUES (new."rowid", json_remove(new.data, \'\$.retryCount\', \'\$.pendingFields\', \'\$.pendingFiles\', \'\$.pendingOwner\', \'\$.pendingRev\', \'\$.syncError\', \'\$.pendingBase\', \'\$.baseUpdated\', \'\$.pendingDeltas\'));END',
+      'services_insert');
+  late final Trigger servicesDelete = Trigger(
+      'CREATE TRIGGER services_delete AFTER DELETE ON services BEGIN INSERT INTO text_entries (text_entries, "rowid", data) VALUES (\'delete\', old."rowid", json_remove(old.data, \'\$.retryCount\', \'\$.pendingFields\', \'\$.pendingFiles\', \'\$.pendingOwner\', \'\$.pendingRev\', \'\$.syncError\', \'\$.pendingBase\', \'\$.baseUpdated\', \'\$.pendingDeltas\'));END',
+      'services_delete');
+  late final Trigger servicesUpdate = Trigger(
+      'CREATE TRIGGER services_update AFTER UPDATE OF data ON services BEGIN INSERT INTO text_entries (text_entries, "rowid", data) VALUES (\'delete\', old."rowid", json_remove(old.data, \'\$.retryCount\', \'\$.pendingFields\', \'\$.pendingFiles\', \'\$.pendingOwner\', \'\$.pendingRev\', \'\$.syncError\', \'\$.pendingBase\', \'\$.baseUpdated\', \'\$.pendingDeltas\'));INSERT INTO text_entries ("rowid", data) VALUES (new."rowid", json_remove(new.data, \'\$.retryCount\', \'\$.pendingFields\', \'\$.pendingFiles\', \'\$.pendingOwner\', \'\$.pendingRev\', \'\$.syncError\', \'\$.pendingBase\', \'\$.baseUpdated\', \'\$.pendingDeltas\'));END',
+      'services_update');
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
   @override
   List<DatabaseSchemaEntity> get allSchemaEntities => [
         services,
-        textEntries,
-        servicesInsert,
-        servicesDelete,
-        servicesUpdate,
         blobFiles,
+        blobFileStats,
+        blobFilesDelete,
         cachedResponses,
         idxServicesService,
         idxBlobFilesRecord,
-        idxBlobFilesAccess
+        idxBlobFileStatsAccess,
+        textEntries,
+        servicesInsert,
+        servicesDelete,
+        servicesUpdate
       ];
   @override
   StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules(
         [
+          WritePropagation(
+            on: TableUpdateQuery.onTableName('BlobFiles',
+                limitUpdateKind: UpdateKind.delete),
+            result: [
+              TableUpdate('BlobFileStats', kind: UpdateKind.delete),
+            ],
+          ),
           WritePropagation(
             on: TableUpdateQuery.onTableName('Services',
                 limitUpdateKind: UpdateKind.insert),

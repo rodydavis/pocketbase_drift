@@ -96,84 +96,6 @@
       ],
       "type": "table",
       "data": {
-        "name": "text_entries",
-        "was_declared_in_moor": true,
-        "columns": [
-          {
-            "name": "data",
-            "getter_name": "data",
-            "moor_type": "string",
-            "nullable": false,
-            "customConstraints": "",
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          }
-        ],
-        "is_virtual": true,
-        "create_virtual_stmt": "CREATE VIRTUAL TABLE \"text_entries\" USING fts5(data, content=services, content_rowid=rowid)",
-        "without_rowid": false,
-        "constraints": []
-      }
-    },
-    {
-      "id": 2,
-      "references": [
-        0,
-        1
-      ],
-      "type": "trigger",
-      "data": {
-        "on": 0,
-        "references_in_body": [
-          0,
-          1
-        ],
-        "name": "services_insert",
-        "sql": "CREATE TRIGGER services_insert AFTER INSERT ON services BEGIN\n  INSERT INTO text_entries(rowid, data) VALUES (new.rowid, new.data);\nEND;"
-      }
-    },
-    {
-      "id": 3,
-      "references": [
-        0,
-        1
-      ],
-      "type": "trigger",
-      "data": {
-        "on": 0,
-        "references_in_body": [
-          0,
-          1
-        ],
-        "name": "services_delete",
-        "sql": "CREATE TRIGGER services_delete AFTER DELETE ON services BEGIN\n  INSERT INTO text_entries(text_entries, rowid, data) VALUES ('delete', old.rowid, old.data);\nEND;"
-      }
-    },
-    {
-      "id": 4,
-      "references": [
-        0,
-        1
-      ],
-      "type": "trigger",
-      "data": {
-        "on": 0,
-        "references_in_body": [
-          0,
-          1
-        ],
-        "name": "services_update",
-        "sql": "CREATE TRIGGER services_update AFTER UPDATE OF data ON services BEGIN\n  INSERT INTO text_entries(text_entries, rowid, data) VALUES ('delete', old.rowid, old.data);\n  INSERT INTO text_entries(rowid, data) VALUES (new.rowid, new.data);\nEND;"
-      }
-    },
-    {
-      "id": 5,
-      "references": [
-        0
-      ],
-      "type": "table",
-      "data": {
         "name": "BlobFiles",
         "was_declared_in_moor": false,
         "columns": [
@@ -268,6 +190,30 @@
             "default_dart": null,
             "default_client_dart": null,
             "dsl_features": []
+          }
+        ],
+        "is_virtual": false,
+        "without_rowid": false,
+        "constraints": []
+      }
+    },
+    {
+      "id": 2,
+      "references": [],
+      "type": "table",
+      "data": {
+        "name": "BlobFileStats",
+        "was_declared_in_moor": false,
+        "columns": [
+          {
+            "name": "fileId",
+            "getter_name": "fileId",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
           },
           {
             "name": "size",
@@ -275,7 +221,7 @@
             "moor_type": "int",
             "nullable": false,
             "customConstraints": null,
-            "default_dart": "const CustomExpression('0')",
+            "default_dart": null,
             "default_client_dart": null,
             "dsl_features": []
           },
@@ -292,11 +238,31 @@
         ],
         "is_virtual": false,
         "without_rowid": false,
-        "constraints": []
+        "constraints": [],
+        "explicit_pk": [
+          "fileId"
+        ]
       }
     },
     {
-      "id": 6,
+      "id": 3,
+      "references": [
+        1,
+        2
+      ],
+      "type": "trigger",
+      "data": {
+        "on": 1,
+        "references_in_body": [
+          1,
+          2
+        ],
+        "name": "blob_files_delete",
+        "sql": "CREATE TRIGGER blob_files_delete AFTER DELETE ON BlobFiles BEGIN\n  DELETE FROM BlobFileStats WHERE fileId = old.id;\nEND;"
+      }
+    },
+    {
+      "id": 4,
       "references": [],
       "type": "table",
       "data": {
@@ -343,7 +309,7 @@
       }
     },
     {
-      "id": 7,
+      "id": 5,
       "references": [
         0
       ],
@@ -362,13 +328,13 @@
       }
     },
     {
-      "id": 8,
+      "id": 6,
       "references": [
-        5
+        1
       ],
       "type": "index",
       "data": {
-        "on": 5,
+        "on": 1,
         "name": "idx_blob_files_record",
         "sql": null,
         "unique": false,
@@ -385,14 +351,14 @@
       }
     },
     {
-      "id": 9,
+      "id": 7,
       "references": [
-        5
+        2
       ],
       "type": "index",
       "data": {
-        "on": 5,
-        "name": "idx_blob_files_access",
+        "on": 2,
+        "name": "idx_blob_file_stats_access",
         "sql": null,
         "unique": false,
         "columns": [
@@ -403,12 +369,86 @@
           {
             "column": "size",
             "order_by": null
-          },
-          {
-            "column": "recordId",
-            "order_by": null
           }
         ]
+      }
+    },
+    {
+      "id": 8,
+      "references": [
+        0
+      ],
+      "type": "table",
+      "data": {
+        "name": "text_entries",
+        "was_declared_in_moor": true,
+        "columns": [
+          {
+            "name": "data",
+            "getter_name": "data",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": "",
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          }
+        ],
+        "is_virtual": true,
+        "create_virtual_stmt": "CREATE VIRTUAL TABLE \"text_entries\" USING fts5(data, content=services, content_rowid=rowid)",
+        "without_rowid": false,
+        "constraints": []
+      }
+    },
+    {
+      "id": 9,
+      "references": [
+        0,
+        8
+      ],
+      "type": "trigger",
+      "data": {
+        "on": 0,
+        "references_in_body": [
+          0,
+          8
+        ],
+        "name": "services_insert",
+        "sql": "CREATE TRIGGER services_insert AFTER INSERT ON services BEGIN\n  INSERT INTO text_entries(rowid, data) VALUES (new.rowid, json_remove(new.data, '$.retryCount', '$.pendingFields', '$.pendingFiles', '$.pendingOwner', '$.pendingRev', '$.syncError', '$.pendingBase', '$.baseUpdated', '$.pendingDeltas'));\nEND;"
+      }
+    },
+    {
+      "id": 10,
+      "references": [
+        0,
+        8
+      ],
+      "type": "trigger",
+      "data": {
+        "on": 0,
+        "references_in_body": [
+          0,
+          8
+        ],
+        "name": "services_delete",
+        "sql": "CREATE TRIGGER services_delete AFTER DELETE ON services BEGIN\n  INSERT INTO text_entries(text_entries, rowid, data) VALUES ('delete', old.rowid, json_remove(old.data, '$.retryCount', '$.pendingFields', '$.pendingFiles', '$.pendingOwner', '$.pendingRev', '$.syncError', '$.pendingBase', '$.baseUpdated', '$.pendingDeltas'));\nEND;"
+      }
+    },
+    {
+      "id": 11,
+      "references": [
+        0,
+        8
+      ],
+      "type": "trigger",
+      "data": {
+        "on": 0,
+        "references_in_body": [
+          0,
+          8
+        ],
+        "name": "services_update",
+        "sql": "CREATE TRIGGER services_update AFTER UPDATE OF data ON services BEGIN\n  INSERT INTO text_entries(text_entries, rowid, data) VALUES ('delete', old.rowid, json_remove(old.data, '$.retryCount', '$.pendingFields', '$.pendingFiles', '$.pendingOwner', '$.pendingRev', '$.syncError', '$.pendingBase', '$.baseUpdated', '$.pendingDeltas'));\n  INSERT INTO text_entries(rowid, data) VALUES (new.rowid, json_remove(new.data, '$.retryCount', '$.pendingFields', '$.pendingFiles', '$.pendingOwner', '$.pendingRev', '$.syncError', '$.pendingBase', '$.baseUpdated', '$.pendingDeltas'));\nEND;"
       }
     }
   ],
@@ -423,47 +463,29 @@
       ]
     },
     {
-      "name": "text_entries",
-      "sql": [
-        {
-          "dialect": "sqlite",
-          "sql": "CREATE VIRTUAL TABLE IF NOT EXISTS \"text_entries\" USING fts5(data, content=services, content_rowid=rowid);"
-        }
-      ]
-    },
-    {
-      "name": "services_insert",
-      "sql": [
-        {
-          "dialect": "sqlite",
-          "sql": "CREATE TRIGGER services_insert AFTER INSERT ON services BEGIN INSERT INTO text_entries (\"rowid\", data) VALUES (new.\"rowid\", new.data);END"
-        }
-      ]
-    },
-    {
-      "name": "services_delete",
-      "sql": [
-        {
-          "dialect": "sqlite",
-          "sql": "CREATE TRIGGER services_delete AFTER DELETE ON services BEGIN INSERT INTO text_entries (text_entries, \"rowid\", data) VALUES ('delete', old.\"rowid\", old.data);END"
-        }
-      ]
-    },
-    {
-      "name": "services_update",
-      "sql": [
-        {
-          "dialect": "sqlite",
-          "sql": "CREATE TRIGGER services_update AFTER UPDATE OF data ON services BEGIN INSERT INTO text_entries (text_entries, \"rowid\", data) VALUES ('delete', old.\"rowid\", old.data);INSERT INTO text_entries (\"rowid\", data) VALUES (new.\"rowid\", new.data);END"
-        }
-      ]
-    },
-    {
       "name": "BlobFiles",
       "sql": [
         {
           "dialect": "sqlite",
-          "sql": "CREATE TABLE IF NOT EXISTS \"BlobFiles\" (\"id\" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, \"recordId\" TEXT NOT NULL REFERENCES Services (id), \"filename\" TEXT NOT NULL, \"data\" BLOB NOT NULL, \"expiration\" INTEGER NULL, \"created\" TEXT NULL, \"updated\" TEXT NULL, \"size\" INTEGER NOT NULL DEFAULT 0, \"lastAccess\" INTEGER NULL);"
+          "sql": "CREATE TABLE IF NOT EXISTS \"BlobFiles\" (\"id\" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, \"recordId\" TEXT NOT NULL REFERENCES Services (id), \"filename\" TEXT NOT NULL, \"data\" BLOB NOT NULL, \"expiration\" INTEGER NULL, \"created\" TEXT NULL, \"updated\" TEXT NULL);"
+        }
+      ]
+    },
+    {
+      "name": "BlobFileStats",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TABLE IF NOT EXISTS \"BlobFileStats\" (\"fileId\" INTEGER NOT NULL, \"size\" INTEGER NOT NULL, \"lastAccess\" INTEGER NULL, PRIMARY KEY (\"fileId\"));"
+        }
+      ]
+    },
+    {
+      "name": "blob_files_delete",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TRIGGER blob_files_delete AFTER DELETE ON BlobFiles BEGIN DELETE FROM BlobFileStats WHERE fileId = old.id;END"
         }
       ]
     },
@@ -495,11 +517,47 @@
       ]
     },
     {
-      "name": "idx_blob_files_access",
+      "name": "idx_blob_file_stats_access",
       "sql": [
         {
           "dialect": "sqlite",
-          "sql": "CREATE INDEX idx_blob_files_access ON BlobFiles (lastAccess, size, recordId)"
+          "sql": "CREATE INDEX idx_blob_file_stats_access ON BlobFileStats (lastAccess, size)"
+        }
+      ]
+    },
+    {
+      "name": "text_entries",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE VIRTUAL TABLE IF NOT EXISTS \"text_entries\" USING fts5(data, content=services, content_rowid=rowid);"
+        }
+      ]
+    },
+    {
+      "name": "services_insert",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TRIGGER services_insert AFTER INSERT ON services BEGIN INSERT INTO text_entries (\"rowid\", data) VALUES (new.\"rowid\", json_remove(new.data, '$.retryCount', '$.pendingFields', '$.pendingFiles', '$.pendingOwner', '$.pendingRev', '$.syncError', '$.pendingBase', '$.baseUpdated', '$.pendingDeltas'));END"
+        }
+      ]
+    },
+    {
+      "name": "services_delete",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TRIGGER services_delete AFTER DELETE ON services BEGIN INSERT INTO text_entries (text_entries, \"rowid\", data) VALUES ('delete', old.\"rowid\", json_remove(old.data, '$.retryCount', '$.pendingFields', '$.pendingFiles', '$.pendingOwner', '$.pendingRev', '$.syncError', '$.pendingBase', '$.baseUpdated', '$.pendingDeltas'));END"
+        }
+      ]
+    },
+    {
+      "name": "services_update",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TRIGGER services_update AFTER UPDATE OF data ON services BEGIN INSERT INTO text_entries (text_entries, \"rowid\", data) VALUES ('delete', old.\"rowid\", json_remove(old.data, '$.retryCount', '$.pendingFields', '$.pendingFiles', '$.pendingOwner', '$.pendingRev', '$.syncError', '$.pendingBase', '$.baseUpdated', '$.pendingDeltas'));INSERT INTO text_entries (\"rowid\", data) VALUES (new.\"rowid\", json_remove(new.data, '$.retryCount', '$.pendingFields', '$.pendingFiles', '$.pendingOwner', '$.pendingRev', '$.syncError', '$.pendingBase', '$.baseUpdated', '$.pendingDeltas'));END"
         }
       ]
     }

@@ -165,6 +165,23 @@ class $PocketBase extends PocketBase with WidgetsBindingObserver {
   /// write.
   int? _evictStuckAt;
 
+  /// Counts finished sync passes. An eviction that started before a pass
+  /// ended may have seen uploads that are no longer pinned; it must not
+  /// store its stale [_evictStuckAt].
+  int _syncEpoch = 0;
+
+  /// Eviction deletes down to 90% of the limit.
+  static int _evictTarget(int max) => max * 9 ~/ 10;
+
+  /// Whether a file of [bytes] that the server can send again goes into the
+  /// file cache: with a limit, only up to the eviction target (90% of
+  /// [maxFileCacheBytes]); a larger file would push out every other file.
+  /// Unsynced uploads are always stored.
+  bool fitsFileCache(int bytes) {
+    final max = maxFileCacheBytes;
+    return max == null || bytes <= _evictTarget(max);
+  }
+
   /// Applies [maxFileCacheBytes]; the package calls it after each blob
   /// write. Concurrent calls share one run; a call during a run schedules
   /// one more run.
@@ -194,9 +211,16 @@ class $PocketBase extends PocketBase with WidgetsBindingObserver {
   }
 
   Future<({int count, int bytes, int remaining})> _evictFiles(int max) async {
+    final epoch = _syncEpoch;
     final result =
-        await db.evictFiles(maxBytes: max, targetBytes: max * 9 ~/ 10);
+        await db.evictFiles(maxBytes: max, targetBytes: _evictTarget(max));
     final stuck = result.remaining > max;
+    if (stuck && epoch != _syncEpoch) {
+      // A sync pass ended meanwhile: evict again with the new pins.
+      _evictStuckAt = null;
+      _evictAgain = true;
+      return result;
+    }
     if (stuck && _evictStuckAt == null) {
       logger.info('File cache holds ${result.remaining} bytes of unsynced '
           'files, more than maxFileCacheBytes ($max)');
@@ -292,6 +316,7 @@ class $PocketBase extends PocketBase with WidgetsBindingObserver {
       }
     } finally {
       _syncPass = null;
+      _syncEpoch++;
       // Synced uploads are no longer pinned.
       if (_evictStuckAt != null) {
         _evictStuckAt = null;

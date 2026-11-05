@@ -11,6 +11,9 @@ void _configure(Database db) {
   // WAL: readers do not block on writers and commits are cheaper.
   db.execute('PRAGMA journal_mode = WAL;');
   db.execute('PRAGMA busy_timeout = 5000;');
+  // A large write (e.g. a big file) grows the WAL; truncate it back to
+  // 8 MB at the next checkpoint instead of keeping its high-water mark.
+  db.execute('PRAGMA journal_size_limit = 8388608;');
 }
 
 /// Opens the cache database.

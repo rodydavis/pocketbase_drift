@@ -158,7 +158,7 @@ void main() {
 
   Future<void> ageAllBlobs() => client.db.customUpdate(
       // lastAccess is stored as unix seconds; keep the insert order.
-      'UPDATE BlobFiles SET lastAccess = lastAccess - 7200 + id');
+      'UPDATE BlobFileStats SET lastAccess = lastAccess - 7200 + fileId');
 
   Future<RecordModel> createWithFile(
     String filename,
@@ -218,7 +218,7 @@ void main() {
       final pending = await createWithFile('p.jpg', pendingBytes);
       final local = await createWithFile('l.jpg', _pattern(30 * _kb, 2),
           requestPolicy: RequestPolicy.cacheOnly);
-      await client.db.customUpdate('UPDATE BlobFiles SET lastAccess = 0');
+      await client.db.customUpdate('UPDATE BlobFileStats SET lastAccess = 0');
 
       await downloadAll(List.generate(20, (i) => i));
 
@@ -234,7 +234,10 @@ void main() {
       final serverName = server[pending.id]!['file_single'] as String;
       final renamed =
           await client.db.getFile(pending.id, serverName).getSingle();
-      expect(renamed.lastAccess!.isAfter(pushStart), isTrue);
+      final stat = await (client.db.select(client.db.blobFileStats)
+            ..where((s) => s.fileId.equals(renamed.id)))
+          .getSingle();
+      expect(stat.lastAccess!.isAfter(pushStart), isTrue);
 
       await client.db.evictFiles(maxBytes: 0);
       final kept = await blobs();
@@ -251,7 +254,7 @@ void main() {
       final bytes = _pattern(20 * _kb, 3);
       final pending = await createWithFile('a.jpg', bytes);
       client.authStore.save('token', RecordModel({'id': 'account_b'}));
-      await client.db.customUpdate('UPDATE BlobFiles SET lastAccess = 0');
+      await client.db.customUpdate('UPDATE BlobFileStats SET lastAccess = 0');
 
       await downloadAll(List.generate(20, (i) => i));
       expect(await blobs(), contains('${pending.id}/a.jpg'));
@@ -281,6 +284,73 @@ void main() {
       await client.enforceFileCacheLimit();
 
       expect(await blobs(), ['${pending.id}/big.jpg']);
+    });
+
+    test(
+        'a download above the eviction target is not cached and keeps the '
+        'other files', () async {
+      client = await open(maxFileCacheBytes: 100 * _kb);
+      await downloadAll(List.generate(5, (i) => i));
+      downloadSize = 95 * _kb; // above 90 KB, below the limit
+
+      expect((await download('big')).length, 95 * _kb);
+      await client.enforceFileCacheLimit();
+
+      expect(await blobs(), hasLength(5));
+      expect(await blobs(), isNot(contains('big/a.jpg')));
+    });
+
+    test(
+        'an online upload above the eviction target is not cached and keeps '
+        'the other files', () async {
+      client = await open(maxFileCacheBytes: 100 * _kb);
+      await downloadAll(List.generate(5, (i) => i));
+
+      final created = await createWithFile('big.jpg', _pattern(120 * _kb, 6),
+          requestPolicy: RequestPolicy.networkFirst);
+      await client.enforceFileCacheLimit();
+
+      expect(uploads, hasLength(1));
+      expect(await blobs(), hasLength(5));
+      expect(await client.db.getFilesForRecord(created.id).get(), isEmpty);
+    });
+
+    test(
+        'a synced upload above the eviction target is evicted before '
+        'smaller, older files', () async {
+      client = await open(maxFileCacheBytes: 200 * _kb);
+      await downloadAll([0]);
+      client.connectivity.setConnectivityStatus(false);
+      final pending = await createWithFile('big.jpg', _pattern(185 * _kb, 7));
+      await goOnlineAndSync();
+      final serverName = server[pending.id]!['file_single'] as String;
+      expect(await blobs(), contains('${pending.id}/$serverName'));
+
+      await downloadAll([1]); // 205 KB: over the limit
+
+      expect(await blobs(), ['dl0/a.jpg', 'dl1/a.jpg']);
+    });
+
+    test('files of a record deleted with cacheOnly are not pinned', () async {
+      client = await open(maxFileCacheBytes: 100 * _kb);
+      await client.db.upsertServerRecords(_collection, [
+        {
+          'id': 'rec_nosync0001',
+          'collectionId': _collectionId,
+          'collectionName': _collection,
+          'updated': '2026-11-04 10:00:00.000Z',
+          'file_single': 'x.jpg',
+        }
+      ]);
+      await client.db.setFile('rec_nosync0001', 'x.jpg', Uint8List(60 * _kb));
+      await client
+          .collection(_collection)
+          .delete('rec_nosync0001', requestPolicy: RequestPolicy.cacheOnly);
+
+      final result = await client.db.evictFiles(maxBytes: 0);
+
+      expect(result.count, 1);
+      expect(await blobs(), isEmpty);
     });
 
     test(
