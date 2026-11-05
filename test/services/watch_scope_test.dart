@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:drift/native.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pocketbase_drift/pocketbase_drift.dart';
 
@@ -50,6 +51,45 @@ Future<void> _idle() => Future<void>.delayed(const Duration(milliseconds: 100));
 /// their own collection, the collections they expand, the schema (expand)
 /// and writes of unknown collection (raw SQL, `markTablesUpdated`).
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+      .setMockMethodCallHandler(
+          const MethodChannel('dev.fluttercommunity.plus/connectivity'),
+          (call) async => ['none']);
+
+  test('watchRecords follows a login switch without a new listen', () async {
+    final client = $PocketBase.database('http://127.0.0.1:1',
+        connection: DatabaseConnection(NativeDatabase.memory()),
+        requestPolicy: RequestPolicy.cacheOnly);
+    addTearDown(() async {
+      client.close();
+      await client.db.close();
+    });
+    await client.db.setSchema(_schema());
+    for (final account in ['u1', 'u2']) {
+      client.authStore.save('token', RecordModel({'id': account}));
+      await client.db.writeLocalCreate('a', {'id': 'p$account', 'title': 'p'},
+          sync: true, owner: account);
+    }
+    client.authStore.save('token', RecordModel({'id': 'u1'}));
+
+    final seen = <List<String>>[];
+    final sub = client
+        .collection('a')
+        .watchRecords(sort: 'id')
+        .listen((records) => seen.add([for (final r in records) r.id]));
+    await _idle();
+    expect(seen.last, ['pu1']);
+    seen.clear();
+    client.authStore.save('token', RecordModel({'id': 'u2'}));
+    await _idle();
+    await sub.cancel();
+    // Retry bookkeeping of the failed push may emit again; rows of the old
+    // account never come back.
+    expect(seen, isNotEmpty);
+    expect(seen, everyElement(['pu2']));
+  });
+
   for (final background in [false, true]) {
     group(background ? 'watch scope (background isolate)' : 'watch scope', () {
       late DataBase db;
@@ -225,20 +265,92 @@ void main() {
         expect(seen.last.single['title'], 'raw2');
       });
 
-      test('markTablesUpdated (owner change) re-runs plain and expand watchers',
+      test('markTablesUpdated re-runs plain and expand watchers once',
           () async {
         final plain = db.$query('a').watch().listen((_) {});
         final withExpand =
             db.$query('a', expand: 'rel.d').watch().listen((_) {});
         await _idle();
         final before = counter.of('a');
-        // What `$PocketBase` does when the logged-in account changes.
-        owner = 'u2';
         db.markTablesUpdated({db.services});
         await _idle();
         expect(counter.of('a') - before, 2);
         await plain.cancel();
         await withExpand.cancel();
+      });
+
+      group('after an account switch, an open watcher', () {
+        /// `p1` is pending for u1, `p2` for u2; u1 is logged in.
+        Future<void> pendingOfBothAccounts() async {
+          owner = 'u1';
+          await db.writeLocalCreate('a', {'id': 'p1', 'title': 'zebra one'},
+              sync: true, owner: 'u1');
+          owner = 'u2';
+          await db.writeLocalCreate('a', {'id': 'p2', 'title': 'zebra two'},
+              sync: true, owner: 'u2');
+          owner = 'u1';
+        }
+
+        /// Emissions of [query] before and after the switch to u2.
+        Future<(List<T>, List<List<T>>)> switchAccount<T>(
+            Selectable<T> query) async {
+          final seen = <List<T>>[];
+          final sub = query.watch().listen(seen.add);
+          await _idle();
+          final before = seen.last;
+          seen.clear();
+          // What `$PocketBase` does when the logged-in account changes.
+          owner = 'u2';
+          db.markTablesUpdated({db.services});
+          await _idle();
+          await sub.cancel();
+          return (before, seen);
+        }
+
+        Iterable<String> ids(List<Map<String, dynamic>> rows) =>
+            rows.map((r) => r['id'] as String);
+
+        test('of a collection shows the new account\'s pending rows only',
+            () async {
+          await pendingOfBothAccounts();
+          final (before, after) =
+              await switchAccount(db.$query('a', sort: 'id'));
+          expect(ids(before), ['a1', 'p1']);
+          expect(after.map(ids), [
+            ['a1', 'p2']
+          ]);
+        });
+
+        test('with expand shows the new account\'s pending rows only',
+            () async {
+          await pendingOfBothAccounts();
+          final (before, after) =
+              await switchAccount(db.$query('a', sort: 'id', expand: 'rel'));
+          expect(ids(before), ['a1', 'p1']);
+          expect(after.map(ids), [
+            ['a1', 'p2']
+          ]);
+        });
+
+        test('of pendingRecords shows the new account\'s queue', () async {
+          await pendingOfBothAccounts();
+          final (before, after) = await switchAccount(db.pendingRecords());
+          expect(before.map((s) => s.id), ['p1']);
+          expect(after.map((rows) => rows.map((s) => s.id).toList()), [
+            ['p2']
+          ]);
+        });
+
+        test('of a search shows the new account\'s pending rows only',
+            () async {
+          await pendingOfBothAccounts();
+          final (before, after) =
+              await switchAccount(db.search('zebra', service: 'a'));
+          expect(before.map((s) => s.id), ['p1']);
+          expect(after.map((rows) => rows.map((s) => s.id).toList()), [
+            ['p2']
+          ]);
+        });
       });
 
       test('pendingRecords().watch() sees local writes', () async {

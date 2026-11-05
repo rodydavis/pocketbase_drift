@@ -336,11 +336,18 @@ class DataBase extends _$DataBase {
 
   Selectable<Service> search(String query, {String? service}) {
     if (service != null) {
-      return _searchService(query, service, activeOwner).map((p0) => p0.record);
+      return _ownerBound(() =>
+          _searchService(query, service, activeOwner).map((p0) => p0.record));
     } else {
-      return _search(query, activeOwner).map((p0) => p0.record);
+      return _ownerBound(
+          () => _search(query, activeOwner).map((p0) => p0.record));
     }
   }
+
+  /// A query that binds [activeOwner] when [build] runs; its watch stream is
+  /// built again after an account change (see [_LiveSelectable]).
+  Selectable<T> _ownerBound<T>(Selectable<T> Function() build) =>
+      _LiveSelectable(() => activeOwner, (_) async => ('', build()));
 
   (String, List<Variable>) queryBuilder(
     String service, {
@@ -487,27 +494,44 @@ class DataBase extends _$DataBase {
     bool includeDeleted = false,
     bool includeOtherOwners = false,
   }) {
-    final (query, variables) = queryBuilder(
-      service,
-      fields: fields,
-      filter: filter,
-      sort: sort,
-      offset: offset,
-      limit: limit,
-      includeDeleted: includeDeleted,
-      includeOtherOwners: includeOtherOwners,
-    );
-    logger.finer('query: $query, variables: $variables');
-    final rows = customSelect(
-      query,
-      variables: variables,
-      readsFrom: _watchTables(service),
-    ).map(parseRow);
-    if (expand == null || expand.trim().isEmpty) return rows;
-    return _ExpandedSelectable(
-      rows,
-      (records) => _expandRecords(service, records, expand, 0),
+    (String, List<Variable>) build() {
+      final (query, variables) = queryBuilder(
+        service,
+        fields: fields,
+        filter: filter,
+        sort: sort,
+        offset: offset,
+        limit: limit,
+        includeDeleted: includeDeleted,
+        includeOtherOwners: includeOtherOwners,
+      );
+      logger.finer('query: $query, variables: $variables');
+      return (query, variables);
+    }
+
+    // Built now so that a bad filter throws here; built again only for
+    // another account.
+    final firstOwner = activeOwner;
+    final first = build();
+    (String, List<Variable>) current() =>
+        activeOwner == firstOwner ? first : build();
+
+    Selectable<Map<String, dynamic>> rows(String query,
+            List<Variable> variables, Set<ResultSetImplementation> tables) =>
+        customSelect(query, variables: variables, readsFrom: tables)
+            .map(parseRow);
+
+    if (expand == null || expand.trim().isEmpty) {
+      return _ownerBound(() {
+        final (query, variables) = current();
+        return rows(query, variables, _watchTables(service));
+      });
+    }
+    return _LiveSelectable(
+      () => activeOwner,
       (schemaChanged) async {
+        // Built before the await: the query binds the account read here.
+        final (query, variables) = current();
         // The schema rows changed; the cached copy may not be cleared yet.
         if (schemaChanged) _invalidateSchema('schema');
         final tables = _watchTables(service, expand, await _loadSchema());
@@ -518,8 +542,10 @@ class DataBase extends _$DataBase {
         final sql = '$query /* reads ${names.join(' ')} */';
         return (
           sql,
-          customSelect(sql, variables: variables, readsFrom: tables)
-              .map(parseRow),
+          _ExpandedSelectable(
+            rows(sql, variables, tables),
+            (records) => _expandRecords(service, records, expand, 0),
+          ),
         );
       },
       () => tableUpdates(
@@ -1766,16 +1792,16 @@ class DataBase extends _$DataBase {
   /// rows and rows queued by another account. Rows the server rejected carry
   /// [RecordMeta.syncError]. Use `.watch()` for a live pending queue.
   Selectable<Service> pendingRecords({String? service}) {
-    return customSelect(
-      "SELECT * FROM services WHERE service != 'schema' AND $_pendingSql "
-      'AND $_ownerVisibleSql ${service == null ? '' : 'AND service = ? '}'
-      'ORDER BY cachedAt, rowid',
-      variables: [
-        Variable<String>(activeOwner),
-        if (service != null) Variable<String>(service),
-      ],
-      readsFrom: {services},
-    ).map((row) => services.map(row.data));
+    return _ownerBound(() => customSelect(
+          "SELECT * FROM services WHERE service != 'schema' AND $_pendingSql "
+          'AND $_ownerVisibleSql ${service == null ? '' : 'AND service = ? '}'
+          'ORDER BY cachedAt, rowid',
+          variables: [
+            Variable<String>(activeOwner),
+            if (service != null) Variable<String>(service),
+          ],
+          readsFrom: {services},
+        ).map((row) => services.map(row.data)));
   }
 
   /// Collections with pending rows the active account may sync now
@@ -2032,42 +2058,73 @@ class DataBase extends _$DataBase {
 /// A [Selectable] that post-processes the complete result list (used for
 /// batched relation expansion instead of per-row lookups).
 class _ExpandedSelectable extends Selectable<Map<String, dynamic>> {
-  _ExpandedSelectable(
-      this._rows, this._expand, this._watchRows, this._schemaChanges);
+  _ExpandedSelectable(this._rows, this._expand);
 
   final Selectable<Map<String, dynamic>> _rows;
   final Future<List<Map<String, dynamic>>> Function(List<Map<String, dynamic>>)
       _expand;
 
-  /// The row query to watch and its SQL. Its dependencies come from the
-  /// schema, so it is built again when the schema changes.
-  final Future<(String, Selectable<Map<String, dynamic>>)> Function(
-      bool schemaChanged) _watchRows;
-
-  /// Updates of the `schema` collection.
-  final Stream<Object?> Function() _schemaChanges;
-
   @override
   Future<List<Map<String, dynamic>>> get() async => _expand(await _rows.get());
 
   @override
-  Stream<List<Map<String, dynamic>>> watch() => Stream.multi((controller) {
-        StreamSubscription<List<Map<String, dynamic>>>? rows;
-        String? sql;
+  Stream<List<Map<String, dynamic>>> watch() => _rows.watch().asyncMap(_expand);
+}
+
+/// A [Selectable] whose query is built again when its inputs change.
+///
+/// Owner-bound queries bind the logged-in account when they are built, and
+/// drift fixes the arguments of a stream when it starts. The watch stream
+/// builds the query again when the account changed; it notices the change
+/// when the old query re-runs (`$PocketBase` calls `markTablesUpdated` on
+/// an account change) and never emits rows of a query built for another
+/// account. With [_schemaChanges] it also rebuilds after schema writes;
+/// a rebuild with the same key and account keeps the running stream.
+class _LiveSelectable<T> extends Selectable<T> {
+  _LiveSelectable(this._owner, this._build, [this._schemaChanges]);
+
+  /// The logged-in account now.
+  final String? Function() _owner;
+
+  /// Builds the query for the account [_owner] returns when it is called
+  /// (bind the account before any await) and its key.
+  final Future<(String, Selectable<T>)> Function(bool schemaChanged) _build;
+
+  /// Updates of the `schema` collection.
+  final Stream<Object?> Function()? _schemaChanges;
+
+  @override
+  Future<List<T>> get() async => (await _build(false)).$2.get();
+
+  @override
+  Stream<List<T>> watch() => Stream.multi((controller) {
+        StreamSubscription<List<T>>? rows;
+        String? key;
         var generation = 0;
         var cancelled = false;
 
         Future<void> attach(bool schemaChanged) async {
           final current = ++generation;
+          final owner = _owner();
           try {
-            final (nextSql, query) = await _watchRows(schemaChanged);
-            if (cancelled || current != generation || nextSql == sql) return;
-            sql = nextSql;
+            final (built, query) = await _build(schemaChanged);
+            final nextKey = '$owner\n$built';
+            if (cancelled || current != generation || nextKey == key) return;
+            key = nextKey;
             final previous = rows;
-            rows = query
-                .watch()
-                .asyncMap(_expand)
-                .listen(controller.add, onError: controller.addError);
+            rows = query.watch().listen(
+              (data) {
+                if (_owner() == owner) {
+                  controller.add(data);
+                } else {
+                  // Built for the previous account: drop and rebuild.
+                  attach(false);
+                }
+              },
+              onError: (Object e, StackTrace st) {
+                if (_owner() == owner) controller.addError(e, st);
+              },
+            );
             if (controller.isPaused) rows!.pause();
             await previous?.cancel();
           } catch (e, st) {
@@ -2075,20 +2132,20 @@ class _ExpandedSelectable extends Selectable<Map<String, dynamic>> {
           }
         }
 
-        final schema = _schemaChanges().listen((_) => attach(true));
+        final schema = _schemaChanges?.call().listen((_) => attach(true));
         attach(false);
         controller
           ..onPause = () {
             rows?.pause();
-            schema.pause();
+            schema?.pause();
           }
           ..onResume = () {
             rows?.resume();
-            schema.resume();
+            schema?.resume();
           }
           ..onCancel = () async {
             cancelled = true;
-            await schema.cancel();
+            await schema?.cancel();
             await rows?.cancel();
           };
       }, isBroadcast: true);
