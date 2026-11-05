@@ -63,6 +63,7 @@ class $FileService extends FileService {
 
         // Return valid (non-expired) cache immediately
         if (!cacheIsExpired) {
+          _touch(cached);
           return cached.data;
         }
 
@@ -173,15 +174,36 @@ class $FileService extends FileService {
     String blobName,
     Uint8List bytes,
     Duration? expireAfter,
-  ) {
-    return client.db.setFile(
+  ) async {
+    final max = client.maxFileCacheBytes;
+    if (max != null && bytes.length > max) {
+      client.logger.fine('Not caching "$blobName": larger than the file cache');
+      return;
+    }
+    await client.db.setFile(
       recordId,
       blobName,
       bytes,
       expires:
           expireAfter != null ? DateTime.now().toUtc().add(expireAfter) : null,
     );
+    unawaited(client.enforceFileCacheLimit());
   }
+
+  /// Moves a cache hit to the young end of the LRU order. Writes at most
+  /// once per [_touchInterval] per blob, so scrolling a list of cached
+  /// images does not write on every frame.
+  void _touch(BlobFile blob) {
+    final last = blob.lastAccess;
+    if (last != null && DateTime.now().difference(last) < _touchInterval) {
+      return;
+    }
+    client.db.touchFile(blob.id).catchError((Object e) {
+      client.logger.fine('Could not update last access of "${blob.filename}"');
+    });
+  }
+
+  static const _touchInterval = Duration(hours: 1);
 
   /// Downloads [url] into memory, failing with a [TimeoutException] when the
   /// whole response has not arrived within [timeout].

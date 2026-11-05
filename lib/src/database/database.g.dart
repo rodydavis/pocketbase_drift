@@ -570,9 +570,31 @@ class $BlobFilesTable extends BlobFiles
   late final GeneratedColumn<String> updated = GeneratedColumn<String>(
       'updated', aliasedName, true,
       type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _sizeMeta = const VerificationMeta('size');
   @override
-  List<GeneratedColumn> get $columns =>
-      [id, recordId, filename, data, expiration, created, updated];
+  late final GeneratedColumn<int> size = GeneratedColumn<int>(
+      'size', aliasedName, false,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(0));
+  static const VerificationMeta _lastAccessMeta =
+      const VerificationMeta('lastAccess');
+  @override
+  late final GeneratedColumn<DateTime> lastAccess = GeneratedColumn<DateTime>(
+      'lastAccess', aliasedName, true,
+      type: DriftSqlType.dateTime, requiredDuringInsert: false);
+  @override
+  List<GeneratedColumn> get $columns => [
+        id,
+        recordId,
+        filename,
+        data,
+        expiration,
+        created,
+        updated,
+        size,
+        lastAccess
+      ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -618,6 +640,16 @@ class $BlobFilesTable extends BlobFiles
       context.handle(_updatedMeta,
           updated.isAcceptableOrUnknown(data['updated']!, _updatedMeta));
     }
+    if (data.containsKey('size')) {
+      context.handle(
+          _sizeMeta, size.isAcceptableOrUnknown(data['size']!, _sizeMeta));
+    }
+    if (data.containsKey('lastAccess')) {
+      context.handle(
+          _lastAccessMeta,
+          lastAccess.isAcceptableOrUnknown(
+              data['lastAccess']!, _lastAccessMeta));
+    }
     return context;
   }
 
@@ -641,6 +673,10 @@ class $BlobFilesTable extends BlobFiles
           .read(DriftSqlType.string, data['${effectivePrefix}created']),
       updated: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}updated']),
+      size: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}size'])!,
+      lastAccess: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}lastAccess']),
     );
   }
 
@@ -658,6 +694,12 @@ class BlobFile extends DataClass implements Insertable<BlobFile> {
   final DateTime? expiration;
   final String? created;
   final String? updated;
+
+  /// Byte length of [data], so cache size queries never read the blobs.
+  final int size;
+
+  /// Last write or cache hit; LRU eviction removes the oldest first.
+  final DateTime? lastAccess;
   const BlobFile(
       {required this.id,
       required this.recordId,
@@ -665,7 +707,9 @@ class BlobFile extends DataClass implements Insertable<BlobFile> {
       required this.data,
       this.expiration,
       this.created,
-      this.updated});
+      this.updated,
+      required this.size,
+      this.lastAccess});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -681,6 +725,10 @@ class BlobFile extends DataClass implements Insertable<BlobFile> {
     }
     if (!nullToAbsent || updated != null) {
       map['updated'] = Variable<String>(updated);
+    }
+    map['size'] = Variable<int>(size);
+    if (!nullToAbsent || lastAccess != null) {
+      map['lastAccess'] = Variable<DateTime>(lastAccess);
     }
     return map;
   }
@@ -700,6 +748,10 @@ class BlobFile extends DataClass implements Insertable<BlobFile> {
       updated: updated == null && nullToAbsent
           ? const Value.absent()
           : Value(updated),
+      size: Value(size),
+      lastAccess: lastAccess == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastAccess),
     );
   }
 
@@ -714,6 +766,8 @@ class BlobFile extends DataClass implements Insertable<BlobFile> {
       expiration: serializer.fromJson<DateTime?>(json['expiration']),
       created: serializer.fromJson<String?>(json['created']),
       updated: serializer.fromJson<String?>(json['updated']),
+      size: serializer.fromJson<int>(json['size']),
+      lastAccess: serializer.fromJson<DateTime?>(json['lastAccess']),
     );
   }
   @override
@@ -727,6 +781,8 @@ class BlobFile extends DataClass implements Insertable<BlobFile> {
       'expiration': serializer.toJson<DateTime?>(expiration),
       'created': serializer.toJson<String?>(created),
       'updated': serializer.toJson<String?>(updated),
+      'size': serializer.toJson<int>(size),
+      'lastAccess': serializer.toJson<DateTime?>(lastAccess),
     };
   }
 
@@ -737,7 +793,9 @@ class BlobFile extends DataClass implements Insertable<BlobFile> {
           Uint8List? data,
           Value<DateTime?> expiration = const Value.absent(),
           Value<String?> created = const Value.absent(),
-          Value<String?> updated = const Value.absent()}) =>
+          Value<String?> updated = const Value.absent(),
+          int? size,
+          Value<DateTime?> lastAccess = const Value.absent()}) =>
       BlobFile(
         id: id ?? this.id,
         recordId: recordId ?? this.recordId,
@@ -746,6 +804,8 @@ class BlobFile extends DataClass implements Insertable<BlobFile> {
         expiration: expiration.present ? expiration.value : this.expiration,
         created: created.present ? created.value : this.created,
         updated: updated.present ? updated.value : this.updated,
+        size: size ?? this.size,
+        lastAccess: lastAccess.present ? lastAccess.value : this.lastAccess,
       );
   BlobFile copyWithCompanion(BlobFilesCompanion data) {
     return BlobFile(
@@ -757,6 +817,9 @@ class BlobFile extends DataClass implements Insertable<BlobFile> {
           data.expiration.present ? data.expiration.value : this.expiration,
       created: data.created.present ? data.created.value : this.created,
       updated: data.updated.present ? data.updated.value : this.updated,
+      size: data.size.present ? data.size.value : this.size,
+      lastAccess:
+          data.lastAccess.present ? data.lastAccess.value : this.lastAccess,
     );
   }
 
@@ -769,14 +832,24 @@ class BlobFile extends DataClass implements Insertable<BlobFile> {
           ..write('data: $data, ')
           ..write('expiration: $expiration, ')
           ..write('created: $created, ')
-          ..write('updated: $updated')
+          ..write('updated: $updated, ')
+          ..write('size: $size, ')
+          ..write('lastAccess: $lastAccess')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, recordId, filename,
-      $driftBlobEquality.hash(data), expiration, created, updated);
+  int get hashCode => Object.hash(
+      id,
+      recordId,
+      filename,
+      $driftBlobEquality.hash(data),
+      expiration,
+      created,
+      updated,
+      size,
+      lastAccess);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -787,7 +860,9 @@ class BlobFile extends DataClass implements Insertable<BlobFile> {
           $driftBlobEquality.equals(other.data, this.data) &&
           other.expiration == this.expiration &&
           other.created == this.created &&
-          other.updated == this.updated);
+          other.updated == this.updated &&
+          other.size == this.size &&
+          other.lastAccess == this.lastAccess);
 }
 
 class BlobFilesCompanion extends UpdateCompanion<BlobFile> {
@@ -798,6 +873,8 @@ class BlobFilesCompanion extends UpdateCompanion<BlobFile> {
   final Value<DateTime?> expiration;
   final Value<String?> created;
   final Value<String?> updated;
+  final Value<int> size;
+  final Value<DateTime?> lastAccess;
   const BlobFilesCompanion({
     this.id = const Value.absent(),
     this.recordId = const Value.absent(),
@@ -806,6 +883,8 @@ class BlobFilesCompanion extends UpdateCompanion<BlobFile> {
     this.expiration = const Value.absent(),
     this.created = const Value.absent(),
     this.updated = const Value.absent(),
+    this.size = const Value.absent(),
+    this.lastAccess = const Value.absent(),
   });
   BlobFilesCompanion.insert({
     this.id = const Value.absent(),
@@ -815,6 +894,8 @@ class BlobFilesCompanion extends UpdateCompanion<BlobFile> {
     this.expiration = const Value.absent(),
     this.created = const Value.absent(),
     this.updated = const Value.absent(),
+    this.size = const Value.absent(),
+    this.lastAccess = const Value.absent(),
   })  : recordId = Value(recordId),
         filename = Value(filename),
         data = Value(data);
@@ -826,6 +907,8 @@ class BlobFilesCompanion extends UpdateCompanion<BlobFile> {
     Expression<DateTime>? expiration,
     Expression<String>? created,
     Expression<String>? updated,
+    Expression<int>? size,
+    Expression<DateTime>? lastAccess,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -835,6 +918,8 @@ class BlobFilesCompanion extends UpdateCompanion<BlobFile> {
       if (expiration != null) 'expiration': expiration,
       if (created != null) 'created': created,
       if (updated != null) 'updated': updated,
+      if (size != null) 'size': size,
+      if (lastAccess != null) 'lastAccess': lastAccess,
     });
   }
 
@@ -845,7 +930,9 @@ class BlobFilesCompanion extends UpdateCompanion<BlobFile> {
       Value<Uint8List>? data,
       Value<DateTime?>? expiration,
       Value<String?>? created,
-      Value<String?>? updated}) {
+      Value<String?>? updated,
+      Value<int>? size,
+      Value<DateTime?>? lastAccess}) {
     return BlobFilesCompanion(
       id: id ?? this.id,
       recordId: recordId ?? this.recordId,
@@ -854,6 +941,8 @@ class BlobFilesCompanion extends UpdateCompanion<BlobFile> {
       expiration: expiration ?? this.expiration,
       created: created ?? this.created,
       updated: updated ?? this.updated,
+      size: size ?? this.size,
+      lastAccess: lastAccess ?? this.lastAccess,
     );
   }
 
@@ -881,6 +970,12 @@ class BlobFilesCompanion extends UpdateCompanion<BlobFile> {
     if (updated.present) {
       map['updated'] = Variable<String>(updated.value);
     }
+    if (size.present) {
+      map['size'] = Variable<int>(size.value);
+    }
+    if (lastAccess.present) {
+      map['lastAccess'] = Variable<DateTime>(lastAccess.value);
+    }
     return map;
   }
 
@@ -893,7 +988,9 @@ class BlobFilesCompanion extends UpdateCompanion<BlobFile> {
           ..write('data: $data, ')
           ..write('expiration: $expiration, ')
           ..write('created: $created, ')
-          ..write('updated: $updated')
+          ..write('updated: $updated, ')
+          ..write('size: $size, ')
+          ..write('lastAccess: $lastAccess')
           ..write(')'))
         .toString();
   }
@@ -1167,6 +1264,8 @@ abstract class _$DataBase extends GeneratedDatabase {
       'CREATE INDEX idx_services_service ON Services (service)');
   late final Index idxBlobFilesRecord = Index('idx_blob_files_record',
       'CREATE INDEX idx_blob_files_record ON BlobFiles (recordId, filename)');
+  late final Index idxBlobFilesAccess = Index('idx_blob_files_access',
+      'CREATE INDEX idx_blob_files_access ON BlobFiles (lastAccess, size, recordId)');
   Selectable<SearchResult> _search(String query, String? owner) {
     return customSelect(
         'SELECT"record"."id" AS "nested_0.id", "record"."data" AS "nested_0.data", "record"."service" AS "nested_0.service", "record"."created" AS "nested_0.created", "record"."updated" AS "nested_0.updated", "record"."cachedAt" AS "nested_0.cachedAt" FROM text_entries INNER JOIN services AS record ON record."rowid" = text_entries."rowid" WHERE text_entries MATCH ?1 AND(json_extract(record.data, \'\$.deleted\') IS NULL OR json_extract(record.data, \'\$.deleted\') = 0)AND(json_extract(record.data, \'\$.pendingOwner\') IS NULL OR json_extract(record.data, \'\$.pendingOwner\') = ?2)ORDER BY rank',
@@ -1212,7 +1311,8 @@ abstract class _$DataBase extends GeneratedDatabase {
         blobFiles,
         cachedResponses,
         idxServicesService,
-        idxBlobFilesRecord
+        idxBlobFilesRecord,
+        idxBlobFilesAccess
       ];
   @override
   StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules(
@@ -1481,17 +1581,16 @@ class $$ServicesTableTableManager extends RootTableManager<
               getPrefetchedDataCallback: (items) async {
                 return [
                   if (blobFilesRefs)
-                    await $_getPrefetchedData<Service, $ServicesTable,
-                            BlobFile>(
+                    await $_getPrefetchedDataByColumns<Service, $ServicesTable,
+                            BlobFile, $BlobFilesTable>(
                         currentTable: table,
                         referencedTable:
                             $$ServicesTableReferences._blobFilesRefsTable(db),
                         managerFromTypedResult: (p0) =>
                             $$ServicesTableReferences(db, table, p0)
                                 .blobFilesRefs,
-                        referencedItemsForCurrentItem: (item,
-                                referencedItems) =>
-                            referencedItems.where((e) => e.recordId == item.id),
+                        currentColumn: 'id',
+                        referencedColumn: 'recordId',
                         typedResults: items)
                 ];
               },
@@ -1626,6 +1725,8 @@ typedef $$BlobFilesTableCreateCompanionBuilder = BlobFilesCompanion Function({
   Value<DateTime?> expiration,
   Value<String?> created,
   Value<String?> updated,
+  Value<int> size,
+  Value<DateTime?> lastAccess,
 });
 typedef $$BlobFilesTableUpdateCompanionBuilder = BlobFilesCompanion Function({
   Value<int> id,
@@ -1635,6 +1736,8 @@ typedef $$BlobFilesTableUpdateCompanionBuilder = BlobFilesCompanion Function({
   Value<DateTime?> expiration,
   Value<String?> created,
   Value<String?> updated,
+  Value<int> size,
+  Value<DateTime?> lastAccess,
 });
 
 final class $$BlobFilesTableReferences
@@ -1682,6 +1785,12 @@ class $$BlobFilesTableFilterComposer
 
   ColumnFilters<String> get updated => $composableBuilder(
       column: $table.updated, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get size => $composableBuilder(
+      column: $table.size, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get lastAccess => $composableBuilder(
+      column: $table.lastAccess, builder: (column) => ColumnFilters(column));
 
   $$ServicesTableFilterComposer get recordId {
     final $$ServicesTableFilterComposer composer = $composerBuilder(
@@ -1731,6 +1840,12 @@ class $$BlobFilesTableOrderingComposer
   ColumnOrderings<String> get updated => $composableBuilder(
       column: $table.updated, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<int> get size => $composableBuilder(
+      column: $table.size, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get lastAccess => $composableBuilder(
+      column: $table.lastAccess, builder: (column) => ColumnOrderings(column));
+
   $$ServicesTableOrderingComposer get recordId {
     final $$ServicesTableOrderingComposer composer = $composerBuilder(
         composer: this,
@@ -1778,6 +1893,12 @@ class $$BlobFilesTableAnnotationComposer
 
   GeneratedColumn<String> get updated =>
       $composableBuilder(column: $table.updated, builder: (column) => column);
+
+  GeneratedColumn<int> get size =>
+      $composableBuilder(column: $table.size, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get lastAccess => $composableBuilder(
+      column: $table.lastAccess, builder: (column) => column);
 
   $$ServicesTableAnnotationComposer get recordId {
     final $$ServicesTableAnnotationComposer composer = $composerBuilder(
@@ -1830,6 +1951,8 @@ class $$BlobFilesTableTableManager extends RootTableManager<
             Value<DateTime?> expiration = const Value.absent(),
             Value<String?> created = const Value.absent(),
             Value<String?> updated = const Value.absent(),
+            Value<int> size = const Value.absent(),
+            Value<DateTime?> lastAccess = const Value.absent(),
           }) =>
               BlobFilesCompanion(
             id: id,
@@ -1839,6 +1962,8 @@ class $$BlobFilesTableTableManager extends RootTableManager<
             expiration: expiration,
             created: created,
             updated: updated,
+            size: size,
+            lastAccess: lastAccess,
           ),
           createCompanionCallback: ({
             Value<int> id = const Value.absent(),
@@ -1848,6 +1973,8 @@ class $$BlobFilesTableTableManager extends RootTableManager<
             Value<DateTime?> expiration = const Value.absent(),
             Value<String?> created = const Value.absent(),
             Value<String?> updated = const Value.absent(),
+            Value<int> size = const Value.absent(),
+            Value<DateTime?> lastAccess = const Value.absent(),
           }) =>
               BlobFilesCompanion.insert(
             id: id,
@@ -1857,6 +1984,8 @@ class $$BlobFilesTableTableManager extends RootTableManager<
             expiration: expiration,
             created: created,
             updated: updated,
+            size: size,
+            lastAccess: lastAccess,
           ),
           withReferenceMapper: (p0) => p0
               .map((e) => (

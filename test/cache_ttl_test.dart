@@ -340,12 +340,15 @@ void main() {
       expect(deleted, 3);
     });
 
-    test('runMaintenance does nothing when cacheTtl is null', () async {
+    test(
+        'with cacheTtl null, runMaintenance keeps old records and expired '
+        'files but applies the file cache limit', () async {
       // Create a client with NO TTL (null)
       final noTtlClient = $PocketBase.database(
         url,
         connection: DatabaseConnection(NativeDatabase.memory()),
         cacheTtl: null, // Disabled
+        maxFileCacheBytes: 100 * 1024,
       );
 
       await noTtlClient.db.setSchema(
@@ -364,10 +367,26 @@ void main() {
       });
       await age(noTtlClient.db, 'ancient_record', oldDate);
 
-      // Run maintenance (should skip)
+      // 120 KB of files, then an expired one: 130 KB, over the limit.
+      for (var i = 0; i < 12; i++) {
+        await noTtlClient.db.setFile('file_$i', 'a.jpg', Uint8List(10 * 1024));
+      }
+      await noTtlClient.db.setFile(
+          'ancient_record', 'old.jpg', Uint8List(10 * 1024),
+          expires: oldDate);
+
       final result = await noTtlClient.runMaintenance();
 
-      expect(result.totalDeleted, 0);
+      expect(result.deletedRecords, 0);
+      expect(result.deletedFiles, 0);
+      // Down to 90% of the limit, least recently used first.
+      expect(result.evictedFiles, 4);
+      expect(await noTtlClient.db.fileCacheBytes(), 90 * 1024);
+      expect(
+          await noTtlClient.db
+              .getFile('ancient_record', 'old.jpg')
+              .getSingleOrNull(),
+          isNotNull);
 
       // Verify record still exists
       final record = await noTtlClient.collection('todo').getOneOrNull(

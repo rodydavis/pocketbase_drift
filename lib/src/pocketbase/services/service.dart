@@ -204,6 +204,7 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
     try {
       await client.db.setFile(recordId, filename, bytes);
       client.logger.fine('Cached file blob "$filename" for record "$recordId"');
+      unawaited(client.enforceFileCacheLimit());
     } catch (e) {
       client.logger.warning(
           'Error caching file blob "$filename" for record "$recordId"', e);

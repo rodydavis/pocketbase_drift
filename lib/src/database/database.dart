@@ -103,6 +103,12 @@ const _ownerVisibleSql =
 const _notDeletedSql =
     "(json_extract(data, '\$.deleted') IS NULL OR json_extract(data, '\$.deleted') = 0)";
 
+/// Record ids whose blobs the LRU never evicts: pending changes (their
+/// uploads are not on the server yet) and local-only rows.
+const _pinnedRecordsSql = "SELECT id FROM services WHERE service != 'schema' "
+    "AND (COALESCE(json_extract(data, '\$.synced'), 1) = 0 "
+    "OR COALESCE(json_extract(data, '\$.noSync'), 0) = 1)";
+
 /// PocketBase timestamp format with millisecond precision:
 /// `2026-11-04 10:00:00.123Z`.
 String pbTimestamp([DateTime? time]) {
@@ -154,6 +160,12 @@ class DataBase extends _$DataBase {
   MigrationStrategy get migration {
     return MigrationStrategy(
       onCreate: (Migrator m) async {
+        // Lets [compact] return the pages of evicted blobs to the file
+        // system. The VACUUM applies the mode also when the connection setup
+        // already wrote the header (WAL); the database is still empty, so it
+        // is cheap. Runs in every executor (native isolate, web worker).
+        await customStatement('PRAGMA auto_vacuum = INCREMENTAL');
+        await customStatement('VACUUM');
         await m.createAll();
       },
       onUpgrade: (Migrator m, int from, int to) async {
@@ -173,6 +185,17 @@ class DataBase extends _$DataBase {
               .write(ServicesCompanion(cachedAt: Value(DateTime.now())));
           await m.createIndex(idxServicesService);
           await m.createIndex(idxBlobFilesRecord);
+          if (from >= 2) {
+            // Blob cache LRU: size and last access of existing blobs.
+            await m.addColumn(blobFiles, blobFiles.size);
+            await m.addColumn(blobFiles, blobFiles.lastAccess);
+            await customUpdate(
+              'UPDATE BlobFiles SET size = length(data), lastAccess = ?',
+              variables: [Variable<DateTime>(DateTime.now())],
+              updates: {blobFiles},
+            );
+          }
+          await m.createIndex(idxBlobFilesAccess);
         }
       },
     );
@@ -1602,7 +1625,9 @@ class DataBase extends _$DataBase {
         await (update(blobFiles)
               ..where((t) =>
                   t.recordId.equals(recordId) & t.filename.equals(local)))
-            .write(BlobFilesCompanion(filename: Value(match)));
+            // Uploaded just now: the young end of the LRU order.
+            .write(BlobFilesCompanion(
+                filename: Value(match), lastAccess: Value(DateTime.now())));
       }
     }
     return renamed;
@@ -1687,26 +1712,32 @@ class DataBase extends _$DataBase {
           tbl.recordId.equals(recordId) & tbl.filename.equals(filename));
   }
 
-  Future<BlobFile> setFile(
+  /// Stores [data] as the blob [filename] of [recordId], replacing an
+  /// existing blob of that name.
+  Future<void> setFile(
     String recordId,
     String filename,
     Uint8List data, {
     DateTime? expires,
   }) async {
-    return transaction(() async {
+    await transaction(() async {
       await (delete(blobFiles)
             ..where((tbl) =>
                 tbl.recordId.equals(recordId) & tbl.filename.equals(filename)))
           .go();
+      final now = DateTime.now();
       final item = BlobFilesCompanion.insert(
         filename: filename,
         data: data,
         recordId: recordId,
         expiration: expires != null ? Value(expires) : const Value.absent(),
-        created: Value(DateTime.now().toUtc().toIso8601String()),
-        updated: Value(DateTime.now().toUtc().toIso8601String()),
+        created: Value(now.toUtc().toIso8601String()),
+        updated: Value(now.toUtc().toIso8601String()),
+        size: Value(data.length),
+        lastAccess: Value(now),
       );
-      return into(blobFiles).insertReturning(item);
+      // No RETURNING: it would copy the blob back from the database isolate.
+      await into(blobFiles).insert(item);
     });
   }
 
@@ -1720,6 +1751,91 @@ class DataBase extends _$DataBase {
   /// Returns all cached file blobs for a given record.
   Selectable<BlobFile> getFilesForRecord(String recordId) {
     return select(blobFiles)..where((tbl) => tbl.recordId.equals(recordId));
+  }
+
+  /// Marks blob [id] as used now (LRU order).
+  Future<void> touchFile(int id) => customUpdate(
+        'UPDATE BlobFiles SET lastAccess = ? WHERE id = ?',
+        variables: [Variable<DateTime>(DateTime.now()), Variable<int>(id)],
+        updates: {blobFiles},
+      );
+
+  /// Total byte size of all cached blobs (pinned ones included).
+  Future<int> fileCacheBytes() async => (await customSelect(
+        'SELECT COALESCE(SUM(size), 0) AS t FROM BlobFiles',
+        readsFrom: {blobFiles},
+      ).getSingle())
+          .read<int>('t');
+
+  /// When the blob cache holds more than [maxBytes], deletes least recently
+  /// used blobs until it holds at most [targetBytes] (default [maxBytes]).
+  /// Never deletes blobs of pending or local-only (`noSync`) records: they
+  /// are the only copy. Returns the number of blobs and bytes deleted and
+  /// the bytes that remain (more than [maxBytes] when pinned blobs alone
+  /// exceed it).
+  Future<({int count, int bytes, int remaining})> evictFiles({
+    required int maxBytes,
+    int? targetBytes,
+  }) {
+    return transaction(() async {
+      final total = await fileCacheBytes();
+      if (total <= maxBytes) return (count: 0, bytes: 0, remaining: total);
+      final excess = total - (targetBytes ?? maxBytes);
+      // Running total in LRU order; a blob goes while the bytes before it
+      // are still short of the excess.
+      final victims = await customSelect(
+        'SELECT id, size FROM ('
+        '  SELECT id, size, SUM(size) OVER '
+        '    (ORDER BY COALESCE(lastAccess, 0), id) - size AS before'
+        '  FROM BlobFiles WHERE recordId NOT IN ($_pinnedRecordsSql)'
+        ') WHERE before < ?',
+        variables: [Variable<int>(excess)],
+        readsFrom: {blobFiles, services},
+      ).get();
+      var bytes = 0;
+      final ids = <int>[];
+      for (final r in victims) {
+        ids.add(r.read<int>('id'));
+        bytes += r.read<int>('size');
+      }
+      for (var i = 0; i < ids.length; i += 500) {
+        final chunk = ids.sublist(i, math.min(i + 500, ids.length));
+        await (delete(blobFiles)..where((t) => t.id.isIn(chunk))).go();
+      }
+      if (ids.isNotEmpty) {
+        logger.fine('Evicted ${ids.length} blobs ($bytes bytes) from the '
+            'file cache');
+      }
+      return (count: ids.length, bytes: bytes, remaining: total - bytes);
+    });
+  }
+
+  /// Returns free pages to the file system and truncates the WAL. Returns
+  /// the number of pages released.
+  ///
+  /// By default this releases at most [maxPages] pages with
+  /// `PRAGMA incremental_vacuum`; databases created before 0.7.0 do not use
+  /// incremental auto-vacuum, so this releases nothing for them. [full]
+  /// rebuilds the whole file with `VACUUM` and switches it to incremental
+  /// auto-vacuum: it can take seconds for large files and needs free disk
+  /// space about the size of the database.
+  Future<int> compact({int maxPages = 4096, bool full = false}) async {
+    Future<int> pragma(String name) async =>
+        (await customSelect('PRAGMA $name').getSingle()).data.values.first
+            as int;
+    final before = await pragma('page_count');
+    if (full) {
+      await customStatement('PRAGMA auto_vacuum = INCREMENTAL');
+      await customStatement('VACUUM');
+    } else {
+      if (await pragma('auto_vacuum') != 2) return 0;
+      await customStatement('PRAGMA incremental_vacuum($maxPages)');
+    }
+    final after = await pragma('page_count');
+    await customStatement('PRAGMA wal_checkpoint(TRUNCATE)');
+    final released = before - after;
+    if (released > 0) logger.info('Released $released database pages');
+    return released;
   }
 
   // -- Cached responses ----------------------------------------------------

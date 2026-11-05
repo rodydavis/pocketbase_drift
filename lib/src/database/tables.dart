@@ -26,6 +26,8 @@ class Services extends Table {
 
 @DataClassName('BlobFile')
 @TableIndex(name: 'idx_blob_files_record', columns: {#recordId, #filename})
+@TableIndex(
+    name: 'idx_blob_files_access', columns: {#lastAccess, #size, #recordId})
 class BlobFiles extends Table with AutoIncrementingPrimaryKey {
   TextColumn get recordId => text().references(Services, #id)();
   TextColumn get filename => text()();
@@ -33,6 +35,12 @@ class BlobFiles extends Table with AutoIncrementingPrimaryKey {
   DateTimeColumn get expiration => dateTime().nullable()();
   TextColumn get created => text().nullable()();
   TextColumn get updated => text().nullable()();
+
+  /// Byte length of [data], so cache size queries never read the blobs.
+  IntColumn get size => integer().withDefault(const Constant(0))();
+
+  /// Last write or cache hit; LRU eviction removes the oldest first.
+  DateTimeColumn get lastAccess => dateTime().nullable()();
 }
 
 @DataClassName('CachedResponse')

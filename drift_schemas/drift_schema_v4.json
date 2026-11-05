@@ -268,6 +268,26 @@
             "default_dart": null,
             "default_client_dart": null,
             "dsl_features": []
+          },
+          {
+            "name": "size",
+            "getter_name": "size",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": "const CustomExpression('0')",
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "lastAccess",
+            "getter_name": "lastAccess",
+            "moor_type": "dateTime",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
           }
         ],
         "is_virtual": false,
@@ -363,6 +383,33 @@
           }
         ]
       }
+    },
+    {
+      "id": 9,
+      "references": [
+        5
+      ],
+      "type": "index",
+      "data": {
+        "on": 5,
+        "name": "idx_blob_files_access",
+        "sql": null,
+        "unique": false,
+        "columns": [
+          {
+            "column": "lastAccess",
+            "order_by": null
+          },
+          {
+            "column": "size",
+            "order_by": null
+          },
+          {
+            "column": "recordId",
+            "order_by": null
+          }
+        ]
+      }
     }
   ],
   "fixed_sql": [
@@ -416,7 +463,7 @@
       "sql": [
         {
           "dialect": "sqlite",
-          "sql": "CREATE TABLE IF NOT EXISTS \"BlobFiles\" (\"id\" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, \"recordId\" TEXT NOT NULL REFERENCES Services (id), \"filename\" TEXT NOT NULL, \"data\" BLOB NOT NULL, \"expiration\" INTEGER NULL, \"created\" TEXT NULL, \"updated\" TEXT NULL);"
+          "sql": "CREATE TABLE IF NOT EXISTS \"BlobFiles\" (\"id\" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, \"recordId\" TEXT NOT NULL REFERENCES Services (id), \"filename\" TEXT NOT NULL, \"data\" BLOB NOT NULL, \"expiration\" INTEGER NULL, \"created\" TEXT NULL, \"updated\" TEXT NULL, \"size\" INTEGER NOT NULL DEFAULT 0, \"lastAccess\" INTEGER NULL);"
         }
       ]
     },
@@ -444,6 +491,15 @@
         {
           "dialect": "sqlite",
           "sql": "CREATE INDEX idx_blob_files_record ON BlobFiles (recordId, filename)"
+        }
+      ]
+    },
+    {
+      "name": "idx_blob_files_access",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE INDEX idx_blob_files_access ON BlobFiles (lastAccess, size, recordId)"
         }
       ]
     }

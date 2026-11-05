@@ -3,6 +3,7 @@ import 'dart:collection' show SplayTreeMap;
 import 'dart:convert';
 
 import 'package:drift/drift.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' show Client;
 import 'package:http/http.dart' as http;
@@ -19,6 +20,7 @@ class $PocketBase extends PocketBase with WidgetsBindingObserver {
     this.requestPolicy = RequestPolicy.cacheAndNetwork,
     this.localSyncRetryCount = 5,
     this.requestTimeout = const Duration(seconds: 15),
+    this.maxFileCacheBytes = defaultMaxFileCacheBytes,
     Duration connectivityProbeTimeout = const Duration(seconds: 5),
     Duration connectivityOnlineProbeInterval = const Duration(seconds: 60),
     Duration connectivityOfflineBackoffMin = const Duration(seconds: 5),
@@ -57,6 +59,7 @@ class $PocketBase extends PocketBase with WidgetsBindingObserver {
     Client Function()? httpClientFactory,
     int localSyncRetryCount = 5,
     Duration? requestTimeout = const Duration(seconds: 15),
+    int? maxFileCacheBytes = defaultMaxFileCacheBytes,
     Duration connectivityProbeTimeout = const Duration(seconds: 5),
     Duration connectivityOnlineProbeInterval = const Duration(seconds: 60),
     Duration connectivityOfflineBackoffMin = const Duration(seconds: 5),
@@ -75,6 +78,7 @@ class $PocketBase extends PocketBase with WidgetsBindingObserver {
       httpClientFactory: httpClientFactory,
       localSyncRetryCount: localSyncRetryCount,
       requestTimeout: requestTimeout,
+      maxFileCacheBytes: maxFileCacheBytes,
       connectivityProbeTimeout: connectivityProbeTimeout,
       connectivityOnlineProbeInterval: connectivityOnlineProbeInterval,
       connectivityOfflineBackoffMin: connectivityOfflineBackoffMin,
@@ -135,6 +139,71 @@ class $PocketBase extends PocketBase with WidgetsBindingObserver {
   /// );
   /// ```
   final RequestPolicy requestPolicy;
+
+  /// Default of [maxFileCacheBytes]: 128 MB, 32 MB on the web (where the
+  /// IndexedDB storage fallback keeps the whole database in memory).
+  static const int defaultMaxFileCacheBytes =
+      kIsWeb ? 32 * 1024 * 1024 : 128 * 1024 * 1024;
+
+  /// Size limit in bytes of the file blob cache: downloaded files, thumbs
+  /// and the cached copies of uploaded files.
+  ///
+  /// When a blob write makes the cache larger than the limit, the least
+  /// recently used blobs are deleted until the cache holds at most 90% of
+  /// the limit. [runMaintenance] applies the limit too. Blobs of pending
+  /// and local-only (`noSync`) records are never deleted: they are the only
+  /// copy. A downloaded file larger than the limit is returned but not
+  /// cached. `null` disables the limit.
+  final int? maxFileCacheBytes;
+
+  Future<void>? _evicting;
+  bool _evictAgain = false;
+
+  /// Cache size after an eviction that pinned blobs kept above the limit.
+  /// Further runs wait until the cache grows by a tenth of the limit or a
+  /// sync pass ends, so a large offline queue does not rescan on every
+  /// write.
+  int? _evictStuckAt;
+
+  /// Applies [maxFileCacheBytes]; the package calls it after each blob
+  /// write. Concurrent calls share one run; a call during a run schedules
+  /// one more run.
+  Future<void> enforceFileCacheLimit() {
+    final max = maxFileCacheBytes;
+    if (max == null || _closed) return Future.value();
+    if (_evicting != null) {
+      _evictAgain = true;
+      return _evicting!;
+    }
+    return _evicting = () async {
+      try {
+        do {
+          _evictAgain = false;
+          final stuck = _evictStuckAt;
+          if (stuck != null && await db.fileCacheBytes() < stuck + max ~/ 10) {
+            continue;
+          }
+          await _evictFiles(max);
+        } while (_evictAgain && !_closed);
+      } catch (e) {
+        logger.warning('File cache eviction failed', e);
+      } finally {
+        _evicting = null;
+      }
+    }();
+  }
+
+  Future<({int count, int bytes, int remaining})> _evictFiles(int max) async {
+    final result =
+        await db.evictFiles(maxBytes: max, targetBytes: max * 9 ~/ 10);
+    final stuck = result.remaining > max;
+    if (stuck && _evictStuckAt == null) {
+      logger.info('File cache holds ${result.remaining} bytes of unsynced '
+          'files, more than maxFileCacheBytes ($max)');
+    }
+    _evictStuckAt = stuck ? result.remaining : null;
+    return result;
+  }
 
   StreamSubscription<LogRecord>? _logSubscription;
 
@@ -223,6 +292,11 @@ class $PocketBase extends PocketBase with WidgetsBindingObserver {
       }
     } finally {
       _syncPass = null;
+      // Synced uploads are no longer pinned.
+      if (_evictStuckAt != null) {
+        _evictStuckAt = null;
+        unawaited(enforceFileCacheLimit());
+      }
     }
   }
 
@@ -319,7 +393,12 @@ class $PocketBase extends PocketBase with WidgetsBindingObserver {
   /// - Cached responses older than [cacheTtl]
   /// - Expired file blobs, and blobs of records no longer cached
   ///
-  /// You can optionally override the TTL for this specific run.
+  /// You can optionally override the TTL for this specific run. With a
+  /// `null` TTL these steps are skipped.
+  ///
+  /// Independent of the TTL, it applies [maxFileCacheBytes] and returns up
+  /// to 16 MB of free database pages to the file system (databases created
+  /// by 0.7.0 or later; see [DataBase.compact]).
   ///
   /// **Note**: This only affects synced data. Unsynced local changes,
   /// local-only records, and pending deletions are preserved.
@@ -335,40 +414,36 @@ class $PocketBase extends PocketBase with WidgetsBindingObserver {
   /// ```
   Future<MaintenanceResult> runMaintenance({Duration? ttl}) async {
     final effectiveTtl = ttl ?? cacheTtl;
+    var deletedRecords = 0, deletedResponses = 0, deletedFiles = 0;
 
     if (effectiveTtl == null) {
-      logger.info('Maintenance skipped: TTL is disabled (null)');
-      return const MaintenanceResult(
-        deletedRecords: 0,
-        deletedResponses: 0,
-        deletedFiles: 0,
-      );
+      logger.info('Maintenance: TTL is disabled (null), expiry skipped');
+    } else {
+      final cutoffDate = DateTime.now().toUtc().subtract(effectiveTtl);
+      logger.info('Running maintenance (TTL: ${effectiveTtl.inDays} days)...');
+      deletedRecords = await db.cleanupExpiredRecords(cutoffDate: cutoffDate);
+      deletedResponses =
+          await db.cleanupExpiredResponses(cutoffDate: cutoffDate);
+      deletedFiles = await db.cleanupExpiredFiles(orphanCutoff: cutoffDate);
     }
-
-    final cutoffDate = DateTime.now().toUtc().subtract(effectiveTtl);
-
-    logger.info('Running maintenance (TTL: ${effectiveTtl.inDays} days)...');
-
-    final deletedRecords =
-        await db.cleanupExpiredRecords(cutoffDate: cutoffDate);
-    final deletedResponses =
-        await db.cleanupExpiredResponses(cutoffDate: cutoffDate);
-    final deletedFiles = await db.cleanupExpiredFiles(orphanCutoff: cutoffDate);
+    final max = maxFileCacheBytes;
+    final evicted = max == null
+        ? (count: 0, bytes: 0, remaining: 0)
+        : await _evictFiles(max);
+    final releasedPages = await db.compact();
 
     final result = MaintenanceResult(
       deletedRecords: deletedRecords,
       deletedResponses: deletedResponses,
       deletedFiles: deletedFiles,
+      evictedFiles: evicted.count,
+      evictedBytes: evicted.bytes,
     );
 
-    if (result.totalDeleted > 0) {
-      logger.info(
-          'Maintenance complete: ${result.totalDeleted} items cleaned up '
-          '($deletedRecords records, $deletedResponses responses, $deletedFiles files)');
-    } else {
-      logger.info('Maintenance complete: no expired items to clean up');
-    }
-
+    logger.info('Maintenance complete: ${result.totalDeleted} items cleaned '
+        'up ($deletedRecords records, $deletedResponses responses, '
+        '$deletedFiles expired files, ${evicted.count} evicted files of '
+        '${evicted.bytes} bytes, $releasedPages pages released)');
     return result;
   }
 
@@ -628,6 +703,8 @@ class MaintenanceResult {
     required this.deletedRecords,
     required this.deletedResponses,
     required this.deletedFiles,
+    this.evictedFiles = 0,
+    this.evictedBytes = 0,
   });
 
   /// Number of expired synced records that were deleted.
@@ -636,13 +713,22 @@ class MaintenanceResult {
   /// Number of expired cached responses that were deleted.
   final int deletedResponses;
 
-  /// Number of expired file blobs that were deleted.
+  /// Number of expired file blobs and blobs of records no longer cached
+  /// that were deleted.
   final int deletedFiles;
 
+  /// Number of least recently used file blobs deleted to apply
+  /// [$PocketBase.maxFileCacheBytes].
+  final int evictedFiles;
+
+  /// Bytes of the blobs counted in [evictedFiles].
+  final int evictedBytes;
+
   /// Total number of items deleted across all categories.
-  int get totalDeleted => deletedRecords + deletedResponses + deletedFiles;
+  int get totalDeleted =>
+      deletedRecords + deletedResponses + deletedFiles + evictedFiles;
 
   @override
   String toString() =>
-      'MaintenanceResult(records: $deletedRecords, responses: $deletedResponses, files: $deletedFiles, total: $totalDeleted)';
+      'MaintenanceResult(records: $deletedRecords, responses: $deletedResponses, files: $deletedFiles, evicted: $evictedFiles ($evictedBytes bytes), total: $totalDeleted)';
 }
