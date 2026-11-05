@@ -1303,9 +1303,11 @@ class DataBase extends _$DataBase {
   /// Deletes [id] locally. With [sync] the deletion is queued as a tombstone;
   /// a pending create that never reached the server is removed outright,
   /// unless [createInFlight] (its push is running, so the record may exist
-  /// on the server by now): then it becomes a tombstone too.
+  /// on the server by now): then it becomes a tombstone too. A record that
+  /// is not cached gets a bare tombstone (id only), so the deletion still
+  /// syncs.
   ///
-  /// Returns false when the record is not cached.
+  /// Returns false when the record is not cached and [sync] is false.
   Future<bool> writeLocalDelete(
     String service,
     String id, {
@@ -1315,7 +1317,23 @@ class DataBase extends _$DataBase {
   }) =>
       transaction(() async {
         final existing = await rowById(service, id);
-        if (existing == null) return false;
+        if (existing == null) {
+          if (!sync) return false;
+          await $create(
+            service,
+            {
+              'id': id,
+              RecordMeta.deleted: true,
+              RecordMeta.synced: false,
+              RecordMeta.isNew: false,
+              RecordMeta.noSync: false,
+              RecordMeta.pendingRev: 1,
+              if (owner != null) RecordMeta.pendingOwner: owner,
+            },
+            validate: false,
+          );
+          return true;
+        }
         final wasPending = RecordMeta.isPending(existing);
         if (wasPending) _checkOwner(service, existing, owner);
         final isNew = wasPending && RecordMeta.flag(existing[RecordMeta.isNew]);

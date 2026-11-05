@@ -620,8 +620,9 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
   }) =>
       _updateLocal(id, body, files, sync: sync);
 
-  /// Deletes [id] in the cache only; with [sync] the deletion is queued.
-  /// Returns false when the record is not cached.
+  /// Deletes [id] in the cache only; with [sync] the deletion is queued
+  /// (also for a record that is not cached). Returns false when the record
+  /// is not cached and [sync] is false.
   Future<bool> writeLocalDelete(String id, {required bool sync}) =>
       client.db.writeLocalDelete(service, id,
           sync: sync, owner: _owner, createInFlight: _isPushing(id));
@@ -959,14 +960,9 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
         } else {
           connectivity.probeSoon();
         }
-        final queued = await writeLocalDelete(id, sync: true);
-        if (!queued) {
-          client.logger.warning(
-              'Cannot delete $service/$id while offline: record is not cached locally.');
-        } else if (busy) {
-          // Queued behind the running push of the record.
-          unawaited(pushPending(id));
-        }
+        await writeLocalDelete(id, sync: true);
+        // Queued behind the running push of the record.
+        if (busy) unawaited(pushPending(id));
         return;
 
       case RequestPolicy.cacheFirst:
