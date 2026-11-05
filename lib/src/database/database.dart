@@ -8,6 +8,7 @@ import 'package:pocketbase/pocketbase.dart';
 import 'package:pocketbase_drift/src/database/filter_parser.dart';
 
 import 'tables.dart';
+import 'service_updates.dart';
 import '../pocketbase/services/sync_support.dart';
 
 part 'database.g.dart';
@@ -213,6 +214,69 @@ class DataBase extends _$DataBase {
         () => runZoned(action, zoneValues: {_inTransaction: true}),
         requireNew: requireNew,
       );
+
+  // -- Per-collection stream updates ----------------------------------------
+
+  StreamQueryUpdateRules? _serviceRules;
+
+  /// Adds `services/<collection>` updates for the writes of this class
+  /// (see service_updates.dart), so record watchers re-run only for their
+  /// own and their expanded collections.
+  @override
+  StreamQueryUpdateRules get streamUpdateRules => _serviceRules ??=
+      ServiceUpdateRules(super.streamUpdateRules, services.actualTableName);
+
+  final Map<String, ServiceTopic> _topics = {};
+
+  ServiceTopic _topic(String name) =>
+      _topics.putIfAbsent(name, () => ServiceTopic(this, name));
+
+  /// Runs a batch whose `services` writes belong to [service].
+  Future<void> _batchFor(
+          String service, FutureOr<void> Function(Batch batch) fill) =>
+      tagged(service, () => batch(fill));
+
+  /// Stream dependencies of a `$query` on [service]: the collection and
+  /// untagged writes; with [expand] also the schema (expand resolution) and
+  /// every collection on the expand paths of [schema].
+  Set<ResultSetImplementation> _watchTables(String service,
+      [String? expand,
+      ({
+        Map<String, CollectionModel> byName,
+        Map<String, CollectionModel> byId
+      })? schema]) {
+    final out = <ResultSetImplementation>{
+      _topic(serviceTableName(service)),
+      _topic(anyServiceTableName),
+    };
+    if (expand == null || schema == null) return out;
+    out.add(_topic(serviceTableName('schema')));
+    void walk(String collection, Iterable<String> paths, int depth) {
+      final model = schema.byName[collection];
+      if (model == null || depth > 6) return;
+      final nested = <String, List<String>>{};
+      for (final raw in paths) {
+        final path = raw.trim();
+        if (path.isEmpty) continue;
+        final dot = path.indexOf('.');
+        nested
+            .putIfAbsent(dot == -1 ? path : path.substring(0, dot), () => [])
+            .addAll([if (dot != -1) path.substring(dot + 1)]);
+      }
+      for (final entry in nested.entries) {
+        final field =
+            model.fields.where((f) => f.name == entry.key).firstOrNull;
+        if (field == null || field.type != 'relation') continue;
+        final target = schema.byId[field.data['collectionId']];
+        if (target == null) continue;
+        out.add(_topic(serviceTableName(target.name)));
+        walk(target.name, entry.value, depth + 1);
+      }
+    }
+
+    walk(service, expand.split(','), 0);
+    return out;
+  }
 
   // -- Schema cache --------------------------------------------------------
 
@@ -437,12 +501,29 @@ class DataBase extends _$DataBase {
     final rows = customSelect(
       query,
       variables: variables,
-      readsFrom: {services},
+      readsFrom: _watchTables(service),
     ).map(parseRow);
     if (expand == null || expand.trim().isEmpty) return rows;
     return _ExpandedSelectable(
       rows,
       (records) => _expandRecords(service, records, expand, 0),
+      (schemaChanged) async {
+        // The schema rows changed; the cached copy may not be cleared yet.
+        if (schemaChanged) _invalidateSchema('schema');
+        final tables = _watchTables(service, expand, await _loadSchema());
+        // Drift shares streams by SQL and arguments, not by readsFrom: name
+        // the dependencies so a plain watcher of the same query is not
+        // reused for this one.
+        final names = tables.map((t) => t.entityName).toList()..sort();
+        final sql = '$query /* reads ${names.join(' ')} */';
+        return (
+          sql,
+          customSelect(sql, variables: variables, readsFrom: tables)
+              .map(parseRow),
+        );
+      },
+      () => tableUpdates(
+          TableUpdateQuery.onTableName(serviceTableName('schema'))),
     );
   }
 
@@ -782,10 +863,12 @@ class DataBase extends _$DataBase {
       cachedAt: Value(DateTime.now()),
     );
 
-    final insertedService = await into(services).insertReturning(
-      item,
-      onConflict: DoUpdate((old) => item),
-    );
+    final insertedService = await tagged(
+        service,
+        () => into(services).insertReturning(
+              item,
+              onConflict: DoUpdate((old) => item),
+            ));
     _invalidateSchema(service);
 
     await _cacheExpandedRecords(service, input);
@@ -880,10 +963,12 @@ class DataBase extends _$DataBase {
     await transaction(() async {
       // Every blob of the record (all fields, thumbnails, pending uploads).
       await (delete(blobFiles)..where((t) => t.recordId.equals(id))).go();
-      await (delete(services)
-            ..where((r) => r.service.equals(service))
-            ..where((r) => r.id.equals(id)))
-          .go();
+      await tagged(
+          service,
+          (delete(services)
+                ..where((r) => r.service.equals(service))
+                ..where((r) => r.id.equals(id)))
+              .go);
     });
     _invalidateSchema(service);
   }
@@ -893,14 +978,14 @@ class DataBase extends _$DataBase {
     List<String>? ids,
   }) async {
     if (ids != null) {
-      await batch((b) async {
+      await _batchFor(service, (b) async {
         for (final id in ids) {
           await $delete(service, id, batch: b);
         }
       });
     } else {
       final query = delete(services)..where((r) => r.service.equals(service));
-      await query.go();
+      await tagged(service, query.go);
     }
     _invalidateSchema(service);
   }
@@ -912,9 +997,10 @@ class DataBase extends _$DataBase {
   }) async {
     await transaction(() async {
       if (removeAll) {
-        await (delete(services)..where((r) => r.service.equals(service))).go();
+        await tagged(service,
+            (delete(services)..where((r) => r.service.equals(service))).go);
       }
-      await batch((b) {
+      await _batchFor(service, (b) {
         for (final item in items) {
           final id = item['id'] as String?;
           if (id == null || id.isEmpty) {
@@ -1033,7 +1119,7 @@ class DataBase extends _$DataBase {
         }
 
         if (rows.isNotEmpty) {
-          await batch((b) {
+          await _batchFor(service, (b) {
             for (final row in rows) {
               b.insert(services, row, onConflict: DoUpdate((old) => row));
             }
@@ -1946,15 +2032,64 @@ class DataBase extends _$DataBase {
 /// A [Selectable] that post-processes the complete result list (used for
 /// batched relation expansion instead of per-row lookups).
 class _ExpandedSelectable extends Selectable<Map<String, dynamic>> {
-  _ExpandedSelectable(this._rows, this._expand);
+  _ExpandedSelectable(
+      this._rows, this._expand, this._watchRows, this._schemaChanges);
 
   final Selectable<Map<String, dynamic>> _rows;
   final Future<List<Map<String, dynamic>>> Function(List<Map<String, dynamic>>)
       _expand;
 
+  /// The row query to watch and its SQL. Its dependencies come from the
+  /// schema, so it is built again when the schema changes.
+  final Future<(String, Selectable<Map<String, dynamic>>)> Function(
+      bool schemaChanged) _watchRows;
+
+  /// Updates of the `schema` collection.
+  final Stream<Object?> Function() _schemaChanges;
+
   @override
   Future<List<Map<String, dynamic>>> get() async => _expand(await _rows.get());
 
   @override
-  Stream<List<Map<String, dynamic>>> watch() => _rows.watch().asyncMap(_expand);
+  Stream<List<Map<String, dynamic>>> watch() => Stream.multi((controller) {
+        StreamSubscription<List<Map<String, dynamic>>>? rows;
+        String? sql;
+        var generation = 0;
+        var cancelled = false;
+
+        Future<void> attach(bool schemaChanged) async {
+          final current = ++generation;
+          try {
+            final (nextSql, query) = await _watchRows(schemaChanged);
+            if (cancelled || current != generation || nextSql == sql) return;
+            sql = nextSql;
+            final previous = rows;
+            rows = query
+                .watch()
+                .asyncMap(_expand)
+                .listen(controller.add, onError: controller.addError);
+            if (controller.isPaused) rows!.pause();
+            await previous?.cancel();
+          } catch (e, st) {
+            if (!cancelled) controller.addError(e, st);
+          }
+        }
+
+        final schema = _schemaChanges().listen((_) => attach(true));
+        attach(false);
+        controller
+          ..onPause = () {
+            rows?.pause();
+            schema.pause();
+          }
+          ..onResume = () {
+            rows?.resume();
+            schema.resume();
+          }
+          ..onCancel = () async {
+            cancelled = true;
+            await schema.cancel();
+            await rows?.cancel();
+          };
+      }, isBroadcast: true);
 }
