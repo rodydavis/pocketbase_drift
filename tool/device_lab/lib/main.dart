@@ -189,11 +189,15 @@ Future<void> realtimeBurst({required bool explicitBackground}) async {
       explicitBackground: explicitBackground);
   final posts = await c.collection('posts').getFullList(expand: 'author');
   var emissions = 0;
+  var feed = <RecordModel>[];
   final subs = [
     c
         .collection('posts')
         .watchRecords(expand: 'author', sort: '-created')
-        .listen((_) => emissions++),
+        .listen((records) {
+      emissions++;
+      feed = records;
+    }),
     c.collection('posts').watchRecords(sort: '-created').listen((_) {}),
     c.collection('posts').watchRecords(filter: 'likes > 3').listen((_) {}),
     c.collection('posts').watchRecords(limit: 10).listen((_) {}),
@@ -203,13 +207,15 @@ Future<void> realtimeBurst({required bool explicitBackground}) async {
       .push(MaterialPageRoute<void>(builder: (_) => const SpinnerPage()));
   await Future<void>.delayed(const Duration(milliseconds: 500));
   emissions = 0;
+  // Unique values per run: the backend keeps its data between runs.
+  final stamp = DateTime.now().millisecondsSinceEpoch % 100000;
   final lag = LoopLag()..start();
   final frames = FrameStats()..start();
   for (var i = 0; i < 30; i++) {
     await labPost('/mutate', {
       'collection': 'posts',
       'id': posts[i].id,
-      'data': {'likes': 100 + i},
+      'data': {'likes': stamp + i},
     });
   }
   await Future<void>.delayed(const Duration(seconds: 5));
@@ -219,8 +225,16 @@ Future<void> realtimeBurst({required bool explicitBackground}) async {
     await s.cancel();
   }
   navKey.currentState!.pop();
+  // Drift merges bursts (a newer update cancels a running query), so the
+  // emission count depends on timing; the final feed must hold every edit.
+  final likes = {for (final r in feed) r.id: r.data['likes']};
+  var correct = 0;
+  for (var i = 0; i < 30; i++) {
+    if (likes[posts[i].id] == stamp + i) correct++;
+  }
   log('realtime-burst conn=${connLabel(explicitBackground)}: 30 server edits, '
-      '4 watchers -> feed emissions=$emissions | $lag | $frames');
+      '4 watchers -> feed emissions=$emissions final feed correct=$correct/30 '
+      '| $lag | $frames');
   c.close();
 }
 
