@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -384,7 +385,8 @@ class $BatchService {
       ];
 
   /// Sends the batch once running pushes of its records are done and blocks
-  /// their pushes until the results are cached (see [runOnline]).
+  /// their pushes until the results are cached (see [runOnline]). Without
+  /// [cache] only records with queued local changes are updated.
   Future<List<$BatchResult>> _sendOnline(
     Map<String, dynamic> body,
     Map<String, dynamic> query,
@@ -392,8 +394,14 @@ class $BatchService {
     required bool cache,
   }) =>
       runOnline(client, _recordKeys, client.requestTimeout, () async {
+        final before = <String, Map<String, dynamic>?>{
+          for (final request in _requests)
+            if (request.recordId case final String id)
+              '${request.collection}/$id':
+                  await client.db.rowById(request.collection, id),
+        };
         final results = await _sendToServer(body, query, headers);
-        if (cache) await _syncResultsToCache(results);
+        await _syncResultsToCache(results, before: before, pendingOnly: !cache);
         return results;
       });
 
@@ -647,10 +655,16 @@ class $BatchService {
 
   /// Writes successful server results to the local cache. [revs] holds the
   /// pending revisions written by a `cacheFirst` send, so local changes made
-  /// while the batch was in flight are kept.
+  /// while the batch was in flight are kept. [before] holds the cached rows
+  /// of an online send taken before it: a pending field whose local value
+  /// changed meanwhile was edited after the batch and stays pending. With
+  /// [pendingOnly] (`networkOnly`) only records with a queued local change
+  /// are written, so the queue does not send superseded values.
   Future<void> _syncResultsToCache(
     List<$BatchResult> results, {
     Map<String, int?> revs = const {},
+    Map<String, Map<String, dynamic>?> before = const {},
+    bool pendingOnly = false,
   }) async {
     final requests = _requests;
     for (var i = 0; i < results.length && i < requests.length; i++) {
@@ -660,6 +674,10 @@ class $BatchService {
       if (!result.isSuccess || id == null) continue;
 
       try {
+        final row = await client.db.rowById(request.collection, id);
+        if (pendingOnly && (row == null || !RecordMeta.isPending(row))) {
+          continue;
+        }
         if (request.isDelete) {
           await client.db.$delete(request.collection, id);
           continue;
@@ -678,6 +696,9 @@ class $BatchService {
                 if (f.$2 != null) {'field': f.$1, 'name': f.$2},
             ],
             sentBody: request.body,
+            // Parts of an earlier queued change the batch did not carry
+            // still have to sync.
+            sentBodyOnly: true,
           );
         } else if (request.isCreate) {
           await client.db.upsertServerRecords(
@@ -686,14 +707,20 @@ class $BatchService {
             partial: request.fields?.isNotEmpty ?? false,
           );
         } else {
-          // Queued local changes of the fields this request set are older.
+          // Queued local changes of the fields this request set are older,
+          // unless they were made while the batch was in flight.
+          final prior = before[key];
+          bool editedMeanwhile(String field) =>
+              prior != null &&
+              row != null &&
+              jsonEncode(row[field]) != jsonEncode(prior[field]);
           await client.db.acceptServerWrite(
             request.collection,
             id,
             data,
             {
               for (final k in request.body.keys)
-                if (k != 'id') k,
+                if (k != 'id' && !editedMeanwhile(baseFieldName(k))) k,
               for (final f in request.files)
                 if (baseFieldName(f.$1) == f.$1) f.$1,
             },

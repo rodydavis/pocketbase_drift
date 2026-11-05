@@ -155,9 +155,22 @@ void main() {
     if (request.path == '/api/batch') {
       final results = <Map<String, dynamic>>[];
       for (final r in request.body['requests'] as List) {
-        final id = Uri.parse(r['url'] as String).pathSegments.last;
-        final body = (r['body'] as Map).cast<String, dynamic>();
-        results.add({'status': 200, 'body': patch(id, body)});
+        final url = Uri.parse(r['url'] as String).pathSegments;
+        final body = ((r['body'] as Map?) ?? const {}).cast<String, dynamic>();
+        switch (r['method']) {
+          case 'PATCH':
+            results.add({'status': 200, 'body': patch(url.last, body)});
+          case 'PUT':
+            final id = body['id'] as String;
+            server.putIfAbsent(id, () => record(id, {}));
+            results.add({
+              'status': 200,
+              'body': patch(id, {...body}..remove('id')),
+            });
+          case 'DELETE':
+            server.remove(url.last);
+            results.add({'status': 204, 'body': null});
+        }
       }
       return http.Response(jsonEncode(results), 200);
     }
@@ -173,6 +186,9 @@ void main() {
             jsonEncode(patch(id!, request.body, request)), 200);
       case 'GET':
         return http.Response(jsonEncode(existing), 200);
+      case 'DELETE':
+        server.remove(id);
+        return http.Response('', 204);
     }
     return http.Response('{}', 404);
   }
@@ -524,5 +540,175 @@ void main() {
     expect(edited[RecordMeta.baseUpdated], '2026-11-04 10:00:00.000Z');
     expect(edited[RecordMeta.pendingDeltas], isNull);
     expect(plain[RecordMeta.baseUpdated], '2026-11-04 10:00:00.000Z');
+  });
+
+  group('batch over a queued change', () {
+    /// Sends a batch and waits until a background (`cacheFirst`) send has
+    /// cached its results.
+    Future<void> sendBatch(
+        RequestPolicy policy, void Function($BatchService batch) add) async {
+      final batch = client.$createBatch();
+      add(batch);
+      await batch.send(requestPolicy: policy);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    }
+
+    for (final policy in [
+      RequestPolicy.cacheFirst,
+      RequestPolicy.cacheAndNetwork,
+      RequestPolicy.networkFirst,
+      RequestPolicy.networkOnly,
+    ]) {
+      test('${policy.name}: an earlier queued field still syncs', () async {
+        await seedSynced('rec_batch00001', {'plain_text': 'v0', 'number': 0});
+        await queue('rec_batch00001', {'plain_text': 'queued'});
+
+        await sendBatch(
+            policy,
+            (b) => b
+                .collection(_collection)
+                .update('rec_batch00001', body: {'number': 7}));
+        final between = (await row('rec_batch00001'))!;
+        expect(between[RecordMeta.pendingFields], ['plain_text']);
+        expect(between['plain_text'], 'queued');
+
+        await records().pushPending('rec_batch00001');
+        expect(writes().last.body, {'plain_text': 'queued'});
+        expect(server['rec_batch00001']!['plain_text'], 'queued');
+        expect(server['rec_batch00001']!['number'], 7);
+        final cached = (await row('rec_batch00001'))!;
+        expect(cached[RecordMeta.synced], isTrue);
+        expect(cached['number'], 7);
+      });
+
+      test('${policy.name}: an earlier queued increment is sent once',
+          () async {
+        await seedSynced('rec_batch00002', {'plain_text': 'v0', 'number': 10});
+        await queue('rec_batch00002', {'number+': 1});
+        otherDevice('rec_batch00002', {'number+': 5});
+
+        await sendBatch(
+            policy,
+            (b) => b
+                .collection(_collection)
+                .update('rec_batch00002', body: {'plain_text': 'batch'}));
+        await records().pushPending('rec_batch00002');
+
+        expect(writes().length, 2);
+        expect(writes().last.body, {'number+': 1});
+        expect(server['rec_batch00002']!['number'], 16);
+        expect(server['rec_batch00002']!['plain_text'], 'batch');
+        expect((await row('rec_batch00002'))!['number'], 16);
+      });
+
+      test('${policy.name}: the batch value of a queued field wins', () async {
+        await seedSynced('rec_batch00003', {'number': 0});
+        await queue('rec_batch00003', {'number': 5});
+
+        await sendBatch(
+            policy,
+            (b) => b
+                .collection(_collection)
+                .update('rec_batch00003', body: {'number': 7}));
+        await records().pushPending('rec_batch00003');
+
+        expect(writes().length, 1, reason: 'the old value is never sent');
+        expect(server['rec_batch00003']!['number'], 7);
+        final cached = (await row('rec_batch00003'))!;
+        expect(cached['number'], 7);
+        expect(cached[RecordMeta.synced], isTrue);
+      });
+    }
+
+    test('an upsert keeps an earlier queued field', () async {
+      await seedSynced('rec_batch00004', {'plain_text': 'v0', 'number': 0});
+      await queue('rec_batch00004', {'plain_text': 'queued'});
+
+      await sendBatch(
+          RequestPolicy.cacheAndNetwork,
+          (b) => b
+              .collection(_collection)
+              .upsert(body: {'id': 'rec_batch00004', 'number': 7}));
+      await records().pushPending('rec_batch00004');
+
+      expect(server['rec_batch00004']!['plain_text'], 'queued');
+      expect(server['rec_batch00004']!['number'], 7);
+    });
+
+    test('cacheFirst: an earlier queued upload is still sent', () async {
+      await seedSynced('rec_batch00005', {'number': 0, 'file_multi': []});
+      await queue('rec_batch00005', {}, files: [
+        ('file_multi+', 'mine.jpg', Uint8List.fromList([1]))
+      ]);
+
+      await sendBatch(
+          RequestPolicy.cacheFirst,
+          (b) => b
+              .collection(_collection)
+              .update('rec_batch00005', body: {'number': 7}));
+      await records().pushPending('rec_batch00005');
+
+      expect(writes().last.files.single.$1, 'file_multi+');
+      final files = server['rec_batch00005']!['file_multi'] as List;
+      expect(files.single, startsWith('mine_gen'));
+      expect(server['rec_batch00005']!['number'], 7);
+      expect((await row('rec_batch00005'))![RecordMeta.synced], isTrue);
+    });
+
+    test('cacheFirst: an edit made while the batch is in flight stays pending',
+        () async {
+      await seedSynced('rec_batch00006', {'plain_text': 'v0', 'number': 0});
+      final gate = gates['POST'] = Completer<void>();
+      final batch = client.$createBatch();
+      batch
+          .collection(_collection)
+          .update('rec_batch00006', body: {'number': 7});
+      await batch.send(requestPolicy: RequestPolicy.cacheFirst);
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      await queue('rec_batch00006', {'number': 9, 'plain_text': 'newer'});
+      gate.complete();
+      await records().pushPending('rec_batch00006');
+
+      expect(writes().last.body, {'number': 9, 'plain_text': 'newer'});
+      expect(server['rec_batch00006']!['number'], 9);
+      expect((await row('rec_batch00006'))![RecordMeta.synced], isTrue);
+    });
+
+    test(
+        'cacheAndNetwork: an edit of a batch field made in flight stays pending',
+        () async {
+      await seedSynced('rec_batch00007', {'number': 0});
+      final gate = gates['POST'] = Completer<void>();
+      final batch = client.$createBatch();
+      batch
+          .collection(_collection)
+          .update('rec_batch00007', body: {'number': 7});
+      final send = batch.send(requestPolicy: RequestPolicy.cacheAndNetwork);
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      await queue('rec_batch00007', {'number': 9});
+      gate.complete();
+      await send;
+
+      final between = (await row('rec_batch00007'))!;
+      expect(between[RecordMeta.pendingFields], ['number']);
+      expect(between['number'], 9);
+      await records().pushPending('rec_batch00007');
+      expect(server['rec_batch00007']!['number'], 9);
+    });
+
+    test('cacheAndNetwork: an earlier queued deletion still syncs', () async {
+      await seedSynced('rec_batch00008', {'number': 0});
+      await records().writeLocalDelete('rec_batch00008', sync: true);
+
+      await sendBatch(
+          RequestPolicy.cacheAndNetwork,
+          (b) => b
+              .collection(_collection)
+              .update('rec_batch00008', body: {'number': 7}));
+      await records().pushPending('rec_batch00008');
+
+      expect(server.containsKey('rec_batch00008'), isFalse);
+      expect(await row('rec_batch00008'), isNull);
+    });
   });
 }

@@ -1657,6 +1657,11 @@ class DataBase extends _$DataBase {
   /// not sent stay queued, and a deletion stays a tombstone. Fields synced as
   /// deltas ([RecordMeta.pendingDeltas]) take the server's value plus the
   /// part of the local change that [sentBody] did not carry yet.
+  ///
+  /// With [sentBodyOnly] the request carried only [sentBody] (a batch
+  /// operation written over an earlier queued change): the pending parts it
+  /// did not carry stay pending even when the row did not change meanwhile;
+  /// a field it set is done when the server now holds the local value.
   Future<void> completePendingSync(
     String service,
     String id,
@@ -1664,6 +1669,7 @@ class DataBase extends _$DataBase {
     Map<String, dynamic> server, {
     List<Map<String, dynamic>> sentFiles = const [],
     Map<String, dynamic> sentBody = const {},
+    bool sentBodyOnly = false,
   }) {
     return transaction(() async {
       final row = await rowById(service, id);
@@ -1674,7 +1680,8 @@ class DataBase extends _$DataBase {
 
       final rev = (row[RecordMeta.pendingRev] as num?)?.toInt();
       final localOnly = RecordMeta.flag(row[RecordMeta.noSync]);
-      if (rev == sentRev || (!RecordMeta.isPending(row) && !localOnly)) {
+      if ((rev == sentRev && !sentBodyOnly) ||
+          (!RecordMeta.isPending(row) && !localOnly)) {
         serverData[RecordMeta.synced] = true;
         await $create(service, {...serverData, 'id': id}, validate: false);
         return;
@@ -1745,7 +1752,13 @@ class DataBase extends _$DataBase {
           if (jsonEncode(value) == jsonEncode(serverData[field])) continue;
           nextKinds[field] = kind;
         } else if (row.containsKey(field)) {
-          next[field] = local(field);
+          final value = local(field);
+          next[field] = value;
+          if (sentBodyOnly &&
+              sentBody.containsKey(field) &&
+              jsonEncode(value) == jsonEncode(serverData[field])) {
+            continue;
+          }
         } else {
           next.remove(field);
         }
