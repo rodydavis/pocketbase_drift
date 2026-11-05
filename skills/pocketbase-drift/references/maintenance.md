@@ -15,7 +15,7 @@ final client = $PocketBase.database(
 
 ## Running Maintenance
 
-Call `runMaintenance()` to clean up expired data:
+Call `runMaintenance()` to clean up expired data, apply the file cache size limit (`maxFileCacheBytes`) and return free database pages to the file system:
 
 ```dart
 // Run with configured TTL
@@ -36,6 +36,7 @@ final result = await client.runMaintenance();
 print('Deleted records: ${result.deletedRecords}');
 print('Deleted responses: ${result.deletedResponses}');
 print('Deleted files: ${result.deletedFiles}');
+print('Evicted files: ${result.evictedFiles} (${result.evictedBytes} bytes)');
 print('Total deleted: ${result.totalDeleted}');
 ```
 
@@ -44,7 +45,9 @@ print('Total deleted: ${result.totalDeleted}');
 | `deletedRecords` | Expired synced records removed |
 | `deletedResponses` | Expired cached API responses removed |
 | `deletedFiles` | Expired file blobs and blobs of records no longer cached |
-| `totalDeleted` | Sum of all deletions |
+| `evictedFiles` | Least recently used file blobs deleted to apply `maxFileCacheBytes` |
+| `evictedBytes` | Bytes of the blobs counted in `evictedFiles` |
+| `totalDeleted` | Sum of all deletions (`evictedFiles` included) |
 
 ## What Gets Cleaned
 
@@ -53,14 +56,33 @@ Maintenance **ONLY** deletes:
 - Cached API responses older than TTL
 - File blobs past their expiration
 - Orphaned file blobs: blobs created before the cutoff whose record is no longer cached
+- Least recently used file blobs, while the blob cache is larger than `maxFileCacheBytes` (down to 90% of the limit)
+
+With a `null` TTL (`cacheTtl: null` and no `ttl` argument), the four TTL steps are skipped. The file cache limit and the page release always run.
 
 Maintenance **NEVER** deletes:
 - Unsynced local changes (`synced: false`), including changes parked with `syncError`
 - Local-only records (`noSync: true`)
 - Pending deletions (`deleted: true, synced: false`)
 - The schema
+- Pending uploads: their blobs have no expiration, and the size limit never evicts the blobs of pending and local-only records. (A downloaded blob with `expireAfter` is deleted when it expires, also for a pending record.)
 
 **You will never lose unsynced data during maintenance.**
+
+## Database File Size
+
+Deleted rows and blobs leave free pages in the SQLite file. `runMaintenance()` returns up to 4096 free pages (about 16 MB) per run to the file system with `PRAGMA incremental_vacuum`. It never runs a full `VACUUM`.
+
+New databases use `auto_vacuum = INCREMENTAL`. A database created before 0.7.0 does not, so `runMaintenance()` releases nothing for it. Run `compact(full: true)` once to rebuild the file and switch it to incremental auto-vacuum:
+
+```dart
+// Full VACUUM: can take seconds and needs free disk space of about the
+// database size. Run it at a quiet moment, for example once after an update.
+final released = await client.db.compact(full: true); // pages released
+
+// Incremental release (what runMaintenance does), at most maxPages pages
+await client.db.compact(maxPages: 4096);
+```
 
 ## When to Run Maintenance
 
@@ -145,9 +167,13 @@ await client.db.customStatement(
   "DELETE FROM services WHERE service = ?",
   ['temp_data'],
 );
+// customStatement notifies no stream: tell drift, so open watchers re-run
+client.db.markTablesUpdated({client.db.services});
 ```
 
 **Warning**: This statement also deletes unsynced changes of the collection.
+
+`customUpdate(..., updates: {client.db.services})` (below) notifies the streams itself.
 
 ### Clear Old Records Manually
 
@@ -184,11 +210,14 @@ for (final row in counts) {
   print('${row.read<String>('service')}: ${row.read<int>('count')} records');
 }
 
-// Count file blobs
-final fileCount = await client.db.customSelect(
-  "SELECT COUNT(*) as count FROM BlobFiles",
+// Count file blobs and their size (reads the covering index, not the blobs)
+final files = await client.db.customSelect(
+  "SELECT COUNT(*) as count, COALESCE(SUM(size), 0) as bytes FROM BlobFiles",
 ).getSingle();
-print('Cached files: ${fileCount.read<int>('count')}');
+print('Cached files: ${files.read<int>('count')}, ${files.read<int>('bytes')} bytes');
+
+// Or: total blob bytes (pinned blobs of pending changes included)
+final bytes = await client.db.fileCacheBytes();
 ```
 
 ## Cache Strategies by Data Type
@@ -214,23 +243,16 @@ await client.runMaintenance();
 
 ### Large Files
 
-Monitor file cache specifically:
+Use the file cache size limit, not manual SQL. The package deletes the least recently used blobs and never deletes the blobs of pending or local-only records:
 
 ```dart
-// Clear files downloaded more than 30 days ago.
-// Keep the blobs of unsynced changes: sync uploads them.
-final cutoff =
-    DateTime.now().toUtc().subtract(const Duration(days: 30)).toIso8601String();
-
-await client.db.customStatement('''
-  DELETE FROM BlobFiles
-  WHERE created < ?
-    AND recordId NOT IN (
-      SELECT id FROM services
-      WHERE COALESCE(json_extract(data, '\$.synced'), 1) = 0
-    )
-''', [cutoff]);
+final client = $PocketBase.database(
+  'https://example.pocketbase.io',
+  maxFileCacheBytes: 64 * 1024 * 1024, // 64 MB (default 128 MB, 32 MB on web)
+);
 ```
+
+Evicted blobs leave free pages in the database file. `runMaintenance()` returns up to about 16 MB of them per run. For a database created before 0.7.0, run `client.db.compact(full: true)` once (see "Database File Size").
 
 ## Riverpod Provider for Maintenance
 

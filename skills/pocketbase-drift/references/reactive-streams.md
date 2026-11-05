@@ -4,11 +4,17 @@ This guide covers reactive data streams with watchRecords and watchRecord.
 
 ## Overview
 
-Streams emit when data changes from **any** source:
+Streams emit when the data of their collection changes, from any source:
 - Local cache updates
 - Network fetches
 - Realtime subscriptions (WebSocket)
 - Background sync operations
+
+Watch scope:
+- Record watchers (`watchRecord(s)`, `watchRecord(s)State`, `client.db.$query(...).watch()`) re-run only for writes to their own collection and to the collections in their `expand`. With `expand`, schema changes re-run them too. A write to another collection does not re-run them.
+- Raw SQL writes re-run record watchers only when drift is told: `customUpdate(..., updates: {client.db.services})`, or `client.db.markTablesUpdated({client.db.services})` after `customStatement`. `customStatement` alone notifies no stream.
+- `client.db.pendingRecords().watch()`, `search(...).watch()` and app queries with `customSelect(readsFrom: {client.db.services})` re-run on every write to any collection.
+- Open streams follow an account switch. After a login with another account, they show the pending changes of the new account and apply `@request.auth.id` filters for it, without a new listen.
 
 ## Watch Multiple Records (with QueryState)
 
@@ -102,7 +108,7 @@ With `networkOnly`, the stream emits the server's data and does not use the cach
 │ 1. Emit cached data                                     │
 │ 2. Subscribe to realtime updates (shared per topic)     │
 │ 3. Fetch from network (if policy allows)                │
-│ 4. Emit on any change:                                  │
+│ 4. Emit on a change of this collection (or expanded):   │
 │    - Local create/update/delete                         │
 │    - Network sync                                       │
 │    - Realtime event                                     │

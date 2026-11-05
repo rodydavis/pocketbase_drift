@@ -38,6 +38,9 @@ Records have these sync-related fields in their `data`. Use the `RecordMeta` con
 | `pendingOwner` | string | Auth record id of the account that made the change |
 | `pendingRev` | int | Increments with every local change |
 | `syncError` | map | Set when the change is parked: `status`, `message`, `data`, `at` |
+| `pendingBase` | map | Server value of each pending field when it first became pending (`{field: value}`) |
+| `baseUpdated` | string | Server `updated` value of the row when its pending change started |
+| `pendingDeltas` | map | Pending fields whose every local edit was a modifier, with the kind: `number`, `append`, `prepend` or `remove`. Sync sends these fields as modifiers. |
 
 Helpers: `RecordMeta.isPending(data)`, `RecordMeta.flag(value)` (reads `true`/`1`), `RecordMeta.strip(data)` (removes the bookkeeping keys).
 
@@ -66,7 +69,7 @@ if (RecordMeta.flag(data[RecordMeta.noSync])) {
 }
 ```
 
-Offline deletions are tombstones. Normal reads do not return them (see "Deleted Records").
+Offline deletions are tombstones. Normal reads do not return them (see "Deleted Records"). A queued deletion of a record that was not cached is a bare tombstone: the id and the bookkeeping keys only, no record fields.
 
 ## Automatic Sync
 
@@ -79,7 +82,7 @@ Offline deletions are tombstones. Normal reads do not return them (see "Deleted 
 Rules of a sync pass:
 - **Single-flight:** Only one pass runs at a time. A call during a pass returns a future that completes after one more pass. Changes queued during the pass are included.
 - **Order:** Collections sync parents first (by relation fields). Records sync oldest first (by `cachedAt`).
-- **Updates are partial:** An update sends only the fields in `pendingFields`. Changes made on other devices to other fields stay on the server.
+- **Updates are partial:** An update sends only the fields in `pendingFields`. Changes made on other devices to other fields stay on the server. A field changed only with `+`/`-` modifiers is sent as a modifier (see "Conflict Handling").
 - **Creates send the whole record.** If an earlier attempt created the record and the response was lost (id already exists), the create becomes an update.
 - **Files are sent once:** New files go as multipart parts with the create or update. Later edits do not upload them again.
 - **Stops early:** The pass stops when the server becomes unreachable. The remaining changes sync on the next pass.
@@ -131,7 +134,7 @@ final message = switch (outcome) {
 };
 ```
 
-Pushes, online writes and batch sends of one record run one at a time. A second `pushPending` call waits for the running push and then sends what is still pending. Changes made while a push is in flight stay pending: an edit keeps the server's names of the files just uploaded, a file attached meanwhile is still uploaded, a delete stays a queued deletion (also for a record whose create is being pushed), and a `cacheOnly` change stays local. An online update removes the fields it set from a queued edit of the same record. It waits at most `requestTimeout` for a running push, so it reaches the server last; after that, `cacheAndNetwork` queues it behind the push and `networkOnly`/`networkFirst` throw `ClientException` with status 0.
+Pushes, online writes and batch sends of one record run one at a time. A second `pushPending` call waits for the running push and then sends what is still pending. Changes made while a push is in flight stay pending: an edit keeps the server's names of the files just uploaded, a file attached meanwhile is still uploaded, a delete stays a queued deletion (also for a record whose create is being pushed), and a `cacheOnly` change stays local. An online update removes the fields it set from a queued edit of the same record; an online modifier (`n+: 1`) of a field with a queued modifier edit keeps both changes. An online write waits at most `requestTimeout` for a running push, so it reaches the server last; after that, `cacheAndNetwork` queues it behind the push and `networkOnly`/`networkFirst` throw `ClientException` with status 0.
 
 ## Failed Changes (Parking)
 
@@ -204,7 +207,9 @@ for (final post in pendingPosts) {
 }
 ```
 
-Watch the queue of all collections with `client.db.pendingRecords()`. It returns a Drift `Selectable<Service>`. It excludes local-only rows and rows of other accounts. It includes parked rows. Pass `service:` to limit it to one collection.
+A pending deletion can be a bare row (a record that was not cached when it was deleted): only `id` and the bookkeeping keys. Show the id for deletions; do not read record fields.
+
+Watch the queue of all collections with `client.db.pendingRecords()`. It returns a Drift `Selectable<Service>`. It excludes local-only rows and rows of other accounts. It includes parked rows. Pass `service:` to limit it to one collection. An open `.watch()` follows an account switch: after a login it shows the rows of the new account without a new listen. It re-runs on every write to the `services` table, of any collection.
 
 ```dart
 // Live pending-changes count for a badge
@@ -329,7 +334,13 @@ final client = $PocketBase.database(
 
 ## Deleted Records (Tombstones)
 
-Offline deletes write a local tombstone (`deleted: true`) that stays invisible to all reads (`getFullList`, `getOne`, `watchRecords`, `search`, `$count`) until the sync engine confirms the server deletion. A record created offline and deleted before it syncs is removed locally at once. No server delete is queued. Raw database access can opt back in:
+Offline deletes write a local tombstone (`deleted: true`) that stays invisible to all reads (`getFullList`, `getOne`, `watchRecords`, `search`, `$count`) until the sync engine confirms the server deletion. A record created offline and deleted before it syncs is removed locally at once. No server delete is queued.
+
+A delete of a record that is not cached is queued too: with `cacheAndNetwork` when the server is unreachable (offline, 503, connection refused, timeout), with `cacheFirst` always. The tombstone is a bare row: `id`, `deleted: true`, `synced: false`, `isNew: false`, `noSync: false`, `pendingRev` and `pendingOwner`. An offline batch delete of such an id returns status 204. When the server answers 404 at sync time (already deleted, or the delete rule does not match), the deletion ends without a `SyncFailure`, like any tombstone.
+
+`writeLocalDelete(id, sync: true)` (on `$RecordService`; `client.db.writeLocalDelete(service, id, sync: true)`) always returns `true`. It returns `false` only for `sync: false` when the record is not cached.
+
+Raw database access can opt back in:
 
 ```dart
 // Include tombstones (diagnostics, pending queue views)
@@ -338,12 +349,28 @@ await client.db.$query('posts', includeDeleted: true).get();
 
 ## Conflict Handling
 
-pocketbase_drift merges conflicts per field:
-- An offline update sends only the changed fields (`pendingFields`). The local value wins for those fields. Server changes to other fields stay.
+pocketbase_drift merges a queued update with the server per field:
+- An offline update sends only the changed fields (`pendingFields`). Server changes to other fields stay.
+- **Modifier edits merge.** When every local edit of a field was a modifier (`n+`/`n-` for numbers; `f+`, `+f`, `f-` for multi-value relation, select and file fields), sync sends the change from `pendingBase` as modifiers: numbers send their difference (`n+: 2`; a negative difference as `n-`), multi-value fields send the added values as `f+` (`+f` for prepends) and the removed values as `f-`. Increments, appends, removals and file uploads of other devices stay. The field must be in the cached collection schema.
+- **Plain sets are last-write-wins.** A field with a plain set (`n: 5`, `tags: [...]`) anywhere in its pending history sends its absolute value. Single-value relation, select and file fields, JSON fields and text fields always send their absolute value. Pending rows written before 0.7.0 (no `pendingBase`) send absolute values.
+- **Online writes:** an online update removes the fields it set from the queued edit. An online modifier (`n+: 1` with `networkFirst` or `cacheAndNetwork`) of a field with a queued modifier edit keeps both. An online plain set supersedes the queued edit of that field.
+- **Batches:** a batch update does not mark the queued change as synced. Fields, increments and uploads that the batch did not send still sync. A value that the batch set is not overwritten later by the older queued value (also with `networkOnly`). Edits made while the batch is in flight stay pending.
 - Until the change syncs, list refreshes and realtime events do not overwrite the locally changed fields.
 - A realtime delete keeps a row with pending edits. The sync then gets 404, drops the local edit and emits `SyncFailure(dropped: true)` on `client.syncFailures`.
+- Limits: mixed append and prepend edits are sent as an append. Float differences can have rounding errors.
 
-For critical data, use `networkFirst` policy to prevent conflicts:
+For counters, use `+`/`-` modifiers. They work offline and merge with other devices:
+
+```dart
+// Two devices like the post offline; after sync the server has both likes.
+await client.collection('posts').update(
+  postId,
+  body: {'likes+': 1},
+  requestPolicy: RequestPolicy.cacheFirst,
+);
+```
+
+For data that needs server confirmation before the UI continues (orders, payments), use `networkFirst`:
 
 ```dart
 // Critical updates - require server confirmation

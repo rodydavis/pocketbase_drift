@@ -11,6 +11,7 @@ pocketbase_drift automatically caches files for offline access:
 - Thumbs (`thumb: '100x100'`) are cached separately from the original file
 - Concurrent requests for the same file and thumb share one download (`client.files` is one instance per client)
 - Downloads time out after 30 seconds by default (`timeout`)
+- The blob cache has a size limit (`maxFileCacheBytes`, default 128 MB; 32 MB on the web). Least recently used blobs are deleted first. Blobs of pending and local-only records are never deleted (see "File Cache Size")
 
 ## Uploading Files
 
@@ -199,7 +200,7 @@ final bytes = await client.files.getFileBytes(
   // Optional:
   // thumb: '100x100',                   // Server-side thumb, cached separately
   // timeout: const Duration(seconds: 30), // Default
-  // expireAfter: const Duration(days: 7), // Blob cache lifetime
+  // expireAfter: const Duration(days: 7), // Freshness: an expired copy is downloaded again online; still used offline until maintenance deletes it
 );
 
 // Use bytes (e.g., save to file, display PDF, etc.)
@@ -374,11 +375,39 @@ await client.collection('posts').update(
 );
 ```
 
+## File Cache Size
+
+`maxFileCacheBytes` limits the blob cache: downloaded files, thumbs and the cached copies of uploads. The default is `$PocketBase.defaultMaxFileCacheBytes`: 128 MB, 32 MB on the web (the IndexedDB storage fallback keeps the whole database in memory). `null` disables the limit.
+
+```dart
+final client = $PocketBase.database(
+  'https://example.pocketbase.io',
+  maxFileCacheBytes: 64 * 1024 * 1024, // 64 MB; null = no limit
+);
+```
+
+- After each blob write (download or cached upload copy), eviction runs in the background, one run at a time. It deletes the least recently used blobs until the cache holds at most 90% of the limit.
+- A cache hit marks a blob as used, at most once per hour per blob. A file that the server renamed after a push counts as used now.
+- Blobs of pending and local-only (`noSync`) records are never deleted: they are the only copy. This includes the pending uploads of another account. When these blobs alone keep the cache above the limit, eviction pauses until the cache grows by 10% of the limit or a sync pass ends.
+- A download larger than the limit is returned but not cached. An unsynced upload larger than the limit is stored.
+- `expireAfter` sets freshness, not the cache size. An expired copy is downloaded again when the server is reachable and is still used offline, until `runMaintenance()` with a TTL deletes it.
+
+```dart
+// Apply the limit now (the package does this after each blob write)
+await client.enforceFileCacheLimit();
+
+// Current cache size in bytes (pinned blobs included)
+final bytes = await client.db.fileCacheBytes();
+```
+
+`client.db.setFile(recordId, filename, bytes)` returns `Future<void>`. Read a blob with `client.db.getFile(recordId, filename).getSingleOrNull()`.
+
 ## File Cache Cleanup
 
-File blobs are cleaned up during maintenance. Maintenance deletes blobs past their expiration and blobs of records that are no longer cached:
+Maintenance deletes blobs past their expiration and blobs of records that are no longer cached (only with a TTL), then applies `maxFileCacheBytes` (also with a `null` TTL):
 
 ```dart
 final result = await client.runMaintenance();
 print('Cleaned ${result.deletedFiles} expired or orphaned file blobs');
+print('Evicted ${result.evictedFiles} blobs (${result.evictedBytes} bytes) for the size limit');
 ```

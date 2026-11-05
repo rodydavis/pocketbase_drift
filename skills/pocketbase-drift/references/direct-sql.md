@@ -27,10 +27,10 @@ All PocketBase records are stored in a generic `services` table:
 
 **Primary Key**: `(id, service)`
 
-**Indexes**: `idx_services_service` on `service`; `idx_blob_files_record` on `BlobFiles (recordId, filename)`
+**Indexes**: `idx_services_service` on `service`; `idx_blob_files_record` on `BlobFiles (recordId, filename)`; `idx_blob_files_access` on `BlobFiles (lastAccess, size, recordId)` (covering index for the file cache LRU)
 
 Additional tables:
-- `BlobFiles` - Cached file/image blobs (`recordId`, `filename`, `data`, `expiration`, `created`, `updated`). Thumbs are stored under `filename?thumb=<spec>`.
+- `BlobFiles` - Cached file/image blobs (`id`, `recordId`, `filename`, `data`, `expiration`, `created`, `updated`, `size`, `lastAccess`). Thumbs are stored under `filename?thumb=<spec>`. `size` is the byte length of `data`; `lastAccess` is the last write or cache hit (LRU order of `maxFileCacheBytes`). Read `size` and `lastAccess` through `idx_blob_files_access` (for example `SELECT SUM(size) FROM BlobFiles`): columns after `data` are slow to read from the table rows. `client.db.fileCacheBytes()` returns the total size.
 - `CachedResponses` - Cached API responses for custom routes (`requestKey`, `responseData`, `cachedAt`)
 - `text_entries` - FTS5 index of `services.data`
 
@@ -50,6 +50,9 @@ The package stores local state inside the `data` JSON. `RecordMeta` holds the ke
 | `pendingOwner` | Auth record id of the account that made the pending change |
 | `pendingRev` | Increments with every local change |
 | `syncError` | Set when the change is parked: `status`, `message`, `data`, `at` |
+| `pendingBase` | Server value of each pending field when it first became pending |
+| `baseUpdated` | Server `updated` value of the row when its pending change started |
+| `pendingDeltas` | Pending fields whose every edit was a modifier, with the kind (`number`, `append`, `prepend`, `remove`); sync sends them as modifiers |
 
 Helpers: `RecordMeta.keys`, `RecordMeta.systemKeys`, `RecordMeta.flag(value)` (JSON booleans can be `0`/`1`), `RecordMeta.isPending(data)`, `RecordMeta.strip(data)` (removes the bookkeeping keys). `pbTimestamp([time])` formats a `DateTime` as a PocketBase timestamp.
 
@@ -164,9 +167,11 @@ stream.listen((rows) {
 });
 ```
 
+A query with `readsFrom: {client.db.services}` re-runs on every write to any collection. The package's record watchers (`watchRecords`, `client.db.$query(...).watch()`) re-run only for writes to their own collection, to the collections they expand, and for untagged writes (raw SQL that drift was told about).
+
 ## Execute Statements
 
-For INSERT, UPDATE, DELETE operations. Direct statements do not queue changes for sync and do not set `cachedAt`:
+For INSERT, UPDATE, DELETE operations. Direct statements do not queue changes for sync and do not set `cachedAt`. `customStatement` notifies no stream: call `markTablesUpdated` after it, or use `customUpdate` with `updates`, so open record watchers re-run:
 
 ```dart
 // Delete all temp data
@@ -180,6 +185,14 @@ await client.db.customStatement('''
   SET data = json_set(data, '\$.viewed', true)
   WHERE service = 'posts' AND id = ?
 ''', ['POST_ID']);
+client.db.markTablesUpdated({client.db.services});
+
+// customUpdate notifies the streams itself
+await client.db.customUpdate(
+  "UPDATE services SET data = json_set(data, '\$.viewed', true) WHERE service = 'posts' AND id = ?",
+  variables: [Variable('POST_ID')],
+  updates: {client.db.services},
+);
 ```
 
 ## Built-in Query Builder
@@ -267,6 +280,8 @@ await client.db.transaction(() async {
     [newId(), '{"action": "order_processed"}'],
   );
 });
+// Raw statements notify no stream; let open watchers re-run.
+client.db.markTablesUpdated({client.db.services});
 ```
 
 ## Inspecting Tables

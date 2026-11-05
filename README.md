@@ -23,6 +23,7 @@ This library extends the official PocketBase Dart SDK to provide a seamless offl
   - [Error Handling](#error-handling)
   - [Offline Support & Sync](#offline-support--sync)
     - [The sync engine](#the-sync-engine)
+    - [Concurrent edits and counters](#concurrent-edits-and-counters)
     - [Sync failures](#sync-failures)
     - [Showing pending changes](#showing-pending-changes)
   - [Connectivity Monitoring](#connectivity-monitoring)
@@ -38,6 +39,7 @@ This library extends the official PocketBase Dart SDK to provide a seamless offl
   - [Local Full-Text Search](#local-full-text-search)
   - [Local Filters](#local-filters)
   - [File Handling](#file-handling)
+    - [File cache size](#file-cache-size)
   - [Custom API Route Caching](#custom-api-route-caching)
   - [Cache TTL & Maintenance](#cache-ttl--maintenance)
     - [Configuration](#configuration)
@@ -77,9 +79,9 @@ This library extends the official PocketBase Dart SDK to provide a seamless offl
 *   **Batch Requests**: Execute multiple create, update, delete, and upsert operations in a single transactional request with offline support.
 *   **Authentication Persistence**: User authentication state is persisted locally using `shared_preferences`, keeping users logged in across app sessions.
 *   **Cross-Platform Support**: Works across all Flutter-supported platforms, including mobile (iOS, Android), web, and desktop (macOS, Windows, Linux).
-*   **File & Image Caching**: Includes a `PocketBaseImageProvider` that caches images in the local database for offline display.
--   **Robust & Performant**: The database runs in a background isolate, relations are expanded with one query per relation field, and files are downloaded once and shared between concurrent requests.
--   **Cache TTL & Maintenance**: Configurable time-to-live for cached data with automatic cleanup of expired synced records.
+*   **File & Image Caching**: Includes a `PocketBaseImageProvider` that caches images in the local database for offline display. The file cache has a size limit (`maxFileCacheBytes`, least recently used files go first) and never deletes the files of unsynced changes or local-only records.
+-   **Robust & Performant**: The database runs in a background isolate, relations are expanded with one query per relation field, record watchers re-run only for writes to their own and expanded collections, and files are downloaded once and shared between concurrent requests.
+-   **Cache TTL & Maintenance**: Configurable time-to-live for cached data with automatic cleanup of expired synced records, a file cache size limit and return of free database pages to the file system.
 
 ## Getting Started
 
@@ -104,7 +106,7 @@ Replace a standard `PocketBase` client with a `$PocketBase.database` client. It'
 + final client = $PocketBase.database('http://127.0.0.1:8090');
 ```
 
-Optional settings include `requestPolicy` (see [Global Request Policy](#global-request-policy)), `requestTimeout` (see [Request Timeout](#request-timeout)), `cacheTtl`, `localSyncRetryCount` and the connectivity tuning options.
+Optional settings include `requestPolicy` (see [Global Request Policy](#global-request-policy)), `requestTimeout` (see [Request Timeout](#request-timeout)), `cacheTtl`, `maxFileCacheBytes` (see [File cache size](#file-cache-size)), `localSyncRetryCount` and the connectivity tuning options.
 
 ### 3. Set the Database Schema (Enable Offline Records)
 
@@ -297,6 +299,8 @@ Write operations with `cacheAndNetwork` or `cacheFirst` keep working when the se
 
 Offline deletions are stored as local *tombstones* (`deleted: true`) until the server confirms them. Tombstones are invisible to all local reads (`getFullList`, `getOne`, `watchRecords`, `search`, counts) but remain in the pending queue until synced. A record that was created offline and is deleted before it syncs is removed locally at once; no server delete is queued.
 
+A deletion of a record that is not in the cache is queued too (`cacheAndNetwork` when the server is unreachable; `cacheFirst` always). It is a bare tombstone: the id and the bookkeeping keys only, no record fields. When the server answers 404 at sync time (the record is already gone, or the delete rule does not match), the deletion ends without a `SyncFailure`.
+
 #### The sync engine
 
 `client.syncPendingChanges()` pushes all pending changes to the server. It runs automatically:
@@ -312,9 +316,32 @@ During a pass:
 
 - Collections sync parents first (by relation fields), so a referenced record exists on the server before the records that point to it.
 - Records sync oldest change first.
-- An update sends only the fields changed locally. A create sends the whole record. New files are sent once as multipart parts; later edits do not upload them again.
+- An update sends only the fields changed locally. A field changed only with `+`/`-` modifiers is sent as a modifier (see below). A create sends the whole record. New files are sent once as multipart parts; later edits do not upload them again.
 - A create whose earlier response was lost (the id already exists on the server) is sent as an update.
-- A pending local edit is not overwritten by list refreshes or realtime events: the locally changed fields win until they are synced.
+- A pending local edit is not overwritten by list refreshes or realtime events: the locally changed fields win until they are synced. A realtime delete keeps a row with pending edits; the sync then gets 404, drops the edit and emits a `SyncFailure` with `dropped == true`.
+
+#### Concurrent edits and counters
+
+A queued update merges with the changes that other devices made to the same record:
+
+- **Other fields**: sync sends only the fields changed locally (`pendingFields`). Server changes to other fields stay.
+- **Modifier edits**: when every local edit of a field was a modifier, sync sends the change relative to the server value that the first edit was made on (`pendingBase`). A number sends its difference (`n+: 2`, or `n-` for a negative difference). A multi-value relation, select or file field sends the added values as `f+` (`+f` for prepends) and the removed values as `f-`. Increments, appends, removals and file uploads of other devices stay. The field must be in the collection schema (`setSchema`).
+- **Plain sets**: when the pending history of a field has a plain set (`n: 5`, `tags: [...]`), sync sends the absolute value: the last write wins. Single-value relation, select and file fields, JSON fields and text fields always send their absolute value. Pending rows written before 0.7.0 (no `pendingBase`) send absolute values.
+- **Online writes**: an online update of a record with a queued edit removes the fields it set from the queue. An online modifier (`n+: 1` with `networkFirst` or `cacheAndNetwork`) of a field with a queued modifier edit keeps both changes.
+- **Batches**: a batch update does not mark the queued change of the record as synced. The fields, increments and uploads that the batch did not send still sync. A value that the batch set is not overwritten later by the older queued value. Edits made while the batch is in flight stay pending.
+- **Limits**: mixed append and prepend edits are sent as an append. Float differences can have rounding errors.
+
+For counters (likes, stock, views), use the `+`/`-` modifiers. Queued modifier edits merge; plain sets are last-write-wins.
+
+```dart
+await client.collection('posts').update(
+  postId,
+  body: {'likes+': 1, 'tags+': ['flutter']},
+  requestPolicy: RequestPolicy.cacheFirst,
+);
+// Sync sends the total change as modifiers, for example {'likes+': 3} after
+// three offline likes, and {'tags+': ['flutter']}.
+```
 
 #### Sync failures
 
@@ -366,6 +393,10 @@ StreamBuilder<List<Service>>(
 ```
 
 `client.db.pendingRecords(service: 'posts')` limits the result to one collection. `client.collection('posts').pending()` returns the same rows as `RecordModel`s.
+
+- A queued deletion of a record that was not cached is a bare row: it has the id and the bookkeeping keys, but no record fields. Do not expect fields such as `title` in a queue UI.
+- Pending updates carry `pendingBase`, `baseUpdated` and `pendingDeltas` in `data` (see [Concurrent edits and counters](#concurrent-edits-and-counters)). `RecordMeta.strip(data)` removes them.
+- An open `pendingRecords().watch()` follows an account switch: after a login it shows the rows of the new account without a new listen.
 
 ### Connectivity Monitoring
 
@@ -468,6 +499,8 @@ stateStream.listen((state) {
   ```
 - An unreachable server is **not** an error for cache-backed queries. They keep the cached data and refresh when the server is back. The stream does not emit an error and `QueryState.error` is not set for it.
 - Other fetch errors (for example a 403 from an API rule, or a filter that the cache cannot evaluate) are delivered as stream errors and as `QueryState.error`. The stream stays open. The next successful fetch clears the error.
+- A cache-backed stream re-runs its query only for writes to its own collection and to the collections in its `expand` (and, with `expand`, for schema changes). Writes to other collections do not re-run it.
+- After a login with another account, open streams change to the data of the new account (pending changes, `@request.auth.id` filters) without a new listen.
 
 ### Expanding Relations
 
@@ -598,11 +631,13 @@ for (final result in results) {
 **Files**: the `files` passed to `create`, `update` and `upsert` are sent with the batch. When the batch is queued offline, the files are stored and sent when the operations sync.
 
 **Errors and offline behaviour**:
-- `cacheAndNetwork` (default): when the server is unreachable, all operations are stored locally as pending. They sync as individual operations later. When the server rejects the batch (for example a validation error), `send` throws `ClientException` and nothing is stored.
+- `cacheAndNetwork` (default): when the server is unreachable, all operations are stored locally as pending. They sync as individual operations later. A queued delete of a record that is not cached returns status 204, like a cached one. When the server rejects the batch (for example a validation error), `send` throws `ClientException` and nothing is stored.
 - `networkFirst`: the server must accept the batch; then the cache is updated. Offline, `send` throws `ClientException` with status 0.
-- `networkOnly`: like `networkFirst`, but the cache is not updated.
+- `networkOnly`: like `networkFirst`, but the cache is not updated. Exception: a record with a queued local change is updated, so the queue does not send an older value of a field that the batch set.
 - `cacheFirst`: the operations are written to the cache as pending and the batch is sent in the background. If the server rejects the batch, the operations sync individually.
 - `cacheOnly`: the operations are written to the cache as local-only (`noSync`).
+
+**Queued changes**: a batch update of a record with an unsynced local change does not mark the whole change as synced. The fields, increments and uploads that the batch did not send still sync. A value that the batch set is not overwritten later by the older queued value. Edits made while the batch is in flight stay pending.
 
 ### Local Full-Text Search
 
@@ -677,6 +712,7 @@ final bytes = await client.files.getFileBytes(
 - Throws `ClientException` (with status, URL and response) when the server answers with a status other than 200.
 - Caches each `thumb` separately from the original file.
 - Shares one download between concurrent calls for the same file and thumb (`client.files` is one instance per client).
+- `expireAfter` sets how long a cached copy is fresh. An expired copy is downloaded again when the server is reachable and is still used offline. `runMaintenance()` with a TTL deletes expired copies; the size limit below deletes the least recently used copies.
 
 `PocketBaseImageProvider`:
 - Takes the same `thumb`, `token`, `requestPolicy`, `expireAfter` and `timeout` options as `getFileBytes`.
@@ -685,6 +721,23 @@ final bytes = await client.files.getFileBytes(
 - Evicts a failed load from the `ImageCache`, so the next build tries again.
 
 To save memory, request a server thumb with `thumb` and set a decode size.
+
+#### File cache size
+
+`maxFileCacheBytes` limits the size of the file blob cache: downloaded files, thumbs and the cached copies of uploads. The default is `$PocketBase.defaultMaxFileCacheBytes`: 128 MB, 32 MB on the web (the IndexedDB storage fallback keeps the whole database in memory). `null` disables the limit.
+
+```dart
+final client = $PocketBase.database(
+  'https://example.pocketbase.io',
+  maxFileCacheBytes: 256 * 1024 * 1024, // 256 MB; null = no limit
+);
+```
+
+- After each blob write (a download or the cached copy of an upload), eviction runs in the background. One run at a time. It deletes the least recently used blobs until the cache holds at most 90% of the limit.
+- A cache hit marks a blob as used, at most once per hour per blob. A file that the server renamed after a push counts as used now.
+- The blobs of pending and local-only (`noSync`) records are never deleted: they are the only copy. This includes the pending uploads of another account. When these blobs alone keep the cache above the limit, eviction pauses until the cache grows by 10% of the limit or a sync pass ends.
+- A download larger than the limit is returned but not cached. An unsynced upload larger than the limit is stored.
+- `client.enforceFileCacheLimit()` applies the limit now. `client.db.fileCacheBytes()` returns the cache size in bytes. `runMaintenance()` also applies the limit (see [Running Maintenance](#running-maintenance)).
 
 ### Custom API Route Caching
 
@@ -729,7 +782,8 @@ final client = $PocketBase.database(
   cacheTtl: Duration(days: 30), // Custom TTL: 30 days
 );
 
-// Or disable automatic cleanup (keep data forever)
+// Or disable TTL expiry (keep records forever). runMaintenance() still
+// applies maxFileCacheBytes and returns free pages to the file system.
 final clientNoExpiry = $PocketBase.database(
   'https://example.pocketbase.io',
   cacheTtl: null,
@@ -738,7 +792,7 @@ final clientNoExpiry = $PocketBase.database(
 
 #### Running Maintenance
 
-Call `runMaintenance()` to clean up expired cached data. This is typically done on app startup or periodically:
+Call `runMaintenance()` to clean up expired cached data, apply the file cache size limit and return free database pages to the file system. This is typically done on app startup or periodically:
 
 ```dart
 // Run maintenance with the configured TTL
@@ -753,11 +807,24 @@ The `MaintenanceResult` provides details on what was cleaned up:
 - `deletedRecords` - Number of expired synced records deleted
 - `deletedResponses` - Number of expired cached API responses deleted
 - `deletedFiles` - Number of file blobs deleted: blobs past their expiration, and blobs of records that are no longer cached
-- `totalDeleted` - Total items cleaned up
+- `evictedFiles` - Number of least recently used file blobs deleted to apply `maxFileCacheBytes`
+- `evictedBytes` - Bytes of the blobs counted in `evictedFiles`
+- `totalDeleted` - Total items cleaned up (`evictedFiles` included)
 
 A record expires by the time it was **cached** (`cachedAt`), not by the server's `updated` value. Every write from the server (single reads, list reads, realtime events) and every local change sets `cachedAt`. A record that the app fetches regularly therefore does not expire, even if nobody edits it on the server.
 
-**Important**: Maintenance only deletes **synced** data. Unsynced local changes, local-only records (`noSync: true`), and pending deletions are **never** removed, ensuring you never lose data that hasn't been synced to the server.
+With `cacheTtl: null` (and no `ttl` argument), the expiry steps are skipped. The other steps always run:
+
+- The file cache size limit (`maxFileCacheBytes`) is applied. See [File cache size](#file-cache-size).
+- Up to 4096 free database pages (about 16 MB) are returned to the file system with `PRAGMA incremental_vacuum`. Maintenance never runs a full `VACUUM`.
+
+New databases use `auto_vacuum = INCREMENTAL`. A database created before 0.7.0 does not; it gets smaller only with `client.db.compact(full: true)`. This runs a full `VACUUM`: it can take seconds and needs free disk space of about the size of the database. Run it once, for example after an update, at a quiet moment:
+
+```dart
+final released = await client.db.compact(full: true); // number of pages
+```
+
+**Important**: Maintenance only deletes **synced** data. Unsynced local changes, local-only records (`noSync: true`), and pending deletions are **never** removed, ensuring you never lose data that hasn't been synced to the server. The file blobs of these records are never evicted.
 
 ## Authentication Persistence
 
@@ -817,11 +884,11 @@ All PocketBase records are stored in a generic `services` table with the followi
 **Primary Key**: `(id, service)`. **Index**: `idx_services_service` on `service`.
 
 Additional tables:
-- `BlobFiles` - Cached file/image blobs (index `idx_blob_files_record` on `recordId, filename`)
+- `BlobFiles` - Cached file/image blobs: `recordId`, `filename`, `data`, `expiration`, `created`, `updated`, `size` (byte length of `data`) and `lastAccess` (last write or cache hit, for the LRU order). Index `idx_blob_files_record` on `recordId, filename`; covering index `idx_blob_files_access` on `lastAccess, size, recordId`. In raw SQL, read `size` and `lastAccess` through that index (for example `SELECT SUM(size) FROM BlobFiles`): the columns after `data` are slow to read from the table rows.
 - `CachedResponses` - Cached API responses for custom routes
 - `text_entries` - Full-text search index (FTS5)
 
-The bookkeeping keys in `data` are `synced`, `isNew`, `deleted`, `noSync`, `retryCount`, `pendingFields`, `pendingFiles`, `pendingOwner`, `pendingRev` and `syncError`. Use the `RecordMeta` constants instead of string literals. `RecordMeta.isPending(data)` tells if a row holds an unsynced change. `RecordMeta.strip(data)` returns a copy without the bookkeeping keys.
+The bookkeeping keys in `data` are `synced`, `isNew`, `deleted`, `noSync`, `retryCount`, `pendingFields`, `pendingFiles`, `pendingOwner`, `pendingRev`, `syncError`, `pendingBase`, `baseUpdated` and `pendingDeltas`. Use the `RecordMeta` constants instead of string literals. `RecordMeta.isPending(data)` tells if a row holds an unsynced change. `RecordMeta.strip(data)` returns a copy without the bookkeeping keys.
 
 On mobile and desktop, the database runs SQLite in a background isolate (`NativeDatabase.createInBackground`, WAL mode), so queries do not block the UI isolate. A database with `inMemory: true` runs on the calling isolate.
 
@@ -889,6 +956,8 @@ stream.listen((rows) {
 });
 ```
 
+A query with `readsFrom: {client.db.services}` re-runs on every write to any collection. The package's own record watchers (`watchRecords`, `$query(...).watch()`) re-run only for writes to their own and expanded collections.
+
 ### Executing Raw Statements
 
 For INSERT, UPDATE, DELETE operations, use `customStatement`:
@@ -897,7 +966,21 @@ For INSERT, UPDATE, DELETE operations, use `customStatement`:
 await client.db.customStatement(
   "DELETE FROM services WHERE service = 'temp_data'",
 );
+// customStatement does not notify streams. Tell drift that `services`
+// changed, so open record watchers re-run:
+client.db.markTablesUpdated({client.db.services});
 ```
+
+Or use `customUpdate` with `updates`, which notifies the streams itself:
+
+```dart
+await client.db.customUpdate(
+  "DELETE FROM services WHERE service = 'temp_data'",
+  updates: {client.db.services},
+);
+```
+
+Raw writes are not tagged with a collection, so they re-run all record watchers. Raw writes do not queue changes for sync. Note that a raw `DELETE FROM services` also deletes unsynced changes.
 
 ### Using the Built-in Query Builder
 

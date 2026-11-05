@@ -173,15 +173,17 @@ final updatedPost = await client.collection('posts').update(
 
 ### Partial Update
 
-Only the specified fields are updated. An offline update records the changed fields in `pendingFields`. Sync sends only these fields:
+Only the specified fields are updated. An offline update records the changed fields in `pendingFields`. Sync sends only these fields. A field changed only with `+`/`-` modifiers is sent as a modifier (the total change since the server value), so concurrent changes of other devices stay. A plain set (`'view_count': 5`) is last-write-wins. Use modifiers for counters:
 
 ```dart
 await client.collection('posts').update(
   postId,
-  body: {'view_count+': 1}, // Increment operator
+  body: {'view_count+': 1}, // Increment operator; merges with other devices
   requestPolicy: RequestPolicy.cacheAndNetwork,
 );
 ```
+
+See `sync.md` ("Conflict Handling") for the rules.
 
 ### Update with Files
 
@@ -210,8 +212,11 @@ await client.collection('posts').delete(
 When using `cacheAndNetwork`:
 - Server answers: Deletes from server, then removes from cache. A 404 also removes the local copy without an error.
 - Server unreachable: Marks record as `deleted: true` in cache, syncs deletion when the server is reachable again
+- Record not cached and server unreachable: the deletion is queued as a bare tombstone (id and bookkeeping keys only)
 - Record created offline and not synced yet: Removed locally at once. No server delete is queued.
 - Server rejects the delete (for example 403): `ClientException` is thrown. The cached record stays.
+
+With `cacheFirst`, the deletion is queued locally first (also for a record that is not cached) and pushed in the background when the server is reachable. A record created offline and not synced yet is removed locally at once. A 404 at sync time (already deleted, or the delete rule does not match) ends the queued deletion without a `SyncFailure`.
 
 ## Filtering
 
