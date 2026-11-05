@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:drift/drift.dart' hide isNull, isNotNull;
@@ -402,6 +403,42 @@ void main() {
         await _idle();
         expect(seen.last.map((s) => s.id), ['bz']);
         await sub.cancel();
+      });
+
+      group('ends when the database closes:', () {
+        /// Listens to [query], closes the database and waits for done.
+        Future<void> expectEndsOnClose<T>(Selectable<T> query,
+            {Future<void> Function()? before}) async {
+          final done = Completer<void>();
+          final sub = query
+              .watch()
+              .listen((_) {}, onDone: done.complete, onError: (Object _) {});
+          await _idle();
+          await before?.call();
+          await db.close();
+          try {
+            await done.future.timeout(const Duration(seconds: 2));
+          } finally {
+            await sub.cancel();
+          }
+        }
+
+        test(r'$query', () => expectEndsOnClose(db.$query('a')));
+
+        test(r'$query with expand',
+            () => expectEndsOnClose(db.$query('a', expand: 'rel.d')));
+
+        test('pendingRecords', () => expectEndsOnClose(db.pendingRecords()));
+
+        test('search', () => expectEndsOnClose(db.search('zebra')));
+
+        test(r'$query rebuilt after an account switch', () {
+          return expectEndsOnClose(db.$query('a'), before: () async {
+            owner = 'u2';
+            db.markTablesUpdated({db.services});
+            await _idle();
+          });
+        });
       });
     });
   }

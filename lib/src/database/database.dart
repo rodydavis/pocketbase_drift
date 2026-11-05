@@ -2342,6 +2342,7 @@ class _LiveSelectable<T> extends Selectable<T> {
   @override
   Stream<List<T>> watch() => Stream.multi((controller) {
         StreamSubscription<List<T>>? rows;
+        StreamSubscription<Object?>? schema;
         String? key;
         var generation = 0;
         var cancelled = false;
@@ -2355,7 +2356,8 @@ class _LiveSelectable<T> extends Selectable<T> {
             if (cancelled || current != generation || nextKey == key) return;
             key = nextKey;
             final previous = rows;
-            rows = query.watch().listen(
+            late final StreamSubscription<List<T>> sub;
+            sub = rows = query.watch().listen(
               (data) {
                 if (_owner() == owner) {
                   controller.add(data);
@@ -2365,7 +2367,17 @@ class _LiveSelectable<T> extends Selectable<T> {
                 }
               },
               onError: (Object e, StackTrace st) {
-                if (_owner() == owner) controller.addError(e, st);
+                if (identical(rows, sub) && _owner() == owner) {
+                  controller.addError(e, st);
+                }
+              },
+              // The query stream ends when the database closes; a stream
+              // replaced by a rebuild ends without ending this one.
+              onDone: () {
+                if (!identical(rows, sub) || cancelled) return;
+                cancelled = true;
+                schema?.cancel();
+                controller.close();
               },
             );
             if (controller.isPaused) rows!.pause();
@@ -2375,7 +2387,7 @@ class _LiveSelectable<T> extends Selectable<T> {
           }
         }
 
-        final schema = _schemaChanges?.call().listen((_) => attach(true));
+        schema = _schemaChanges?.call().listen((_) => attach(true));
         attach(false);
         controller
           ..onPause = () {
