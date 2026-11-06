@@ -90,16 +90,38 @@ class FilterParser {
 
     return {
       '@now': date(now),
-      '@yesterday': date(DateTime.utc(now.year, now.month, now.day - 1,
-          now.hour, now.minute, now.second, now.millisecond, now.microsecond)),
-      '@tomorrow': date(DateTime.utc(now.year, now.month, now.day + 1, now.hour,
-          now.minute, now.second, now.millisecond, now.microsecond)),
+      '@yesterday': date(
+        DateTime.utc(
+          now.year,
+          now.month,
+          now.day - 1,
+          now.hour,
+          now.minute,
+          now.second,
+          now.millisecond,
+          now.microsecond,
+        ),
+      ),
+      '@tomorrow': date(
+        DateTime.utc(
+          now.year,
+          now.month,
+          now.day + 1,
+          now.hour,
+          now.minute,
+          now.second,
+          now.millisecond,
+          now.microsecond,
+        ),
+      ),
       '@todayStart': date(DateTime.utc(now.year, now.month, now.day)),
-      '@todayEnd':
-          date(DateTime.utc(now.year, now.month, now.day, 23, 59, 59, 999)),
+      '@todayEnd': date(
+        DateTime.utc(now.year, now.month, now.day, 23, 59, 59, 999),
+      ),
       '@monthStart': date(DateTime.utc(now.year, now.month)),
-      '@monthEnd':
-          date(DateTime.utc(now.year, now.month + 1, 0, 23, 59, 59, 999)),
+      '@monthEnd': date(
+        DateTime.utc(now.year, now.month + 1, 0, 23, 59, 59, 999),
+      ),
       '@yearStart': date(DateTime.utc(now.year)),
       '@yearEnd': date(DateTime.utc(now.year, 12, 31, 23, 59, 59, 999)),
       '@second': number(now.second),
@@ -135,11 +157,7 @@ class _Operand {
 
 /// Single-pass reader that translates a filter string into SQL.
 class _FilterReader {
-  _FilterReader(
-    this.input, {
-    required this.baseFields,
-    required this.macros,
-  });
+  _FilterReader(this.input, {required this.baseFields, required this.macros});
 
   final String input;
   final Set<String> baseFields;
@@ -175,7 +193,10 @@ class _FilterReader {
       if (_atEnd || input[_pos] == ')') {
         if (parts.isNotEmpty) {
           throw FormatException(
-              'Expected an expression after the logical operator', input, _pos);
+            'Expected an expression after the logical operator',
+            input,
+            _pos,
+          );
         }
         break;
       }
@@ -188,7 +209,10 @@ class _FilterReader {
       final join = _readJoin();
       if (join == null) {
         throw FormatException(
-            'Expected "&&" or "||" between filter expressions', input, _pos);
+          'Expected "&&" or "||" between filter expressions',
+          input,
+          _pos,
+        );
       }
       parts.add(join);
     }
@@ -240,13 +264,17 @@ class _FilterReader {
     final left = _readIdentifier();
     if (left.startsWith('@')) {
       throw UnsupportedError(
-          'The filter token "$left" cannot be evaluated against the local '
-          'cache.');
+        'The filter token "$left" cannot be evaluated against the local '
+        'cache.',
+      );
     }
     final fieldMatch = _fieldPattern.firstMatch(left);
     if (fieldMatch == null) {
       throw FormatException(
-          'Invalid filter term: expected a field name', input, start);
+        'Invalid filter term: expected a field name',
+        input,
+        start,
+      );
     }
     final field = fieldMatch.group(1)!;
     final modifier = fieldMatch.group(2)?.toLowerCase();
@@ -255,9 +283,10 @@ class _FilterReader {
     final operator = _operators.firstWhere(
       (op) => input.startsWith(op, _pos),
       orElse: () => throw FormatException(
-          'Invalid filter term: expected an operator after "$left"',
-          input,
-          _pos),
+        'Invalid filter term: expected an operator after "$left"',
+        input,
+        _pos,
+      ),
     );
     _pos += operator.length;
 
@@ -269,9 +298,10 @@ class _FilterReader {
   _Operand _readValue(String left, String operator) {
     if (_atEnd) {
       throw FormatException(
-          'Invalid filter term: missing value after "$left $operator"',
-          input,
-          _pos);
+        'Invalid filter term: missing value after "$left $operator"',
+        input,
+        _pos,
+      );
     }
 
     final char = input[_pos];
@@ -283,9 +313,10 @@ class _FilterReader {
     final token = _readIdentifier();
     if (token.isEmpty) {
       throw FormatException(
-          'Invalid filter term: missing value after "$left $operator"',
-          input,
-          start);
+        'Invalid filter term: missing value after "$left $operator"',
+        input,
+        start,
+      );
     }
 
     final lower = token.toLowerCase();
@@ -301,13 +332,15 @@ class _FilterReader {
 
     if (token.startsWith('@')) {
       throw UnsupportedError(
-          'The filter token "$token" cannot be evaluated against the local '
-          'cache; only literals and the datetime macros are supported.');
+        'The filter token "$token" cannot be evaluated against the local '
+        'cache; only literals and the datetime macros are supported.',
+      );
     }
     throw UnsupportedError(
-        'The unquoted filter value "$token" cannot be evaluated against the '
-        'local cache; field references are not supported. Quote text values '
-        '(e.g. "$token").');
+      'The unquoted filter value "$token" cannot be evaluated against the '
+      'local cache; field references are not supported. Quote text values '
+      '(e.g. "$token").',
+    );
   }
 
   /// Reads a quoted text literal starting at the current position and returns
@@ -413,8 +446,9 @@ class _FilterReader {
     }
 
     if (isAnyOf) {
-      final jsonPath =
-          isBaseField ? field : "json_extract(services.data, '\$.$field')";
+      final jsonPath = isBaseField
+          ? field
+          : "json_extract(services.data, '\$.$field')";
       return 'EXISTS (SELECT 1 FROM json_each($jsonPath) '
           'WHERE value $sqlOperator $valueSql$suffix)';
     }
@@ -425,8 +459,9 @@ class _FilterReader {
   /// (base fields) or a value in the `data` JSON column.
   String _fieldSql(String field, String? modifier) {
     final isBaseField = baseFields.contains(field.toLowerCase());
-    final fieldSql =
-        isBaseField ? field : "json_extract(services.data, '\$.$field')";
+    final fieldSql = isBaseField
+        ? field
+        : "json_extract(services.data, '\$.$field')";
 
     switch (modifier) {
       case 'lower':

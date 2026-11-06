@@ -30,14 +30,18 @@ DatabaseConnection connect(
     return DatabaseConnection(NativeDatabase.memory());
   }
 
-  return DatabaseConnection.delayed(Future.sync(() async {
-    final appDir = await getApplicationDocumentsDirectory();
-    final dbPath = p.join(appDir.path, dbName);
+  return DatabaseConnection.delayed(
+    Future.sync(() async {
+      final appDir = await getApplicationDocumentsDirectory();
+      final dbPath = p.join(appDir.path, dbName);
 
-    return DatabaseConnection(NativeDatabase.createInBackground(
-      File(dbPath),
-      logStatements: logStatements,
-      setup: _configure,
-    ));
-  }));
+      return DatabaseConnection(
+        NativeDatabase.createInBackground(
+          File(dbPath),
+          logStatements: logStatements,
+          setup: _configure,
+        ),
+      );
+    }),
+  );
 }

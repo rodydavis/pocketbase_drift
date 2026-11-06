@@ -70,7 +70,8 @@ class $FileService extends FileService {
         // For cacheOnly policy, return even expired cache (stale data > no data)
         if (requestPolicy == RequestPolicy.cacheOnly) {
           client.logger.fine(
-              'Returning expired cached file (cacheOnly policy): $blobName');
+            'Returning expired cached file (cacheOnly policy): $blobName',
+          );
           return cached.data;
         }
 
@@ -101,8 +102,9 @@ class $FileService extends FileService {
 
         // If network failed but we have expired cache, return stale data
         if (cached != null) {
-          client.logger
-              .fine('Network failed, returning expired cached file: $blobName');
+          client.logger.fine(
+            'Network failed, returning expired cached file: $blobName',
+          );
           return cached.data;
         }
 
@@ -114,7 +116,8 @@ class $FileService extends FileService {
     }
 
     throw CacheMissException(
-        'File "$blobName" not found in cache (cacheOnly policy)');
+      'File "$blobName" not found in cache (cacheOnly policy)',
+    );
   }
 
   /// Name under which a file (or one of its thumbs) is stored in the blob
@@ -147,21 +150,18 @@ class $FileService extends FileService {
       });
     }
 
-    final download = _Download(
-      () async {
-        String? fileToken = token;
-        if (autoGenerateToken && fileToken == null) {
-          fileToken = await getToken();
-        }
-        final bytes = await _downloadFile(
-          getURL(record, filename, thumb: thumb, token: fileToken),
-          timeout,
-        );
-        if (persist) await _store(record.id, blobName, bytes, expireAfter);
-        return bytes;
-      }(),
-      persists: persist,
-    );
+    final download = _Download(() async {
+      String? fileToken = token;
+      if (autoGenerateToken && fileToken == null) {
+        fileToken = await getToken();
+      }
+      final bytes = await _downloadFile(
+        getURL(record, filename, thumb: thumb, token: fileToken),
+        timeout,
+      );
+      if (persist) await _store(record.id, blobName, bytes, expireAfter);
+      return bytes;
+    }(), persists: persist);
     _inFlight[key] = download;
     download.bytes.whenComplete(() {
       if (identical(_inFlight[key], download)) _inFlight.remove(key);
@@ -183,8 +183,9 @@ class $FileService extends FileService {
       recordId,
       blobName,
       bytes,
-      expires:
-          expireAfter != null ? DateTime.now().toUtc().add(expireAfter) : null,
+      expires: expireAfter != null
+          ? DateTime.now().toUtc().add(expireAfter)
+          : null,
     );
     unawaited(client.enforceFileCacheLimit());
   }
@@ -238,9 +239,7 @@ class $FileService extends FileService {
     } on FormatException {
       // Not a JSON error body; fall through to a generic message.
     }
-    return {
-      'message': 'Failed to download file. Status code: $statusCode',
-    };
+    return {'message': 'Failed to download file. Status code: $statusCode'};
   }
 }
 

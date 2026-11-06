@@ -43,8 +43,9 @@ class ServiceUpdateRules extends StreamQueryUpdateRules {
     ];
     if (writes.isEmpty) return out;
     final service = Zone.current[_serviceTag] as String?;
-    final table =
-        service == null ? anyServiceTableName : serviceTableName(service);
+    final table = service == null
+        ? anyServiceTableName
+        : serviceTableName(service);
     for (final kind in writes) {
       out.add(TableUpdate(table, kind: kind));
     }

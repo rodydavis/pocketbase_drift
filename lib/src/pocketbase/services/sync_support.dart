@@ -149,8 +149,10 @@ Future<T> runOnline<T>(
   Future<T> Function() work,
 ) async {
   if (!await recordsSettle(client, keys, timeout)) {
-    final busy = keys.firstWhere((k) => isRecordBusy(client, k),
-        orElse: () => keys.first);
+    final busy = keys.firstWhere(
+      (k) => isRecordBusy(client, k),
+      orElse: () => keys.first,
+    );
     throw ClientException(
       statusCode: 0,
       originalError: RecordBusy(busy),
@@ -213,11 +215,11 @@ Map<String, dynamic>? deltaBody(
   final before = _values(base);
   final added = [
     for (final v in local)
-      if (!before.contains(v)) v
+      if (!before.contains(v)) v,
   ];
   final removed = [
     for (final v in before)
-      if (!local.contains(v)) v
+      if (!local.contains(v)) v,
   ];
   return {
     if (added.isNotEmpty && !files)
@@ -247,15 +249,15 @@ Object? rebaseDelta(
   final before = _values(expected);
   final removed = {
     for (final v in before)
-      if (!local.contains(v)) v
+      if (!local.contains(v)) v,
   };
   final result = [
     for (final v in _values(server))
-      if (!removed.contains(v)) v
+      if (!removed.contains(v)) v,
   ];
   final added = [
     for (final v in local)
-      if (!before.contains(v) && !result.contains(v)) v
+      if (!before.contains(v) && !result.contains(v)) v,
   ];
   if (kind == DeltaKind.prepend) {
     result.insertAll(0, added);

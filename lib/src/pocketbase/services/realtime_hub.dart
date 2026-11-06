@@ -76,11 +76,16 @@ class RealtimeHub {
 
     if (_connectListener == null) {
       final onConnect = _connectListener = (_) => _onConnect();
-      unawaited(client.realtime
-          .subscribe('PB_CONNECT', onConnect)
-          .then<void>((_) {}, onError: (Object e) {
-        _logger.fine('Realtime connect listener not active yet', e);
-      }));
+      unawaited(
+        client.realtime
+            .subscribe('PB_CONNECT', onConnect)
+            .then<void>(
+              (_) {},
+              onError: (Object e) {
+                _logger.fine('Realtime connect listener not active yet', e);
+              },
+            ),
+      );
     }
     if (entry.listener == null) {
       final listener = entry.listener = (message) {
@@ -120,11 +125,13 @@ class RealtimeHub {
   /// for the connection (the SDK drops the connection with the last one).
   void _removeListener(String key, SubscriptionFunc? listener) {
     if (listener == null) return;
-    unawaited(client.realtime
-        .unsubscribeByTopicAndListener(key, listener)
-        .catchError((Object e) {
-      _logger.fine('Unsubscribing from $key failed (connection closed?)', e);
-    }));
+    unawaited(
+      client.realtime.unsubscribeByTopicAndListener(key, listener).catchError((
+        Object e,
+      ) {
+        _logger.fine('Unsubscribing from $key failed (connection closed?)', e);
+      }),
+    );
   }
 
   Future<void> _dispatch(_Topic entry, RecordSubscriptionEvent event) async {
@@ -134,7 +141,10 @@ class RealtimeHub {
         await client.collection(entry.service).onEvent(event);
       } catch (e, st) {
         _logger.warning(
-            'Realtime event for ${entry.service} not cached', e, st);
+          'Realtime event for ${entry.service} not cached',
+          e,
+          st,
+        );
       }
     }
     for (final query in entry.queries.toList()) {

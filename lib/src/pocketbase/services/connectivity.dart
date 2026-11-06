@@ -36,8 +36,8 @@ class ConnectivityService {
     this.onlineProbeInterval = const Duration(seconds: 60),
     this.offlineBackoffMin = const Duration(seconds: 5),
     this.offlineBackoffMax = const Duration(seconds: 60),
-  })  : _probe = probe,
-        _logger = Logger('ConnectivityService');
+  }) : _probe = probe,
+       _logger = Logger('ConnectivityService');
 
   /// Disables probes and interface listeners. Testing only.
   @visibleForTesting
@@ -75,17 +75,17 @@ class ConnectivityService {
   /// otherwise. Each new listener first receives the current status; other
   /// listeners only see real status changes.
   Stream<bool> get statusStream => Stream<bool>.multi((listener) {
-        listener.add(isConnected);
-        final sub = _statusController.stream.listen(
-          listener.add,
-          onError: listener.addError,
-          onDone: listener.close,
-        );
-        listener
-          ..onPause = sub.pause
-          ..onResume = sub.resume
-          ..onCancel = sub.cancel;
-      }, isBroadcast: true);
+    listener.add(isConnected);
+    final sub = _statusController.stream.listen(
+      listener.add,
+      onError: listener.addError,
+      onDone: listener.close,
+    );
+    listener
+      ..onPause = sub.pause
+      ..onResume = sub.resume
+      ..onCancel = sub.cancel;
+  }, isBroadcast: true);
 
   /// Whether a network request should be attempted.
   ///
@@ -118,11 +118,12 @@ class ConnectivityService {
 
   void _listenInterface() {
     try {
-      _interfaceSubscription ??= Connectivity()
-          .onConnectivityChanged
-          .listen(_onInterfaceChange, onError: (Object e) {
-        _logger.fine('Interface events unavailable: $e');
-      });
+      _interfaceSubscription ??= Connectivity().onConnectivityChanged.listen(
+        _onInterfaceChange,
+        onError: (Object e) {
+          _logger.fine('Interface events unavailable: $e');
+        },
+      );
     } catch (e) {
       // Platform without the plugin (tests, unsupported platforms):
       // fall back to probe- and request-based detection only.
@@ -253,7 +254,8 @@ class ConnectivityService {
   void reportNetworkFailure() {
     _consecutiveFailures++;
     _logger.fine(
-        'Network failure reported ($_consecutiveFailures consecutive failures)');
+      'Network failure reported ($_consecutiveFailures consecutive failures)',
+    );
 
     if (_consecutiveFailures >= _failureThreshold && isConnected) {
       _logger.info('Multiple network failures detected, marking as offline.');

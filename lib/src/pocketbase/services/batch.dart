@@ -349,8 +349,11 @@ class $BatchService {
       RequestPolicy.networkOnly => _sendNetworkOnly(body, query, headers),
       RequestPolicy.networkFirst => _sendNetworkFirst(body, query, headers),
       RequestPolicy.cacheFirst => _sendCacheFirst(body, query, headers),
-      RequestPolicy.cacheAndNetwork =>
-        _sendCacheAndNetwork(body, query, headers),
+      RequestPolicy.cacheAndNetwork => _sendCacheAndNetwork(
+        body,
+        query,
+        headers,
+      ),
     };
   }
 
@@ -379,10 +382,10 @@ class $BatchService {
 
   /// `collection/id` of every record the batch writes.
   List<String> get _recordKeys => [
-        for (final request in _requests)
-          if ((request.recordId ?? request.body['id']) case final String id)
-            '${request.collection}/$id',
-      ];
+    for (final request in _requests)
+      if ((request.recordId ?? request.body['id']) case final String id)
+        '${request.collection}/$id',
+  ];
 
   /// Sends the batch once running pushes of its records are done and blocks
   /// their pushes until the results are cached (see [runOnline]). Without
@@ -392,18 +395,19 @@ class $BatchService {
     Map<String, dynamic> query,
     Map<String, String> headers, {
     required bool cache,
-  }) =>
-      runOnline(client, _recordKeys, client.requestTimeout, () async {
-        final before = <String, Map<String, dynamic>?>{
-          for (final request in _requests)
-            if (request.recordId case final String id)
-              '${request.collection}/$id':
-                  await client.db.rowById(request.collection, id),
-        };
-        final results = await _sendToServer(body, query, headers);
-        await _syncResultsToCache(results, before: before, pendingOnly: !cache);
-        return results;
-      });
+  }) => runOnline(client, _recordKeys, client.requestTimeout, () async {
+    final before = <String, Map<String, dynamic>?>{
+      for (final request in _requests)
+        if (request.recordId case final String id)
+          '${request.collection}/$id': await client.db.rowById(
+            request.collection,
+            id,
+          ),
+    };
+    final results = await _sendToServer(body, query, headers);
+    await _syncResultsToCache(results, before: before, pendingOnly: !cache);
+    return results;
+  });
 
   /// Pushes the queued creates of records this batch updates or deletes:
   /// the server rejects the whole batch when one of them does not exist
@@ -458,19 +462,23 @@ class $BatchService {
       };
       // Holds the records like a push, so sync does not send them again
       // and a delete meanwhile is queued instead of dropped.
-      unawaited(runForRecords(
-        client,
-        revs.keys,
-        () => _sendToServer(body, query, headers).then(
-            (serverResults) => _syncResultsToCache(serverResults, revs: revs)),
-      ).catchError((Object e) {
-        client.logger.warning(
+      unawaited(
+        runForRecords(
+          client,
+          revs.keys,
+          () => _sendToServer(body, query, headers).then(
+            (serverResults) => _syncResultsToCache(serverResults, revs: revs),
+          ),
+        ).catchError((Object e) {
+          client.logger.warning(
             'Background batch send failed; the operations sync individually.',
-            e);
-        // A rejected batch fails as a whole; the valid operations can still
-        // sync on their own.
-        if (!isTransientError(e)) unawaited(client.syncPendingChanges());
-      }));
+            e,
+          );
+          // A rejected batch fails as a whole; the valid operations can still
+          // sync on their own.
+          if (!isTransientError(e)) unawaited(client.syncPendingChanges());
+        }),
+      );
     } else {
       client.connectivity.probeSoon();
     }
@@ -499,7 +507,8 @@ class $BatchService {
     }
     final results = await _applyAllToCache(sync: true);
     client.logger.info(
-        'Batch of ${_queue.length} requests saved to local cache for later sync.');
+      'Batch of ${_queue.length} requests saved to local cache for later sync.',
+    );
     return results;
   }
 
@@ -510,13 +519,17 @@ class $BatchService {
         results.add(await _applySingleToCache(request, sync: sync));
       } catch (e) {
         client.logger.warning(
-            'Error applying batch request to cache: ${request.collection}', e);
-        results.add($BatchResult(
-          status: 500,
-          body: {'error': e.toString()},
-          collection: request.collection,
-          recordId: request.recordId,
-        ));
+          'Error applying batch request to cache: ${request.collection}',
+          e,
+        );
+        results.add(
+          $BatchResult(
+            status: 500,
+            body: {'error': e.toString()},
+            collection: request.collection,
+            recordId: request.recordId,
+          ),
+        );
       }
     }
     return results;
@@ -600,12 +613,14 @@ class $BatchService {
       final sdkResult = sdkResults[i];
       final request = requests[i];
 
-      results.add($BatchResult(
-        status: sdkResult.status.toInt(),
-        body: sdkResult.body,
-        collection: request.collection,
-        recordId: _extractIdFromBody(sdkResult.body) ?? request.recordId,
-      ));
+      results.add(
+        $BatchResult(
+          status: sdkResult.status.toInt(),
+          body: sdkResult.body,
+          collection: request.collection,
+          recordId: _extractIdFromBody(sdkResult.body) ?? request.recordId,
+        ),
+      );
     }
 
     return results;
@@ -620,8 +635,10 @@ class $BatchService {
     final service = client.collection(request.collection);
 
     if (request.isDelete) {
-      final found =
-          await service.writeLocalDelete(request.recordId!, sync: sync);
+      final found = await service.writeLocalDelete(
+        request.recordId!,
+        sync: sync,
+      );
       return $BatchResult(
         status: found ? 204 : 404,
         body: null,
@@ -637,11 +654,18 @@ class $BatchService {
         id != null && await client.db.rowById(request.collection, id) != null;
     if (request.isUpdate || (request.isUpsert && exists)) {
       final body = Map<String, dynamic>.of(request.body)..remove('id');
-      record = await service.writeLocalUpdate(id!, body,
-          files: request.files, sync: sync);
+      record = await service.writeLocalUpdate(
+        id!,
+        body,
+        files: request.files,
+        sync: sync,
+      );
     } else {
-      record = await service.writeLocalCreate(request.body,
-          files: request.files, sync: sync);
+      record = await service.writeLocalCreate(
+        request.body,
+        files: request.files,
+        sync: sync,
+      );
       status = 201;
     }
 
@@ -702,11 +726,9 @@ class $BatchService {
             partial: request.fields?.isNotEmpty ?? false,
           );
         } else if (request.isCreate) {
-          await client.db.upsertServerRecords(
-            request.collection,
-            [data],
-            partial: request.fields?.isNotEmpty ?? false,
-          );
+          await client.db.upsertServerRecords(request.collection, [
+            data,
+          ], partial: request.fields?.isNotEmpty ?? false);
         } else {
           // Queued local changes of the fields this request set are older,
           // unless they were made while the batch was in flight: the row
@@ -725,22 +747,18 @@ class $BatchService {
               revChanged &&
               (jsonEncode(row[field]) != jsonEncode(prior[field]) ||
                   !queuedBefore.contains(field));
-          await client.db.acceptServerWrite(
-            request.collection,
-            id,
-            data,
-            {
-              for (final k in request.body.keys)
-                if (k != 'id' && !editedMeanwhile(baseFieldName(k))) k,
-              for (final f in request.files)
-                if (baseFieldName(f.$1) == f.$1) f.$1,
-            },
-            partial: request.fields?.isNotEmpty ?? false,
-          );
+          await client.db.acceptServerWrite(request.collection, id, data, {
+            for (final k in request.body.keys)
+              if (k != 'id' && !editedMeanwhile(baseFieldName(k))) k,
+            for (final f in request.files)
+              if (baseFieldName(f.$1) == f.$1) f.$1,
+          }, partial: request.fields?.isNotEmpty ?? false);
         }
       } catch (e) {
         client.logger.warning(
-            'Error syncing batch result to cache: ${request.collection}', e);
+          'Error syncing batch result to cache: ${request.collection}',
+          e,
+        );
       }
     }
   }

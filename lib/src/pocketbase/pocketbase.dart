@@ -65,9 +65,7 @@ class $PocketBase extends PocketBase with WidgetsBindingObserver {
     Duration connectivityOfflineBackoffMin = const Duration(seconds: 5),
     Duration connectivityOfflineBackoffMax = const Duration(seconds: 60),
   }) {
-    final db = DataBase(
-      connection ?? connect(dbName, inMemory: inMemory),
-    );
+    final db = DataBase(connection ?? connect(dbName, inMemory: inMemory));
     final client = $PocketBase(
       baseUrl,
       db: db,
@@ -142,8 +140,9 @@ class $PocketBase extends PocketBase with WidgetsBindingObserver {
 
   /// Default of [maxFileCacheBytes]: 128 MB, 32 MB on the web (where the
   /// IndexedDB storage fallback keeps the whole database in memory).
-  static const int defaultMaxFileCacheBytes =
-      kIsWeb ? 32 * 1024 * 1024 : 128 * 1024 * 1024;
+  static const int defaultMaxFileCacheBytes = kIsWeb
+      ? 32 * 1024 * 1024
+      : 128 * 1024 * 1024;
 
   /// Size limit in bytes of the file blob cache: downloaded files, thumbs
   /// and the cached copies of uploaded files.
@@ -212,8 +211,10 @@ class $PocketBase extends PocketBase with WidgetsBindingObserver {
 
   Future<({int count, int bytes, int remaining})> _evictFiles(int max) async {
     final epoch = _syncEpoch;
-    final result =
-        await db.evictFiles(maxBytes: max, targetBytes: _evictTarget(max));
+    final result = await db.evictFiles(
+      maxBytes: max,
+      targetBytes: _evictTarget(max),
+    );
     final stuck = result.remaining > max;
     if (stuck && epoch != _syncEpoch) {
       // A sync pass ended meanwhile: evict again with the new pins.
@@ -222,8 +223,10 @@ class $PocketBase extends PocketBase with WidgetsBindingObserver {
       return result;
     }
     if (stuck && _evictStuckAt == null) {
-      logger.info('File cache holds ${result.remaining} bytes of unsynced '
-          'files, more than maxFileCacheBytes ($max)');
+      logger.info(
+        'File cache holds ${result.remaining} bytes of unsynced '
+        'files, more than maxFileCacheBytes ($max)',
+      );
     }
     _evictStuckAt = stuck ? result.remaining : null;
     return result;
@@ -242,7 +245,8 @@ class $PocketBase extends PocketBase with WidgetsBindingObserver {
         if (record.loggerName.startsWith('PocketBaseDrift')) {
           // ignore: avoid_print
           print(
-              '[${record.level.name}] ${record.loggerName}: ${record.message}');
+            '[${record.level.name}] ${record.loggerName}: ${record.message}',
+          );
           if (record.error != null) {
             // ignore: avoid_print
             print('  Error: ${record.error}');
@@ -333,7 +337,7 @@ class $PocketBase extends PocketBase with WidgetsBindingObserver {
       }
       final services = includeFailed
           ? {for (final r in await db.pendingRecords().get()) r.service}
-              .toList()
+                .toList()
           : await db.pendingServices();
       if (services.isEmpty) {
         logger.fine('No pending changes to sync.');
@@ -393,7 +397,9 @@ class $PocketBase extends PocketBase with WidgetsBindingObserver {
   /// example one the server rejected). The cached row is removed, so the
   /// next read loads the server's version.
   Future<void> discardPendingChange(
-      String collectionIdOrName, String id) async {
+    String collectionIdOrName,
+    String id,
+  ) async {
     final row = await db.rowById(collectionIdOrName, id);
     if (row == null || !RecordMeta.isPending(row)) return;
     await db.$delete(collectionIdOrName, id);
@@ -447,8 +453,9 @@ class $PocketBase extends PocketBase with WidgetsBindingObserver {
       final cutoffDate = DateTime.now().toUtc().subtract(effectiveTtl);
       logger.info('Running maintenance (TTL: ${effectiveTtl.inDays} days)...');
       deletedRecords = await db.cleanupExpiredRecords(cutoffDate: cutoffDate);
-      deletedResponses =
-          await db.cleanupExpiredResponses(cutoffDate: cutoffDate);
+      deletedResponses = await db.cleanupExpiredResponses(
+        cutoffDate: cutoffDate,
+      );
       deletedFiles = await db.cleanupExpiredFiles(orphanCutoff: cutoffDate);
     }
     final max = maxFileCacheBytes;
@@ -465,10 +472,12 @@ class $PocketBase extends PocketBase with WidgetsBindingObserver {
       evictedBytes: evicted.bytes,
     );
 
-    logger.info('Maintenance complete: ${result.totalDeleted} items cleaned '
-        'up ($deletedRecords records, $deletedResponses responses, '
-        '$deletedFiles expired files, ${evicted.count} evicted files of '
-        '${evicted.bytes} bytes, $releasedPages pages released)');
+    logger.info(
+      'Maintenance complete: ${result.totalDeleted} items cleaned '
+      'up ($deletedRecords records, $deletedResponses responses, '
+      '$deletedFiles expired files, ${evicted.count} evicted files of '
+      '${evicted.bytes} bytes, $releasedPages pages released)',
+    );
     return result;
   }
 
@@ -489,8 +498,9 @@ class $PocketBase extends PocketBase with WidgetsBindingObserver {
   void _listenForConnectivityChanges() {
     _connectivitySubscription?.cancel();
     // The first event is the current status, handled by the start-up sync.
-    _connectivitySubscription =
-        connectivity.statusStream.skip(1).listen((isConnected) {
+    _connectivitySubscription = connectivity.statusStream.skip(1).listen((
+      isConnected,
+    ) {
       if (!isConnected) return;
       logger.info('Server reachable. Syncing pending changes.');
       realtimeHub.scheduleRefresh();
@@ -598,7 +608,8 @@ class $PocketBase extends PocketBase with WidgetsBindingObserver {
         final cachedJson = await db.getCachedResponse(cacheKey);
         if (cachedJson == null) {
           throw CacheMissException(
-              'Response for request ($cacheKey) not found in cache.');
+            'Response for request ($cacheKey) not found in cache.',
+          );
         }
         return jsonDecode(cachedJson) as T;
       },
@@ -633,8 +644,10 @@ class $PocketBase extends PocketBase with WidgetsBindingObserver {
 
   @override
   $RecordService collection(String collectionIdOrName) =>
-      _recordServices[collectionIdOrName] ??=
-          $RecordService(this, collectionIdOrName);
+      _recordServices[collectionIdOrName] ??= $RecordService(
+        this,
+        collectionIdOrName,
+      );
 
   /// Get a collection by id or name and fetch
   /// the scheme to set it locally for use in
@@ -654,11 +667,13 @@ class $PocketBase extends PocketBase with WidgetsBindingObserver {
         requestPolicy: requestPolicy,
       );
     } catch (e) {
-      final cached = await db.collectionByName(collectionIdOrName) ??
+      final cached =
+          await db.collectionByName(collectionIdOrName) ??
           await db.collectionById(collectionIdOrName);
       if (cached == null) rethrow;
       logger.fine(
-          'Using the cached schema of "$collectionIdOrName" (fetch failed: $e).');
+        'Using the cached schema of "$collectionIdOrName" (fetch failed: $e).',
+      );
     }
     return collection(collectionIdOrName);
   }

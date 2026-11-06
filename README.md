@@ -1001,22 +1001,6 @@ final posts = await client.db.$query(
 ).get();
 ```
 
-## TODO
-
-
--   [X] Offline mutations and retry
--   [X] Offline collections & records
--   [X] Full-text search
--   [X] Support for fields (select), sort, expand, and pagination
--   [X] Robust file caching and streaming for large files
--   [X] Proactive connectivity handling
--   [X] Structured logging
--   [X] Add support for indirect expand (e.g., `post.author.avatar`)
--   [X] Add support for more complex query operators (e.g., ~ for LIKE/Contains)
--   [X] More comprehensive test suite for edge cases
--   [X] Cache TTL & maintenance for expired data cleanup
--   [X] Batch requests with offline support
-
 ## Credits
  
 - [Rody Davis](https://github.com/rodydavis) (Original Creator)

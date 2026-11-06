@@ -38,7 +38,8 @@ class $CollectionService extends CollectionService
             .then((data) => itemFactoryFunc(data));
       },
       getLocal: () async {
-        final local = await client.db.collectionById(id) ??
+        final local =
+            await client.db.collectionById(id) ??
             await client.db.collectionByName(id);
         if (local == null) {
           throw CacheMissException('Collection ($id) not found [cache]');
@@ -87,8 +88,13 @@ class $CollectionService extends CollectionService
       },
       getLocal: () async {
         final items = await client.db
-            .$query(service,
-                expand: expand, fields: fields, filter: filter, limit: 1)
+            .$query(
+              service,
+              expand: expand,
+              fields: fields,
+              filter: filter,
+              limit: 1,
+            )
             .get();
         if (items.isEmpty) {
           throw CacheMissException('No collection matches "$filter" [cache]');

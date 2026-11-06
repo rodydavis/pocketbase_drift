@@ -32,11 +32,7 @@ class QueryState<T> {
   /// Whether an error occurred during the most recent network fetch.
   bool get hasError => error != null;
 
-  QueryState<T> copyWith({
-    T? data,
-    bool? isFetchingNetwork,
-    Object? error,
-  }) {
+  QueryState<T> copyWith({T? data, bool? isFetchingNetwork, Object? error}) {
     return QueryState<T>(
       data: data ?? this.data,
       isFetchingNetwork: isFetchingNetwork ?? this.isFetchingNetwork,
@@ -63,11 +59,11 @@ class $RecordService extends RecordService with ServiceMixin<RecordModel> {
   }
 
   RecordModel _fromRow(Service row) => itemFactoryFunc({
-        ...row.data,
-        'created': row.created,
-        'updated': row.updated,
-        'id': row.id,
-      });
+    ...row.data,
+    'created': row.created,
+    'updated': row.updated,
+    'id': row.id,
+  });
 
   /// Records of this collection with unsynced local changes (including
   /// offline deletions), oldest first. Rows the server rejected carry
@@ -94,8 +90,9 @@ class $RecordService extends RecordService with ServiceMixin<RecordModel> {
     ];
     final total = ids.length;
 
-    client.logger
-        .info('Starting retry for $total pending items in service: $service');
+    client.logger.info(
+      'Starting retry for $total pending items in service: $service',
+    );
     yield RetryProgressEvent(current: 0, total: total);
 
     final wait = client.requestTimeout;
@@ -115,7 +112,8 @@ class $RecordService extends RecordService with ServiceMixin<RecordModel> {
       if (outcome == PushOutcome.retryLater &&
           !client.connectivity.canReachServer) {
         client.logger.info(
-            'Server unreachable; ${total - i - 1} changes in $service wait for the next sync.');
+          'Server unreachable; ${total - i - 1} changes in $service wait for the next sync.',
+        );
         return;
       }
     }
@@ -156,8 +154,10 @@ class $RecordService extends RecordService with ServiceMixin<RecordModel> {
   /// remote deletion of a record with a pending local edit is left to the
   /// sync, which reports it as a [SyncFailure]. Errors are logged, never
   /// thrown.
-  Future<void> onEvent(RecordSubscriptionEvent e,
-      {bool partial = false}) async {
+  Future<void> onEvent(
+    RecordSubscriptionEvent e, {
+    bool partial = false,
+  }) async {
     final record = e.record;
     if (record == null) return;
     try {
@@ -181,9 +181,10 @@ class $RecordService extends RecordService with ServiceMixin<RecordModel> {
       }
     } catch (err, st) {
       client.logger.warning(
-          'Could not apply realtime ${e.action} of $service/${record.id}',
-          err,
-          st);
+        'Could not apply realtime ${e.action} of $service/${record.id}',
+        err,
+        st,
+      );
     }
   }
 
@@ -196,16 +197,16 @@ class $RecordService extends RecordService with ServiceMixin<RecordModel> {
     String? fields,
   ) async {
     try {
-      final record = await getOne(id,
-          expand: expand,
-          fields: fields,
-          requestPolicy: RequestPolicy.networkOnly);
+      final record = await getOne(
+        id,
+        expand: expand,
+        fields: fields,
+        requestPolicy: RequestPolicy.networkOnly,
+      );
       if (policy != RequestPolicy.networkOnly) {
-        await client.db.upsertServerRecords(
-          service,
-          [record.toJson()],
-          partial: fields?.isNotEmpty ?? false,
-        );
+        await client.db.upsertServerRecords(service, [
+          record.toJson(),
+        ], partial: fields?.isNotEmpty ?? false);
       }
       return record;
     } on ClientException catch (e) {
@@ -239,8 +240,7 @@ class $RecordService extends RecordService with ServiceMixin<RecordModel> {
             sort: sort,
             fields: fields,
             requestPolicy: RequestPolicy.networkOnly,
-          ))
-            .items;
+          )).items;
     if (policy == RequestPolicy.networkOnly) return items;
 
     final json = items.map((e) => e.toJson()).toList();
@@ -348,8 +348,12 @@ class $RecordService extends RecordService with ServiceMixin<RecordModel> {
       emitStates: emitStates,
       same: distinctResults ? _sameOptional : null,
       cache: () => client.db
-          .$query(service,
-              filter: 'id = ${_quote(id)}', expand: expand, fields: fields)
+          .$query(
+            service,
+            filter: 'id = ${_quote(id)}',
+            expand: expand,
+            fields: fields,
+          )
           .map(itemFactoryFunc)
           .watchSingleOrNull(),
       pull: () => _pullOne(id, policy, expand, fields),
@@ -386,12 +390,14 @@ class $RecordService extends RecordService with ServiceMixin<RecordModel> {
           )
           .map(itemFactoryFunc)
           .watch(),
-      pull: () => _pullList(policy,
-          expand: expand,
-          filter: filter,
-          sort: sort,
-          limit: limit,
-          fields: fields),
+      pull: () => _pullList(
+        policy,
+        expand: expand,
+        filter: filter,
+        sort: sort,
+        limit: limit,
+        fields: fields,
+      ),
       label: '$service list',
     );
   }
@@ -410,15 +416,14 @@ class $RecordService extends RecordService with ServiceMixin<RecordModel> {
     String? fields,
     RequestPolicy? requestPolicy,
     bool distinctResults = true,
-  }) =>
-      _recordQuery(id,
-              expand: expand,
-              fields: fields,
-              requestPolicy: requestPolicy,
-              distinctResults: distinctResults,
-              emitStates: false)
-          .stream
-          .map((s) => s.data);
+  }) => _recordQuery(
+    id,
+    expand: expand,
+    fields: fields,
+    requestPolicy: requestPolicy,
+    distinctResults: distinctResults,
+    emitStates: false,
+  ).stream.map((s) => s.data);
 
   /// Watches the records matching [filter] (see [watchRecord] for the
   /// policies). With [limit], only that many records are fetched from the
@@ -431,18 +436,16 @@ class $RecordService extends RecordService with ServiceMixin<RecordModel> {
     String? fields,
     RequestPolicy? requestPolicy,
     bool distinctResults = true,
-  }) =>
-      _listQuery(
-              expand: expand,
-              filter: filter,
-              sort: sort,
-              limit: limit,
-              fields: fields,
-              requestPolicy: requestPolicy,
-              distinctResults: distinctResults,
-              emitStates: false)
-          .stream
-          .map((s) => s.data);
+  }) => _listQuery(
+    expand: expand,
+    filter: filter,
+    sort: sort,
+    limit: limit,
+    fields: fields,
+    requestPolicy: requestPolicy,
+    distinctResults: distinctResults,
+    emitStates: false,
+  ).stream.map((s) => s.data);
 
   /// Like [watchRecord], with the fetch status and last fetch error.
   Stream<QueryState<RecordModel?>> watchRecordState(
@@ -451,14 +454,14 @@ class $RecordService extends RecordService with ServiceMixin<RecordModel> {
     String? fields,
     RequestPolicy? requestPolicy,
     bool distinctResults = true,
-  }) =>
-      _recordQuery(id,
-              expand: expand,
-              fields: fields,
-              requestPolicy: requestPolicy,
-              distinctResults: distinctResults,
-              emitStates: true)
-          .stream;
+  }) => _recordQuery(
+    id,
+    expand: expand,
+    fields: fields,
+    requestPolicy: requestPolicy,
+    distinctResults: distinctResults,
+    emitStates: true,
+  ).stream;
 
   /// Like [watchRecords], with the fetch status and last fetch error.
   Stream<QueryState<List<RecordModel>>> watchRecordsState({
@@ -469,17 +472,16 @@ class $RecordService extends RecordService with ServiceMixin<RecordModel> {
     String? fields,
     RequestPolicy? requestPolicy,
     bool distinctResults = true,
-  }) =>
-      _listQuery(
-              expand: expand,
-              filter: filter,
-              sort: sort,
-              limit: limit,
-              fields: fields,
-              requestPolicy: requestPolicy,
-              distinctResults: distinctResults,
-              emitStates: true)
-          .stream;
+  }) => _listQuery(
+    expand: expand,
+    filter: filter,
+    sort: sort,
+    limit: limit,
+    fields: fields,
+    requestPolicy: requestPolicy,
+    distinctResults: distinctResults,
+    emitStates: true,
+  ).stream;
 }
 
 /// One listened watch stream: a cache stream (or the server's data for
@@ -557,8 +559,11 @@ class _LiveQuery<T> implements LiveQuery {
     // Cache-backed queries wait for the first cache read, so the UI never
     // sees a placeholder value.
     if (!_hasData && (!_networkOnly || !emitStates)) return;
-    final state =
-        QueryState<T>(data: _data, isFetchingNetwork: _fetching, error: _error);
+    final state = QueryState<T>(
+      data: _data,
+      isFetchingNetwork: _fetching,
+      error: _error,
+    );
     final last = _lastState;
     if (last != null) {
       final sameData =
@@ -578,18 +583,16 @@ class _LiveQuery<T> implements LiveQuery {
   }
 
   void _onListen() {
-    _fetching = policy != RequestPolicy.cacheOnly &&
+    _fetching =
+        policy != RequestPolicy.cacheOnly &&
         (_networkOnly || _client.connectivity.canReachServer);
     if (!_networkOnly) {
       try {
-        _cacheSubscription = cache().listen(
-          (data) {
-            _data = data;
-            _hasData = true;
-            _emit(dataChanged: true);
-          },
-          onError: _onCacheError,
-        );
+        _cacheSubscription = cache().listen((data) {
+          _data = data;
+          _hasData = true;
+          _emit(dataChanged: true);
+        }, onError: _onCacheError);
       } catch (e, st) {
         _onCacheError(e, st);
       }
@@ -621,16 +624,21 @@ class _LiveQuery<T> implements LiveQuery {
         try {
           await attach.timeout(const Duration(seconds: 2));
         } on TimeoutException {
-          _client.logger
-              .fine('Realtime for "$label" not ready yet; fetching anyway.');
+          _client.logger.fine(
+            'Realtime for "$label" not ready yet; fetching anyway.',
+          );
         } catch (e) {
-          _client.logger
-              .warning('Realtime subscription for "$label" failed', e);
+          _client.logger.warning(
+            'Realtime subscription for "$label" failed',
+            e,
+          );
         }
       } else {
-        unawaited(attach.catchError((Object e) {
-          _client.logger.fine('Realtime subscription for "$label" failed', e);
-        }));
+        unawaited(
+          attach.catchError((Object e) {
+            _client.logger.fine('Realtime subscription for "$label" failed', e);
+          }),
+        );
       }
       if (_cancelled) return;
     }
