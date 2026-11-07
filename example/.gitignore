@@ -42,3 +42,7 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Web SQLite & Drift WASM binaries
+*.wasm
+drift_worker*.js

@@ -1,0 +1,7 @@
+import '../tables.dart';
+
+-- Every way a blob is deleted (eviction, record deletes, clearCache,
+-- maintenance, replacement in setFile) also drops its LRU bookkeeping.
+CREATE TRIGGER blob_files_delete AFTER DELETE ON BlobFiles BEGIN
+  DELETE FROM BlobFileStats WHERE fileId = old.id;
+END;

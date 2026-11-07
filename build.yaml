@@ -17,7 +17,7 @@ targets:
         # These options change how drift generates code
         options:
           # Drift analyzes SQL queries at compile-time. For this purpose, it needs to know which sqlite3
-          # features will be available. We depend on `sqlite3_flutter_libs`, which lets us use the latest
+          # features will be available. We depend on `sqlite3`, which lets us use the latest
           # version with fts5 enabled.
           sql:
             dialect: sqlite
@@ -27,8 +27,6 @@ targets:
                 - json1
                 - fts5
 
-          # This allows us to share a drift database across isolates (or different tabs on the web)
-          generate_connect_constructor: true
           # These options are generally recommended: https://drift.simonbinder.eu/docs/advanced-features/builder_options/#recommended-options
           apply_converters_on_variables: true
           generate_values_in_copy_with: true

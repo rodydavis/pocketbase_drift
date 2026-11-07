@@ -7,29 +7,41 @@ CREATE VIRTUAL TABLE text_entries USING fts5 (
     content_rowid=rowid
 );
 
--- Triggers to keep entries and fts5 index in sync.
+-- Triggers to keep entries and fts5 index in sync. The index leaves out
+-- the sync bookkeeping keys (RecordMeta) that hold values or names (e.g.
+-- the old values in pendingBase), so search matches only the record
+-- itself. External content: 'delete' must pass the same text that was
+-- indexed, so all three triggers use the same json_remove(...).
 CREATE TRIGGER services_insert AFTER INSERT ON services BEGIN
-  INSERT INTO text_entries(rowid, data) VALUES (new.rowid, new.data);
+  INSERT INTO text_entries(rowid, data) VALUES (new.rowid, json_remove(new.data, '$.retryCount', '$.pendingFields', '$.pendingFiles', '$.pendingOwner', '$.pendingRev', '$.syncError', '$.pendingBase', '$.baseUpdated', '$.pendingDeltas'));
 END;
 
 CREATE TRIGGER services_delete AFTER DELETE ON services BEGIN
-  INSERT INTO text_entries(text_entries, rowid, data) VALUES ('delete', old.rowid, old.data);
+  INSERT INTO text_entries(text_entries, rowid, data) VALUES ('delete', old.rowid, json_remove(old.data, '$.retryCount', '$.pendingFields', '$.pendingFiles', '$.pendingOwner', '$.pendingRev', '$.syncError', '$.pendingBase', '$.baseUpdated', '$.pendingDeltas'));
 END;
 
-CREATE TRIGGER services_update AFTER UPDATE ON services BEGIN
-  INSERT INTO text_entries(text_entries, rowid, data) VALUES ('delete', new.rowid, new.data);
-  INSERT INTO text_entries(rowid, data) VALUES (new.rowid, new.data);
+-- Only re-index when the record JSON changes (not for bookkeeping columns
+-- such as cachedAt).
+CREATE TRIGGER services_update AFTER UPDATE OF data ON services BEGIN
+  INSERT INTO text_entries(text_entries, rowid, data) VALUES ('delete', old.rowid, json_remove(old.data, '$.retryCount', '$.pendingFields', '$.pendingFiles', '$.pendingOwner', '$.pendingRev', '$.syncError', '$.pendingBase', '$.baseUpdated', '$.pendingDeltas'));
+  INSERT INTO text_entries(rowid, data) VALUES (new.rowid, json_remove(new.data, '$.retryCount', '$.pendingFields', '$.pendingFiles', '$.pendingOwner', '$.pendingRev', '$.syncError', '$.pendingBase', '$.baseUpdated', '$.pendingDeltas'));
 END;
 
--- Full text search query.
-_search: 
+-- Full text search query. Tombstones (offline deletes pending sync) are
+-- excluded so deleted records never surface in search results, and so are
+-- unsynced rows queued by another account (kept across logout).
+_search(:owner AS TEXT OR NULL):
     SELECT record.** FROM text_entries
     INNER JOIN services record ON record.rowid = text_entries.rowid
     WHERE text_entries MATCH :query
+    AND (json_extract(record.data, '$.deleted') IS NULL OR json_extract(record.data, '$.deleted') = 0)
+    AND (json_extract(record.data, '$.pendingOwner') IS NULL OR json_extract(record.data, '$.pendingOwner') = :owner)
     ORDER BY rank;
-_searchService: 
+_searchService(:owner AS TEXT OR NULL):
     SELECT record.** FROM text_entries
     INNER JOIN services record ON record.rowid = text_entries.rowid
     WHERE text_entries MATCH :query
     AND record.service = :service
+    AND (json_extract(record.data, '$.deleted') IS NULL OR json_extract(record.data, '$.deleted') = 0)
+    AND (json_extract(record.data, '$.pendingOwner') IS NULL OR json_extract(record.data, '$.pendingOwner') = :owner)
     ORDER BY rank;

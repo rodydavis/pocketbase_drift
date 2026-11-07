@@ -1,0 +1,3 @@
+# Dev-only device harness: keep it out of the published pocketbase_drift
+# package. A .pubignore replaces this directory's .gitignore for pub.
+*

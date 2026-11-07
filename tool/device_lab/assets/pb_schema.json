@@ -1,0 +1,960 @@
+[
+ {
+  "id": "_pb_users_auth_",
+  "listRule": "",
+  "viewRule": "",
+  "createRule": "",
+  "updateRule": "id = @request.auth.id",
+  "deleteRule": "id = @request.auth.id",
+  "name": "users",
+  "type": "auth",
+  "fields": [
+   {
+    "autogeneratePattern": "[a-z0-9]{15}",
+    "help": "",
+    "hidden": false,
+    "id": "text3208210256",
+    "max": 15,
+    "min": 15,
+    "name": "id",
+    "pattern": "^[a-z0-9]+$",
+    "presentable": false,
+    "primaryKey": true,
+    "required": true,
+    "system": true,
+    "type": "text"
+   },
+   {
+    "cost": 0,
+    "help": "",
+    "hidden": true,
+    "id": "password901924565",
+    "max": 0,
+    "min": 8,
+    "name": "password",
+    "pattern": "",
+    "presentable": false,
+    "required": true,
+    "system": true,
+    "type": "password"
+   },
+   {
+    "autogeneratePattern": "[a-zA-Z0-9]{50}",
+    "help": "",
+    "hidden": true,
+    "id": "text2504183744",
+    "max": 60,
+    "min": 30,
+    "name": "tokenKey",
+    "pattern": "",
+    "presentable": false,
+    "primaryKey": false,
+    "required": true,
+    "system": true,
+    "type": "text"
+   },
+   {
+    "exceptDomains": [],
+    "help": "",
+    "hidden": false,
+    "id": "email3885137012",
+    "name": "email",
+    "onlyDomains": [],
+    "presentable": false,
+    "required": true,
+    "system": true,
+    "type": "email"
+   },
+   {
+    "help": "",
+    "hidden": false,
+    "id": "bool1547992806",
+    "name": "emailVisibility",
+    "presentable": false,
+    "required": false,
+    "system": true,
+    "type": "bool"
+   },
+   {
+    "help": "",
+    "hidden": false,
+    "id": "bool256245529",
+    "name": "verified",
+    "presentable": false,
+    "required": false,
+    "system": true,
+    "type": "bool"
+   },
+   {
+    "autogeneratePattern": "",
+    "help": "",
+    "hidden": false,
+    "id": "text1579384326",
+    "max": 255,
+    "min": 0,
+    "name": "name",
+    "pattern": "",
+    "presentable": false,
+    "primaryKey": false,
+    "required": false,
+    "system": false,
+    "type": "text"
+   },
+   {
+    "help": "",
+    "hidden": false,
+    "id": "file376926767",
+    "maxSelect": 1,
+    "maxSize": 0,
+    "mimeTypes": [
+     "image/jpeg",
+     "image/png",
+     "image/svg+xml",
+     "image/gif",
+     "image/webp"
+    ],
+    "name": "avatar",
+    "presentable": false,
+    "protected": false,
+    "required": false,
+    "system": false,
+    "thumbs": [],
+    "type": "file"
+   },
+   {
+    "hidden": false,
+    "id": "autodate2990389176",
+    "name": "created",
+    "onCreate": true,
+    "onUpdate": false,
+    "presentable": false,
+    "system": false,
+    "type": "autodate"
+   },
+   {
+    "hidden": false,
+    "id": "autodate3332085495",
+    "name": "updated",
+    "onCreate": true,
+    "onUpdate": true,
+    "presentable": false,
+    "system": false,
+    "type": "autodate"
+   }
+  ],
+  "indexes": [
+   "CREATE UNIQUE INDEX `idx_tokenKey__pb_users_auth_` ON `users` (`tokenKey`)",
+   "CREATE UNIQUE INDEX `idx_email__pb_users_auth_` ON `users` (`email`) WHERE `email` != ''"
+  ],
+  "created": "2026-11-04 15:31:19.435Z",
+  "updated": "2026-11-04 15:31:19.457Z",
+  "system": false,
+  "authRule": "",
+  "manageRule": null,
+  "authAlert": {
+   "enabled": true,
+   "emailTemplate": {
+    "subject": "Login from a new location",
+    "body": "<p>Hello,</p>\n<p>We noticed a login to your {APP_NAME} account from a new location:</p>\n<p><em>{ALERT_INFO}</em></p>\n<p><strong>If this wasn't you, you should immediately change your {APP_NAME} account password to revoke access from all other locations.</strong></p>\n<p>If this was you, you may disregard this email.</p>\n<p>\n  Thanks,<br/>\n  {APP_NAME} team\n</p>"
+   }
+  },
+  "oauth2": {
+   "providers": [],
+   "mappedFields": {
+    "id": "",
+    "name": "name",
+    "username": "",
+    "avatarURL": "avatar"
+   },
+   "enabled": false
+  },
+  "passwordAuth": {
+   "enabled": true,
+   "identityFields": [
+    "email"
+   ]
+  },
+  "mfa": {
+   "enabled": false,
+   "duration": 600,
+   "rule": ""
+  },
+  "otp": {
+   "enabled": false,
+   "duration": 180,
+   "length": 8,
+   "emailTemplate": {
+    "subject": "OTP for {APP_NAME}",
+    "body": "<p>Hello,</p>\n<p>Your one-time password is: <strong>{OTP}</strong></p>\n<p><i>If you didn't ask for the one-time password, you can ignore this email.</i></p>\n<p>\n  Thanks,<br/>\n  {APP_NAME} team\n</p>"
+   }
+  },
+  "authToken": {
+   "duration": 432000
+  },
+  "passwordResetToken": {
+   "duration": 1800
+  },
+  "emailChangeToken": {
+   "duration": 1800
+  },
+  "verificationToken": {
+   "duration": 86400
+  },
+  "fileToken": {
+   "duration": 180
+  },
+  "verificationTemplate": {
+   "subject": "Verify your {APP_NAME} email",
+   "body": "<p>Hello,</p>\n<p>Thank you for joining us at {APP_NAME}.</p>\n<p>Click on the button below to verify your email address.</p>\n<p>\n  <a class=\"btn\" href=\"{APP_URL}/_/#/auth/confirm-verification/{TOKEN}\" target=\"_blank\" rel=\"noopener\">Verify</a>\n</p>\n<p><i>If you didn't recently register, please ignore this email.</i></p>\n<p>\n  Thanks,<br/>\n  {APP_NAME} team\n</p>"
+  },
+  "resetPasswordTemplate": {
+   "subject": "Reset your {APP_NAME} password",
+   "body": "<p>Hello,</p>\n<p>Click on the button below to reset your password.</p>\n<p>\n  <a class=\"btn\" href=\"{APP_URL}/_/#/auth/confirm-password-reset/{TOKEN}\" target=\"_blank\" rel=\"noopener\">Reset password</a>\n</p>\n<p><i>If you didn't ask to reset your password, please ignore this email.</i></p>\n<p>\n  Thanks,<br/>\n  {APP_NAME} team\n</p>"
+  },
+  "confirmEmailChangeTemplate": {
+   "subject": "Confirm your {APP_NAME} new email address",
+   "body": "<p>Hello,</p>\n<p>Click on the button below to confirm your new email address.</p>\n<p>\n  <a class=\"btn\" href=\"{APP_URL}/_/#/auth/confirm-email-change/{TOKEN}\" target=\"_blank\" rel=\"noopener\">Confirm new email</a>\n</p>\n<p><i>If you didn't ask to change your email address, please ignore this email.</i></p>\n<p>\n  Thanks,<br/>\n  {APP_NAME} team\n</p>"
+  }
+ },
+ {
+  "id": "pbc_projects0001",
+  "listRule": "",
+  "viewRule": "",
+  "createRule": "",
+  "updateRule": "",
+  "deleteRule": "",
+  "name": "projects",
+  "type": "base",
+  "fields": [
+   {
+    "autogeneratePattern": "[a-z0-9]{15}",
+    "help": "",
+    "hidden": false,
+    "id": "text3208210256",
+    "max": 15,
+    "min": 15,
+    "name": "id",
+    "pattern": "^[a-z0-9]+$",
+    "presentable": false,
+    "primaryKey": true,
+    "required": true,
+    "system": true,
+    "type": "text"
+   },
+   {
+    "autogeneratePattern": "",
+    "help": "",
+    "hidden": false,
+    "id": "text_proj_name",
+    "max": 100,
+    "min": 1,
+    "name": "name",
+    "pattern": "",
+    "presentable": true,
+    "primaryKey": false,
+    "required": true,
+    "system": false,
+    "type": "text"
+   },
+   {
+    "autogeneratePattern": "",
+    "help": "",
+    "hidden": false,
+    "id": "text_proj_desc",
+    "max": 500,
+    "min": 0,
+    "name": "description",
+    "pattern": "",
+    "presentable": false,
+    "primaryKey": false,
+    "required": false,
+    "system": false,
+    "type": "text"
+   },
+   {
+    "autogeneratePattern": "",
+    "help": "",
+    "hidden": false,
+    "id": "text_proj_color",
+    "max": 20,
+    "min": 0,
+    "name": "color",
+    "pattern": "",
+    "presentable": false,
+    "primaryKey": false,
+    "required": false,
+    "system": false,
+    "type": "text"
+   },
+   {
+    "autogeneratePattern": "",
+    "help": "",
+    "hidden": false,
+    "id": "text_proj_icon",
+    "max": 30,
+    "min": 0,
+    "name": "icon",
+    "pattern": "",
+    "presentable": false,
+    "primaryKey": false,
+    "required": false,
+    "system": false,
+    "type": "text"
+   },
+   {
+    "hidden": false,
+    "id": "autodate_created",
+    "name": "created",
+    "onCreate": true,
+    "onUpdate": false,
+    "presentable": false,
+    "system": false,
+    "type": "autodate"
+   },
+   {
+    "hidden": false,
+    "id": "autodate_updated",
+    "name": "updated",
+    "onCreate": true,
+    "onUpdate": true,
+    "presentable": false,
+    "system": false,
+    "type": "autodate"
+   }
+  ],
+  "indexes": [],
+  "created": "2026-11-04 15:31:19.453Z",
+  "updated": "2026-11-04 15:31:19.453Z",
+  "system": false
+ },
+ {
+  "id": "pbc_tasks0000001",
+  "listRule": "",
+  "viewRule": "",
+  "createRule": "",
+  "updateRule": "",
+  "deleteRule": "",
+  "name": "tasks",
+  "type": "base",
+  "fields": [
+   {
+    "autogeneratePattern": "[a-z0-9]{15}",
+    "help": "",
+    "hidden": false,
+    "id": "text3208210256",
+    "max": 15,
+    "min": 15,
+    "name": "id",
+    "pattern": "^[a-z0-9]+$",
+    "presentable": false,
+    "primaryKey": true,
+    "required": true,
+    "system": true,
+    "type": "text"
+   },
+   {
+    "autogeneratePattern": "",
+    "help": "",
+    "hidden": false,
+    "id": "text_task_title",
+    "max": 200,
+    "min": 1,
+    "name": "title",
+    "pattern": "",
+    "presentable": true,
+    "primaryKey": false,
+    "required": true,
+    "system": false,
+    "type": "text"
+   },
+   {
+    "autogeneratePattern": "",
+    "help": "",
+    "hidden": false,
+    "id": "text_task_desc",
+    "max": 2000,
+    "min": 0,
+    "name": "description",
+    "pattern": "",
+    "presentable": false,
+    "primaryKey": false,
+    "required": false,
+    "system": false,
+    "type": "text"
+   },
+   {
+    "help": "",
+    "hidden": false,
+    "id": "bool_task_done",
+    "name": "is_completed",
+    "presentable": false,
+    "required": false,
+    "system": false,
+    "type": "bool"
+   },
+   {
+    "autogeneratePattern": "",
+    "help": "",
+    "hidden": false,
+    "id": "text_task_priority",
+    "max": 20,
+    "min": 0,
+    "name": "priority",
+    "pattern": "",
+    "presentable": false,
+    "primaryKey": false,
+    "required": false,
+    "system": false,
+    "type": "text"
+   },
+   {
+    "autogeneratePattern": "",
+    "help": "",
+    "hidden": false,
+    "id": "text_task_due",
+    "max": 50,
+    "min": 0,
+    "name": "due_date",
+    "pattern": "",
+    "presentable": false,
+    "primaryKey": false,
+    "required": false,
+    "system": false,
+    "type": "text"
+   },
+   {
+    "cascadeDelete": false,
+    "collectionId": "pbc_projects0001",
+    "help": "",
+    "hidden": false,
+    "id": "relation_task_project",
+    "maxSelect": 1,
+    "minSelect": 0,
+    "name": "project",
+    "presentable": false,
+    "required": false,
+    "system": false,
+    "type": "relation"
+   },
+   {
+    "autogeneratePattern": "",
+    "help": "",
+    "hidden": false,
+    "id": "text_task_tags",
+    "max": 200,
+    "min": 0,
+    "name": "tags",
+    "pattern": "",
+    "presentable": false,
+    "primaryKey": false,
+    "required": false,
+    "system": false,
+    "type": "text"
+   },
+   {
+    "hidden": false,
+    "id": "autodate_created",
+    "name": "created",
+    "onCreate": true,
+    "onUpdate": false,
+    "presentable": false,
+    "system": false,
+    "type": "autodate"
+   },
+   {
+    "hidden": false,
+    "id": "autodate_updated",
+    "name": "updated",
+    "onCreate": true,
+    "onUpdate": true,
+    "presentable": false,
+    "system": false,
+    "type": "autodate"
+   }
+  ],
+  "indexes": [],
+  "created": "2026-11-04 15:31:19.454Z",
+  "updated": "2026-11-04 15:31:19.454Z",
+  "system": false
+ },
+ {
+  "id": "pbc_lab_posts001",
+  "listRule": "",
+  "viewRule": "",
+  "createRule": "",
+  "updateRule": "",
+  "deleteRule": "",
+  "name": "posts",
+  "type": "base",
+  "fields": [
+   {
+    "autogeneratePattern": "[a-z0-9]{15}",
+    "help": "",
+    "hidden": false,
+    "id": "text3208210256",
+    "max": 15,
+    "min": 15,
+    "name": "id",
+    "pattern": "^[a-z0-9]+$",
+    "presentable": false,
+    "primaryKey": true,
+    "required": true,
+    "system": true,
+    "type": "text"
+   },
+   {
+    "autogeneratePattern": "",
+    "help": "",
+    "hidden": false,
+    "id": "text724990059",
+    "max": 80,
+    "min": 0,
+    "name": "title",
+    "pattern": "",
+    "presentable": false,
+    "primaryKey": false,
+    "required": true,
+    "system": false,
+    "type": "text"
+   },
+   {
+    "autogeneratePattern": "",
+    "help": "",
+    "hidden": false,
+    "id": "text3685223346",
+    "max": 0,
+    "min": 0,
+    "name": "body",
+    "pattern": "",
+    "presentable": false,
+    "primaryKey": false,
+    "required": false,
+    "system": false,
+    "type": "text"
+   },
+   {
+    "cascadeDelete": false,
+    "collectionId": "_pb_users_auth_",
+    "help": "",
+    "hidden": false,
+    "id": "relation3182418120",
+    "maxSelect": 1,
+    "minSelect": 0,
+    "name": "author",
+    "presentable": false,
+    "required": false,
+    "system": false,
+    "type": "relation"
+   },
+   {
+    "help": "",
+    "hidden": false,
+    "id": "file3760176746",
+    "maxSelect": 6,
+    "maxSize": 10485760,
+    "mimeTypes": [],
+    "name": "images",
+    "presentable": false,
+    "protected": false,
+    "required": false,
+    "system": false,
+    "thumbs": [
+     "100x100",
+     "400x0"
+    ],
+    "type": "file"
+   },
+   {
+    "help": "",
+    "hidden": false,
+    "id": "file2366146245",
+    "maxSelect": 1,
+    "maxSize": 10485760,
+    "mimeTypes": [],
+    "name": "cover",
+    "presentable": false,
+    "protected": false,
+    "required": false,
+    "system": false,
+    "thumbs": [
+     "100x100"
+    ],
+    "type": "file"
+   },
+   {
+    "help": "",
+    "hidden": false,
+    "id": "number1237995133",
+    "max": null,
+    "min": null,
+    "name": "likes",
+    "onlyInt": false,
+    "presentable": false,
+    "required": false,
+    "system": false,
+    "type": "number"
+   },
+   {
+    "help": "",
+    "hidden": false,
+    "id": "select2063623452",
+    "maxSelect": 1,
+    "name": "status",
+    "presentable": false,
+    "required": false,
+    "system": false,
+    "type": "select",
+    "values": [
+     "draft",
+     "published"
+    ]
+   },
+   {
+    "help": "",
+    "hidden": false,
+    "id": "date3742343818",
+    "max": "",
+    "min": "",
+    "name": "due",
+    "presentable": false,
+    "required": false,
+    "system": false,
+    "type": "date"
+   },
+   {
+    "hidden": false,
+    "id": "autodate2990389176",
+    "name": "created",
+    "onCreate": true,
+    "onUpdate": false,
+    "presentable": false,
+    "system": false,
+    "type": "autodate"
+   },
+   {
+    "hidden": false,
+    "id": "autodate3332085495",
+    "name": "updated",
+    "onCreate": true,
+    "onUpdate": true,
+    "presentable": false,
+    "system": false,
+    "type": "autodate"
+   }
+  ],
+  "indexes": [],
+  "created": "2026-11-04 15:31:19.460Z",
+  "updated": "2026-11-04 15:31:19.460Z",
+  "system": false
+ },
+ {
+  "id": "pbc_lab_notes001",
+  "listRule": "owner = @request.auth.id",
+  "viewRule": "owner = @request.auth.id",
+  "createRule": "@request.auth.id != ''",
+  "updateRule": "owner = @request.auth.id",
+  "deleteRule": "owner = @request.auth.id",
+  "name": "notes",
+  "type": "base",
+  "fields": [
+   {
+    "autogeneratePattern": "[a-z0-9]{15}",
+    "help": "",
+    "hidden": false,
+    "id": "text3208210256",
+    "max": 15,
+    "min": 15,
+    "name": "id",
+    "pattern": "^[a-z0-9]+$",
+    "presentable": false,
+    "primaryKey": true,
+    "required": true,
+    "system": true,
+    "type": "text"
+   },
+   {
+    "cascadeDelete": false,
+    "collectionId": "_pb_users_auth_",
+    "help": "",
+    "hidden": false,
+    "id": "relation3479234172",
+    "maxSelect": 1,
+    "minSelect": 0,
+    "name": "owner",
+    "presentable": false,
+    "required": true,
+    "system": false,
+    "type": "relation"
+   },
+   {
+    "autogeneratePattern": "",
+    "help": "",
+    "hidden": false,
+    "id": "text999008199",
+    "max": 0,
+    "min": 0,
+    "name": "text",
+    "pattern": "",
+    "presentable": false,
+    "primaryKey": false,
+    "required": false,
+    "system": false,
+    "type": "text"
+   },
+   {
+    "hidden": false,
+    "id": "autodate2990389176",
+    "name": "created",
+    "onCreate": true,
+    "onUpdate": false,
+    "presentable": false,
+    "system": false,
+    "type": "autodate"
+   },
+   {
+    "hidden": false,
+    "id": "autodate3332085495",
+    "name": "updated",
+    "onCreate": true,
+    "onUpdate": true,
+    "presentable": false,
+    "system": false,
+    "type": "autodate"
+   }
+  ],
+  "indexes": [],
+  "created": "2026-11-04 15:31:19.461Z",
+  "updated": "2026-11-04 15:31:19.461Z",
+  "system": false
+ },
+ {
+  "id": "pbc_lab_locked01",
+  "listRule": null,
+  "viewRule": null,
+  "createRule": null,
+  "updateRule": null,
+  "deleteRule": null,
+  "name": "locked",
+  "type": "base",
+  "fields": [
+   {
+    "autogeneratePattern": "[a-z0-9]{15}",
+    "help": "",
+    "hidden": false,
+    "id": "text3208210256",
+    "max": 15,
+    "min": 15,
+    "name": "id",
+    "pattern": "^[a-z0-9]+$",
+    "presentable": false,
+    "primaryKey": true,
+    "required": true,
+    "system": true,
+    "type": "text"
+   },
+   {
+    "autogeneratePattern": "",
+    "help": "",
+    "hidden": false,
+    "id": "text724990059",
+    "max": 0,
+    "min": 0,
+    "name": "title",
+    "pattern": "",
+    "presentable": false,
+    "primaryKey": false,
+    "required": false,
+    "system": false,
+    "type": "text"
+   },
+   {
+    "hidden": false,
+    "id": "autodate2990389176",
+    "name": "created",
+    "onCreate": true,
+    "onUpdate": false,
+    "presentable": false,
+    "system": false,
+    "type": "autodate"
+   },
+   {
+    "hidden": false,
+    "id": "autodate3332085495",
+    "name": "updated",
+    "onCreate": true,
+    "onUpdate": true,
+    "presentable": false,
+    "system": false,
+    "type": "autodate"
+   }
+  ],
+  "indexes": [],
+  "created": "2026-11-04 15:31:19.463Z",
+  "updated": "2026-11-04 15:31:19.463Z",
+  "system": false
+ },
+ {
+  "id": "pbc_lab_events01",
+  "listRule": "",
+  "viewRule": "",
+  "createRule": "",
+  "updateRule": "",
+  "deleteRule": "",
+  "name": "events",
+  "type": "base",
+  "fields": [
+   {
+    "autogeneratePattern": "[a-z0-9]{15}",
+    "help": "",
+    "hidden": false,
+    "id": "text3208210256",
+    "max": 15,
+    "min": 15,
+    "name": "id",
+    "pattern": "^[a-z0-9]+$",
+    "presentable": false,
+    "primaryKey": true,
+    "required": true,
+    "system": true,
+    "type": "text"
+   },
+   {
+    "autogeneratePattern": "",
+    "help": "",
+    "hidden": false,
+    "id": "text724990059",
+    "max": 0,
+    "min": 0,
+    "name": "title",
+    "pattern": "",
+    "presentable": false,
+    "primaryKey": false,
+    "required": false,
+    "system": false,
+    "type": "text"
+   },
+   {
+    "hidden": false,
+    "id": "autodate2990389176",
+    "name": "created",
+    "onCreate": true,
+    "onUpdate": false,
+    "presentable": false,
+    "system": false,
+    "type": "autodate"
+   }
+  ],
+  "indexes": [],
+  "created": "2026-11-04 15:31:19.465Z",
+  "updated": "2026-11-04 15:31:19.465Z",
+  "system": false
+ },
+ {
+  "id": "pbc_lab_big00001",
+  "listRule": "",
+  "viewRule": "",
+  "createRule": "",
+  "updateRule": "",
+  "deleteRule": "",
+  "name": "big",
+  "type": "base",
+  "fields": [
+   {
+    "autogeneratePattern": "[a-z0-9]{15}",
+    "help": "",
+    "hidden": false,
+    "id": "text3208210256",
+    "max": 15,
+    "min": 15,
+    "name": "id",
+    "pattern": "^[a-z0-9]+$",
+    "presentable": false,
+    "primaryKey": true,
+    "required": true,
+    "system": true,
+    "type": "text"
+   },
+   {
+    "autogeneratePattern": "",
+    "help": "",
+    "hidden": false,
+    "id": "text1579384326",
+    "max": 0,
+    "min": 0,
+    "name": "name",
+    "pattern": "",
+    "presentable": false,
+    "primaryKey": false,
+    "required": false,
+    "system": false,
+    "type": "text"
+   },
+   {
+    "help": "",
+    "hidden": false,
+    "id": "number2013832146",
+    "max": null,
+    "min": null,
+    "name": "n",
+    "onlyInt": false,
+    "presentable": false,
+    "required": false,
+    "system": false,
+    "type": "number"
+   },
+   {
+    "autogeneratePattern": "",
+    "help": "",
+    "hidden": false,
+    "id": "text4292177663",
+    "max": 0,
+    "min": 0,
+    "name": "grp",
+    "pattern": "",
+    "presentable": false,
+    "primaryKey": false,
+    "required": false,
+    "system": false,
+    "type": "text"
+   },
+   {
+    "cascadeDelete": false,
+    "collectionId": "pbc_lab_posts001",
+    "help": "",
+    "hidden": false,
+    "id": "relation1519021197",
+    "maxSelect": 1,
+    "minSelect": 0,
+    "name": "post",
+    "presentable": false,
+    "required": false,
+    "system": false,
+    "type": "relation"
+   },
+   {
+    "hidden": false,
+    "id": "autodate2990389176",
+    "name": "created",
+    "onCreate": true,
+    "onUpdate": false,
+    "presentable": false,
+    "system": false,
+    "type": "autodate"
+   },
+   {
+    "hidden": false,
+    "id": "autodate3332085495",
+    "name": "updated",
+    "onCreate": true,
+    "onUpdate": true,
+    "presentable": false,
+    "system": false,
+    "type": "autodate"
+   }
+  ],
+  "indexes": [],
+  "created": "2026-11-04 15:31:19.467Z",
+  "updated": "2026-11-04 15:31:19.467Z",
+  "system": false
+ }
+]

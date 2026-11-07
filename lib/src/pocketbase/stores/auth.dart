@@ -1,49 +1,42 @@
-import 'dart:convert';
-
 import 'package:pocketbase/pocketbase.dart';
+import 'package:pocketbase_drift/src/database/database.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-class $AuthStore extends AuthStore {
-  final SharedPreferences prefs;
-  final String key;
+class $AuthStore extends AsyncAuthStore {
+  $AuthStore({
+    required super.save,
+    super.initial,
+    super.clear,
+    this.clearOnLogout = true,
+  });
 
-  $AuthStore(this.prefs, {this.key = "pb_auth"});
+  DataBase? db;
 
-  @override
-  void save(
-    String newToken,
-    dynamic /* RecordModel|AdminModel|null */ newModel,
-  ) {
-    print('saving token: $newToken model: $newModel');
-    super.save(newToken, newModel);
-
-    if (newModel == null) {
-      print('clearing token');
-      prefs.remove(key);
-      return;
-    }
-
-    final encoded = jsonEncode(<String, dynamic>{"token": newToken, "model": newModel});
-    prefs.setString(key, encoded);
-  }
+  /// Whether logging out deletes the cached data.
+  ///
+  /// Unsynced local changes are kept: they belong to the account that made
+  /// them, stay hidden while another account is logged in, and sync when
+  /// that account logs in again. Use [DataBase.clearAllData] to discard them.
+  final bool clearOnLogout;
 
   @override
   void clear() {
     super.clear();
-    print('clearing token');
-    prefs.remove(key);
+    if (clearOnLogout) {
+      db?.clearCache(keepPending: true);
+    }
   }
 
-  Future<void> reload() async {
-    final String? raw = prefs.getString(key);
-    print('loading token: $raw');
-
-    if (raw != null && raw.isNotEmpty) {
-      final decoded = jsonDecode(raw);
-      final token = (decoded as Map<String, dynamic>)["token"] as String? ?? "";
-      final model = RecordModel.fromJson(decoded["model"] as Map<String, dynamic>? ?? {});
-
-      save(token, model);
-    }
+  factory $AuthStore.prefs(
+    SharedPreferences prefs,
+    String key, {
+    bool clearOnLogout = true,
+  }) {
+    return $AuthStore(
+      save: (data) async => await prefs.setString(key, data),
+      initial: prefs.getString(key),
+      clear: () async => await prefs.remove(key),
+      clearOnLogout: clearOnLogout,
+    );
   }
 }

@@ -2,13 +2,15 @@ import 'dart:convert';
 import 'dart:io' as io;
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pocketbase_drift/auth.dart';
+import 'package:logging/logging.dart';
 
 import 'package:pocketbase_drift/pocketbase_drift.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../test_data/collections.json.dart';
+import '../test_server.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -16,26 +18,52 @@ void main() {
 
   const username = 'test@admin.com';
   const password = 'Password123';
-  const url = 'http://127.0.0.1:3000';
+  final url = testServerUrl;
 
   late final $PocketBase client;
   late final db = client.db;
-  final collections = [...offlineCollections].map((e) => CollectionModel.fromJson(jsonDecode(jsonEncode(e)))).toList();
+  final collections = [...offlineCollections]
+      .map((e) => CollectionModel.fromJson(jsonDecode(jsonEncode(e))))
+      .toList();
 
   group('collections service', () {
     setUpAll(() async {
-      client = $PocketBase.database(
-        url,
-        authStore: $AuthStore(await SharedPreferences.getInstance()),
-        inMemory: true,
-        connection: DatabaseConnection(NativeDatabase.memory()),
-        httpClientFactory: () => PocketBaseHttpClient.retry(retries: 1),
+      TestWidgetsFlutterBinding.ensureInitialized();
+      SharedPreferences.setMockInitialValues({});
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+        const MethodChannel('dev.fluttercommunity.plus/connectivity'),
+        (MethodCall methodCall) async {
+          if (methodCall.method == 'check') {
+            return <String>['wifi']; // Report that we are connected to wifi
+          }
+          return null;
+        },
       );
 
-      await client.admins.authWithPassword(
-        username,
-        password,
+      hierarchicalLoggingEnabled = true;
+      Logger.root.level = Level.ALL;
+      Logger.root.onRecord.listen((record) {
+        // ignore: avoid_print
+        print('${record.level.name}: ${record.time}: ${record.message}');
+        if (record.error != null) {
+          // ignore: avoid_print
+          print('Error: ${record.error}');
+        }
+      });
+
+      client = $PocketBase.database(
+        url,
+        authStore: $AuthStore.prefs(
+            (await SharedPreferences.getInstance()), 'pb_auth'),
+        inMemory: true,
+        connection: DatabaseConnection(NativeDatabase.memory()),
       );
+
+      await client.collection('_superusers').authWithPassword(
+            username,
+            password,
+          );
 
       await db.setSchema(collections.map((e) => e.toJson()).toList());
     });
@@ -46,7 +74,7 @@ void main() {
 
     test('check if added locally', () async {
       final local = await client.collections.getFullList(
-        fetchPolicy: FetchPolicy.cacheOnly,
+        requestPolicy: RequestPolicy.cacheOnly,
       );
 
       expect(local, isNotEmpty);
@@ -58,7 +86,7 @@ void main() {
 
       final collection = await client.collections.getOneOrNull(
         collectionId,
-        fetchPolicy: FetchPolicy.cacheOnly,
+        requestPolicy: RequestPolicy.cacheOnly,
       );
 
       expect(collection != null, true);
@@ -72,7 +100,7 @@ void main() {
 
       final collection = await client.collections.getOneOrNull(
         collectionId,
-        fetchPolicy: FetchPolicy.networkOnly,
+        requestPolicy: RequestPolicy.networkOnly,
       );
 
       expect(collection != null, true);
@@ -81,18 +109,19 @@ void main() {
     });
 
     group('get by name or id', () {
-      for (final fetchPolicy in [
-        FetchPolicy.networkOnly,
-        FetchPolicy.cacheAndNetwork,
-        FetchPolicy.cacheOnly,
+      for (final requestPolicy in [
+        RequestPolicy.networkOnly,
+        RequestPolicy.cacheAndNetwork,
+        RequestPolicy.cacheOnly,
       ]) {
-        test(fetchPolicy.name, () async {
+        test(requestPolicy.name, () async {
           const targetName = 'todo';
-          final targetId = collections.firstWhere((e) => e.name == targetName).id;
+          final targetId =
+              collections.firstWhere((e) => e.name == targetName).id;
 
           final idList = await client.collections.getList(
             filter: 'id = "$targetId"',
-            fetchPolicy: fetchPolicy,
+            requestPolicy: requestPolicy,
           );
 
           expect(idList.items.isNotEmpty, true);
@@ -101,7 +130,7 @@ void main() {
 
           final nameList = await client.collections.getList(
             filter: 'name = "$targetName"',
-            fetchPolicy: fetchPolicy,
+            requestPolicy: requestPolicy,
           );
 
           expect(nameList.items.isNotEmpty, true);
@@ -110,7 +139,7 @@ void main() {
 
           final itemId = await client.collections.getFirstListItem(
             'id = "$targetId" || name = "$targetId"',
-            fetchPolicy: fetchPolicy,
+            requestPolicy: requestPolicy,
           );
 
           expect(itemId.id, targetId);
@@ -118,7 +147,7 @@ void main() {
 
           final itemName = await client.collections.getFirstListItem(
             'id = "$targetName" || name = "$targetName"',
-            fetchPolicy: fetchPolicy,
+            requestPolicy: requestPolicy,
           );
 
           expect(itemName.id, targetId);
