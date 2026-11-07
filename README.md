@@ -127,10 +127,26 @@ Record reads and writes wait for a pending `setSchema`, so an un-awaited `client
 
 ### 4. Web Setup
 
-For web, you need to follow the instructions for [Drift on the Web](https://drift.simonbinder.eu/web/#drift-wasm) to copy the `sqlite3.wasm` binary and `drift_worker.js` file into your `web/` directory.
+For web, the app needs `sqlite3.wasm` and `drift_worker.js` in its `web/` directory (see [Drift on the Web](https://drift.simonbinder.eu/platforms/web/)). The worker loads the wasm, so the two files must be compatible.
 
-1.  Download the latest `sqlite3.wasm` from the [sqlite3.dart releases](https://github.com/simolus3/sqlite3.dart/releases) and the latest `drift_worker.js` from the [drift releases](https://github.com/simolus3/drift/releases).
-2.  Place both files directly inside your project's `web/` folder (`web/sqlite3.wasm` and `web/drift_worker.js`).
+1.  Find the `drift` version in your `pubspec.lock`.
+2.  Download `sqlite3.wasm` **and** `drift_worker.js` from that [drift release](https://github.com/simolus3/drift/releases) (tag `drift-<version>`).
+3.  Place both files directly inside your project's `web/` folder (`web/sqlite3.wasm` and `web/drift_worker.js`). Download them again after each `drift` upgrade.
+
+**Do not take `sqlite3.wasm` from a newer [sqlite3.dart release](https://github.com/simolus3/sqlite3.dart/releases) than the worker.** The sqlite3 3.9.0 wasm needs a function that the drift 2.35.3 worker does not have: the database never opens, and the browser logs `LinkError: WebAssembly.instantiate(): Import #26 "dart" "dispatch_trace": function import requires a callable`.
+
+The `sqlite3` version in your lock does not have to match these files: pocketbase_drift requires `sqlite3` 3.9.0 or later, which also loads older wasm files.
+
+To use the wasm of a newer sqlite3 release, compile the worker against your own lock instead. Add `drift` to `dev_dependencies` (the version in your lock), create `tool/drift_worker.dart`:
+
+```dart
+import 'package:drift/wasm.dart';
+
+void main() => WasmDatabase.workerMainForOpen();
+```
+
+and compile it with `dart compile js -O4 tool/drift_worker.dart -o web/drift_worker.js`. Then take `sqlite3.wasm` from the sqlite3.dart release (tag `sqlite3-<version>`) that matches the `sqlite3` version in your lock. Compile again after each `drift` or `sqlite3` upgrade.
+
 ## Core Concepts
 
 ### RequestPolicy

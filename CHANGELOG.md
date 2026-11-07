@@ -1,3 +1,9 @@
+## 0.7.3
+
+### Docs
+
+- **Web setup: take `sqlite3.wasm` and `drift_worker.js` from the same drift release.** The README said to download the latest `sqlite3.wasm` from the sqlite3.dart releases and the latest `drift_worker.js` from the drift releases. Since sqlite3 3.9.0 (2026-11-05) that pair does not load: the 3.9.0 wasm imports `dispatch_trace`, which the drift 2.35.3 worker does not provide, so the web database never opens (`LinkError: ... Import #26 "dart" "dispatch_trace": function import requires a callable`). This applies to every pocketbase_drift version, not only to 0.7.2. If you downloaded the 3.9.0 wasm, replace it with the `sqlite3.wasm` of your drift release, or compile the worker against your lock (see "4. Web Setup" in the README). The `sqlite3 ^3.9.0` requirement stays: its bindings also load the older wasm of the drift release.
+
 ## 0.7.2
 
 ### Fixes

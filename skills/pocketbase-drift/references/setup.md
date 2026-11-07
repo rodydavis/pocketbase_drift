@@ -103,12 +103,16 @@ Future<void> main() async {
 
 ## Web Setup
 
-For web platform, you need Drift's WASM files:
+For web platform, you need Drift's WASM files. The worker loads the wasm, so both must come from the same release.
 
 ### 1. Download Required Files
 
-- `sqlite3.wasm` from [sqlite3.dart releases](https://github.com/simolus3/sqlite3.dart/releases)
-- `drift_worker.js` from [drift releases](https://github.com/simolus3/drift/releases)
+Take **both** files from the [drift release](https://github.com/simolus3/drift/releases) (tag `drift-<version>`) that matches the `drift` version in `pubspec.lock`:
+
+- `sqlite3.wasm`
+- `drift_worker.js`
+
+Never take `sqlite3.wasm` from a newer [sqlite3.dart release](https://github.com/simolus3/sqlite3.dart/releases) than the worker: the sqlite3 3.9.0 wasm with the drift 2.35.3 worker fails with `LinkError ... "dart" "dispatch_trace"` and the database never opens. To use a newer wasm, compile the worker against the app's lock (`tool/drift_worker.dart` with `void main() => WasmDatabase.workerMainForOpen();`, `dart compile js -O4 tool/drift_worker.dart -o web/drift_worker.js`, `drift` in `dev_dependencies`) and take `sqlite3.wasm` from the `sqlite3-<version>` release of the locked `sqlite3`. See README "4. Web Setup".
 
 ### 2. Add to Web Directory
 
