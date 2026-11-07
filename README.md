@@ -493,6 +493,7 @@ stateStream.listen((state) {
 | `networkOnly` | Server data (the cache is not used) | When the stream starts and on every realtime event |
 
 - All live queries of a collection share one realtime subscription. Each server event is written to the cache once.
+- The realtime connection follows the account: after a login, a logout or an account switch it reconnects with the current token (the app's own `realtime.subscribe` listeners included), and the live queries refetch. PocketBase keeps the auth that a connection had when its subscriptions were sent, so until the reconnect, events of the previous account are dropped and never reach the cache. A token refresh of the same account keeps the connection.
 - With `limit`, only `limit` records are fetched from the server (the first page of `sort`), not the whole collection:
 
   ```dart
@@ -875,7 +876,7 @@ PocketBase answers a request with an expired auth token as a guest. List rules s
 - `cacheAndNetwork` writes and batches are queued. `cacheFirst` writes wait in the queue.
 - `networkOnly` and `networkFirst` writes still go to the server. A 404 then does not remove the cached record.
 
-An auth change that leaves a valid token (a login, `authRefresh`) resumes the work: queued changes sync and the paused live queries refresh. Without a token (a guest) nothing pauses. A realtime connection that reconnected while the session was expired stays a guest connection until its next reconnect (the SDK reconnects an idle connection after about 5 minutes); until then, live queries miss the account's realtime events.
+An auth change that leaves a valid token (a login, `authRefresh`) resumes the work: queued changes sync and the paused live queries refresh. Without a token (a guest) nothing pauses. A realtime connection that reconnected while the session was expired is a guest connection; the login reconnects it with the new token.
 
 `client.onSessionExpired` emits when the package first pauses work, and again only after a valid login. A pause while no one listens is not reported, so also check `hasExpiredSession` when you start listening:
 

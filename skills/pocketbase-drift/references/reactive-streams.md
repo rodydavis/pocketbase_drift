@@ -184,6 +184,8 @@ Streams with `cacheAndNetwork`, `networkFirst` and `networkOnly` subscribe to Po
 
 All live queries of a collection share one realtime subscription per topic. Each server event is written to the cache one time. A pending local edit wins over realtime events until it is synced.
 
+The realtime connection follows the account: after a login, a logout or an account switch it reconnects with the current token and the live queries refetch. Until then, events of the previous account are dropped (`client.realtimeMatchesSession` is false), so they never reach the cache or `subscribe` callbacks. A token refresh of the same account keeps the connection.
+
 ### Manual Subscription
 
 For more control over realtime events:

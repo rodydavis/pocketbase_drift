@@ -10,6 +10,9 @@
   - `networkOnly` and `networkFirst` writes still go to the server, but a 404 no longer removes the cached record.
   - A login or token refresh that leaves a valid token resumes the work: queued changes sync and the paused live queries refresh. Before, a token refresh of the same account did not start a sync.
   - Not detected: a token the server revoked before its expiry. Check the session with `authRefresh()` at start and on resume. See "Expired sessions" in the README.
+- **Realtime no longer shows the previous account's records after a logout or an account switch.** PocketBase keeps the auth that a realtime connection had when its subscriptions were sent, and allows no change except guest → account; the SDK sends the subscriptions again only for new topics. With a live query open across a logout or an account switch, the connection kept the previous account's auth, and its events were written to the cache, where the guest or the next account saw them. A login after a realtime reconnect with an expired token left a guest connection that got no events of the account. Now:
+  - On a login, a logout, an account switch or a login after an expired session, the client ends the realtime connection; the SDK reconnects and sends all subscriptions (the app's own too) with the current token, and the live queries refetch. A token refresh of the same account keeps the connection.
+  - Until the reconnect, events of a connection that is still authenticated as another account are dropped: they do not reach the cache, the live queries or `collection(...).subscribe` callbacks (`client.realtimeMatchesSession`).
 - **A killed first start no longer leaves a broken database.** The schema is created in one transaction that also writes `user_version`. A database that 0.7.0 or earlier left half-created (the process died during the first open; every later open failed with `trigger blob_files_delete already exists`) is repaired on the next open: the leftover tables, indexes and triggers of the package are dropped and created again. Such a database holds no data.
 - **A killed upgrade no longer leaves a broken database.** Upgrades run in one transaction that also writes `user_version`. A v3 → v4 upgrade that 0.7.0 left unfinished (for example `duplicate column name: cachedAt` on every later open) finishes on the next open.
 
@@ -18,10 +21,12 @@
 - **`client.hasExpiredSession`.** `true` when the auth store has a token whose `exp` has passed (the rule of `authStore.isValid`). An empty token (a guest) is not an expired session.
 - **`client.onSessionExpired`.** A `Stream<void>` that emits when the package first pauses work because the session expired, and again only after a valid login. Use it to ask the user to log in again; also check `hasExpiredSession` when you start listening.
 - **`RequestPolicy.fetch(authScoped:)`.** Marks reads whose answer depends on the logged-in account; the package's record and collection reads set it.
+- **`client.realtimeMatchesSession`.** `false` while the realtime connection is still authenticated as an account other than the logged-in one; realtime events are dropped then.
 
 ### Behaviour changes
 
 - A token that is not a JWT counts as an expired session, like in `authStore.isValid`. Tests with a mock server that log in with a placeholder token (`'token'`) must use a JWT with a future `exp`, or sync and live-query refreshes pause.
+- `client.httpClientFactory` returns clients that wrap the clients of the configured factory: the client hands out the realtime (SSE) response through a stream it can end, to reconnect after an account change. Other requests pass through unchanged.
 
 ## 0.7.0
 
