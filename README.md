@@ -54,7 +54,6 @@ This library extends the official PocketBase Dart SDK to provide a seamless offl
   - [Reactive Streams with Raw SQL](#reactive-streams-with-raw-sql)
   - [Executing Raw Statements](#executing-raw-statements)
   - [Using the Built-in Query Builder](#using-the-built-in-query-builder)
-- [TODO](#todo)
 - [Credits](#credits)
 
 </details>
