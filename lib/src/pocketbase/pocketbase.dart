@@ -284,14 +284,82 @@ class $PocketBase extends PocketBase with WidgetsBindingObserver {
     if (!_syncFailures.isClosed) _syncFailures.add(failure);
   }
 
+  final _sessionExpired = StreamController<void>.broadcast();
+  bool _sessionExpiredReported = false;
+  String? _expToken;
+  num _tokenExp = 0;
+
+  /// Whether the auth store holds a token that is no longer valid: expired
+  /// by its `exp` claim, the rule of `authStore.isValid`. An empty token (a
+  /// guest) is not an expired session.
+  ///
+  /// PocketBase answers a request with such a token as a guest: list rules
+  /// like `user = @request.auth.id` return no rows, and an update of the
+  /// account's record gets 404. While this is true, the package handles
+  /// the server like an unreachable one for cache-backed work: sync and
+  /// live-query refreshes pause, reads with a cache policy return the cache
+  /// (a cache miss throws 401), and `cacheAndNetwork` writes are queued.
+  /// `networkOnly` and `networkFirst` writes still go to the server, but a
+  /// 404 then does not remove cached rows. The paused work resumes after an
+  /// auth change that leaves a valid token (login, `authRefresh`).
+  ///
+  /// A token that the server stopped accepting before its expiry (password
+  /// change, deleted account) still counts as valid here. Check the session
+  /// with `authRefresh()` at start and on resume, and log out on 401.
+  bool get hasExpiredSession {
+    final token = authStore.token;
+    if (token.isEmpty) return false;
+    if (token != _expToken) {
+      _tokenExp = _jwtExp(token);
+      _expToken = token;
+    }
+    return _tokenExp <= DateTime.now().millisecondsSinceEpoch / 1000;
+  }
+
+  /// The `exp` claim of a JWT in seconds; 0 (expired) for a token without
+  /// it or that is not a JWT, like `AuthStore.isValid`.
+  static num _jwtExp(String token) {
+    final parts = token.split('.');
+    if (parts.length != 3) return 0;
+    try {
+      final payload = jsonDecode(
+        utf8.decode(base64.decode(base64.normalize(parts[1]))),
+      );
+      final exp = payload is Map ? payload['exp'] : null;
+      return exp is num ? exp : num.tryParse('$exp') ?? 0;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  /// Emits when the package first skips server work because the session
+  /// expired (see [hasExpiredSession]), for example to ask the user to log
+  /// in again. It emits again only after an auth change that leaves a
+  /// valid token. A skip without listeners is not reported, so check
+  /// [hasExpiredSession] when you start listening.
+  Stream<void> get onSessionExpired => _sessionExpired.stream;
+
+  /// Returns [hasExpiredSession] and reports the first `true` on
+  /// [onSessionExpired]. Used by the services where they skip server work.
+  bool checkExpiredSession() {
+    if (!hasExpiredSession) return false;
+    if (!_sessionExpiredReported && !_closed && _sessionExpired.hasListener) {
+      _sessionExpiredReported = true;
+      logger.info('The session expired; sync and refreshes are paused.');
+      _sessionExpired.add(null);
+    }
+    return true;
+  }
+
   /// Pushes all pending local changes to the server.
   ///
   /// Runs automatically when connectivity returns, when the app resumes and
-  /// after login. Only one pass runs at a time: a call during a pass returns
-  /// a future that completes after one more pass, so changes queued
-  /// meanwhile are included. Collections are synced parents first (by
-  /// relation fields), records oldest first. Never throws; rejected changes
-  /// are reported on [syncFailures].
+  /// after a login or token refresh. Only one pass runs at a time: a call
+  /// during a pass returns a future that completes after one more pass, so
+  /// changes queued meanwhile are included. Collections are synced parents
+  /// first (by relation fields), records oldest first. Never throws;
+  /// rejected changes are reported on [syncFailures]. Does nothing while the
+  /// session is expired ([hasExpiredSession]).
   ///
   /// [includeFailed] also retries changes parked after
   /// [localSyncRetryCount] rejections.
@@ -335,6 +403,10 @@ class $PocketBase extends PocketBase with WidgetsBindingObserver {
         connectivity.probeSoon();
         return;
       }
+      if (checkExpiredSession()) {
+        logger.fine('Sync paused until the next valid login.');
+        return;
+      }
       final services = includeFailed
           ? {for (final r in await db.pendingRecords().get()) r.service}
                 .toList()
@@ -348,7 +420,7 @@ class $PocketBase extends PocketBase with WidgetsBindingObserver {
         await collection(name)
             .retryLocal(includeFailed: includeFailed)
             .drain<void>();
-        if (!connectivity.canReachServer) return;
+        if (!connectivity.canReachServer || hasExpiredSession) return;
       }
       logger.info('Sync pass completed');
     } catch (e, st) {
@@ -409,12 +481,18 @@ class $PocketBase extends PocketBase with WidgetsBindingObserver {
 
   void _onAuthChange() {
     final owner = authStore.record?.id;
-    if (owner == _owner) return;
-    _owner = owner;
-    // Pending rows of the previous account disappear from (and those of the
-    // new account reappear in) every live query.
-    db.markTablesUpdated({db.services});
-    if (owner != null) unawaited(syncPendingChanges());
+    if (owner != _owner) {
+      _owner = owner;
+      // Pending rows of the previous account disappear from (and those of
+      // the new account reappear in) every live query.
+      db.markTablesUpdated({db.services});
+    }
+    if (owner == null || hasExpiredSession) return;
+    // A login or a new token: resume the work paused while the session was
+    // expired (stale live queries refresh, queued changes sync).
+    _sessionExpiredReported = false;
+    realtimeHub.scheduleRefresh();
+    unawaited(syncPendingChanges());
   }
 
   /// Runs maintenance tasks to clean up expired cached data.
@@ -730,6 +808,7 @@ class $PocketBase extends PocketBase with WidgetsBindingObserver {
     connectivity.dispose();
     _logSubscription?.cancel();
     _syncFailures.close();
+    _sessionExpired.close();
     db.close();
     super.close();
   }

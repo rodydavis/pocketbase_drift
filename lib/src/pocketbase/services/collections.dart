@@ -26,6 +26,7 @@ class $CollectionService extends CollectionService
     return policy.fetch<CollectionModel>(
       label: '$service/$id',
       client: client,
+      authScoped: true,
       remote: () {
         // The base network call; ServiceMixin.getOne would nest a second
         // policy fetch.
@@ -63,6 +64,7 @@ class $CollectionService extends CollectionService
     return policy.fetch<CollectionModel>(
       label: '$service "$filter"',
       client: client,
+      authScoped: true,
       remote: () async {
         final result = await getList(
           perPage: 1,

@@ -24,8 +24,8 @@ concurrency with `-j`/`--concurrency`.
 
 ## Integration suite
 
-`test/integration/` holds the regression tests for the defects of the
-2026-11-04 review. Each test name starts with the defect id (`Pxx`). The tests
+`test/integration/` holds end-to-end regression tests, mostly for the defects
+of the 2026-11-04 review; those test names start with the defect id (`Pxx`). The tests
 use the lab collections and the `/api/lab/*` fault-injection routes of the
 example backend (fail with 503, drop or hang requests, add latency, read
 request stats, change records on the server).

@@ -273,6 +273,7 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
       return await policy.fetch<M>(
         label: '$service/$id',
         client: client,
+        authScoped: true,
         remote: () => _timed(
           super.getOne(
             id,
@@ -295,8 +296,11 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
             !RecordMeta.flag(row[RecordMeta.deleted])) {
           return local();
         }
-      } else if (row != null && !RecordMeta.flag(row[RecordMeta.noSync])) {
-        // Deleted on the server: drop the stale copy.
+      } else if (row != null &&
+          !RecordMeta.flag(row[RecordMeta.noSync]) &&
+          !client.hasExpiredSession) {
+        // Deleted on the server: drop the stale copy. A guest answer to an
+        // expired session (networkOnly) proves nothing.
         await client.db.$delete(service, id);
       }
       rethrow;
@@ -320,6 +324,7 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
     return policy.fetch<List<M>>(
       label: '$service list',
       client: client,
+      authScoped: true,
       remote: () async {
         final result = <M>[];
         for (var page = 1; ; page++) {
@@ -377,6 +382,7 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
     return policy.fetch<M>(
       label: service,
       client: client,
+      authScoped: true,
       remote: () async {
         final result = await _timed(
           super.getList(
@@ -466,6 +472,7 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
     return policy.fetch<ResultList<M>>(
       label: '$service page $page',
       client: client,
+      authScoped: true,
       remote: () => super
           .getList(
             page: page,
@@ -725,7 +732,9 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
         return result;
 
       case RequestPolicy.cacheAndNetwork:
-        if (connectivity.canReachServer) {
+        // An expired session queues like an unreachable server: the server
+        // would answer a guest (see $PocketBase.hasExpiredSession).
+        if (connectivity.canReachServer && !client.checkExpiredSession()) {
           try {
             final result = await _serverCreate(
               withId,
@@ -868,7 +877,9 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
         connectivity.reportNetworkSuccess();
       } catch (e) {
         _reportOutcome(e);
-        if (e is ClientException && e.statusCode == 404) {
+        if (e is ClientException &&
+            e.statusCode == 404 &&
+            !client.hasExpiredSession) {
           await _dropIfNotPending(id);
         }
         if (isConnectivityFailure(e)) throw toNetworkError(e);
@@ -924,7 +935,7 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
           if (connectivity.canReachServer) unawaited(pushPending(id));
           return local;
         }
-        if (connectivity.canReachServer) {
+        if (connectivity.canReachServer && !client.checkExpiredSession()) {
           try {
             return await server(cacheAll: true);
           } catch (e) {
@@ -972,7 +983,10 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
         connectivity.reportNetworkSuccess();
       } catch (e) {
         _reportOutcome(e);
-        if (cache && e is ClientException && e.statusCode == 404) {
+        if (cache &&
+            e is ClientException &&
+            e.statusCode == 404 &&
+            !client.hasExpiredSession) {
           await client.db.$delete(service, id);
         }
         if (isConnectivityFailure(e)) throw toNetworkError(e);
@@ -1008,7 +1022,7 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
           return;
         }
         var busy = false;
-        if (connectivity.canReachServer) {
+        if (connectivity.canReachServer && !client.checkExpiredSession()) {
           try {
             await server(cache: true);
             return;
@@ -1177,6 +1191,10 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
   ///
   /// Pushes of one record run one at a time: a call made while another is
   /// running waits for it and then pushes whatever is still pending.
+  ///
+  /// While the session is expired ([$PocketBase.hasExpiredSession]) nothing
+  /// is sent and the result is [PushOutcome.retryLater]: the server would
+  /// answer a guest, so a 404 would drop the change by mistake.
   Future<PushOutcome> pushPending(
     String id, {
     Map<String, dynamic> query = const {},
@@ -1224,6 +1242,7 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
     }
     final owner = row[RecordMeta.pendingOwner];
     if (owner != null && owner != _owner) return PushOutcome.skipped;
+    if (client.checkExpiredSession()) return PushOutcome.retryLater;
 
     final rev = (row[RecordMeta.pendingRev] as num?)?.toInt();
     // A `fields` projection returns only part of the record.
@@ -1239,7 +1258,7 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
           try {
             await _timedPush(super.delete(id, query: query, headers: headers));
           } on ClientException catch (e) {
-            if (e.statusCode != 404) rethrow;
+            if (e.statusCode != 404 || client.hasExpiredSession) rethrow;
           }
           await client.db.$delete(service, id);
         case SyncOperation.create:
@@ -1308,6 +1327,12 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
       return PushOutcome.synced;
     } catch (e) {
       _reportOutcome(e);
+      if (client.hasExpiredSession) {
+        // The token expired while the request was in flight: the server
+        // answered a guest, which says nothing about the change.
+        client.logger.fine('Sync of $service/$id deferred: session expired');
+        return PushOutcome.retryLater;
+      }
       if (isTransientError(e) ||
           (e is ClientException && e.statusCode == 401)) {
         client.logger.fine('Sync of $service/$id deferred: $e');
@@ -1400,6 +1425,11 @@ class RetryProgressEvent {
 /// - [networkFirst]: Write to server first, then update cache (strict, no fallback)
 /// - [cacheAndNetwork]: Try server; queue locally only when the server is
 ///   unreachable (offline-first). Rejections are thrown.
+///
+/// An expired session ([$PocketBase.hasExpiredSession]) counts as an
+/// unreachable server for record reads with [cacheFirst], [networkFirst] and
+/// [cacheAndNetwork] (a cache miss throws 401) and for [cacheAndNetwork]
+/// writes, which are queued until the next valid login.
 enum RequestPolicy {
   cacheOnly,
   networkOnly,
@@ -1432,14 +1462,28 @@ extension RequestPolicyUtils on RequestPolicy {
   /// Only an unreachable server falls back to the cache; server answers
   /// (4xx) are rethrown. When neither source has the data, a
   /// [ClientException] with status 0 is thrown.
+  ///
+  /// [authScoped] marks reads whose answer depends on the logged-in account
+  /// (API rules). While the session is expired
+  /// ([$PocketBase.hasExpiredSession]) the server would answer a guest, so
+  /// the cache policies answer from the cache without a request; a cache
+  /// miss throws a [ClientException] with status 401.
   Future<T> fetch<T>({
     required String label,
     required $PocketBase client,
     required Future<T> Function() remote,
     required Future<T> Function() getLocal,
     required Future<void> Function(T) setLocal,
+    bool authScoped = false,
   }) async {
     client.logger.finer('Fetching "$label" with policy "$name"');
+
+    if (authScoped &&
+        this != RequestPolicy.networkOnly &&
+        this != RequestPolicy.cacheOnly &&
+        client.checkExpiredSession()) {
+      return _fetchExpiredSession(label, getLocal);
+    }
 
     return switch (this) {
       RequestPolicy.cacheOnly => getLocal(),
@@ -1466,6 +1510,25 @@ extension RequestPolicyUtils on RequestPolicy {
         setLocal,
       ),
     };
+  }
+
+  Future<T> _fetchExpiredSession<T>(
+    String label,
+    Future<T> Function() getLocal,
+  ) async {
+    try {
+      return await getLocal();
+    } on CacheMissException catch (e) {
+      throw ClientException(
+        statusCode: 401,
+        originalError: e,
+        response: {
+          'code': 401,
+          'message': 'The session expired and "$label" is not cached.',
+          'data': <String, dynamic>{},
+        },
+      );
+    }
   }
 
   Future<T> _remote<T>($PocketBase client, Future<T> Function() remote) async {

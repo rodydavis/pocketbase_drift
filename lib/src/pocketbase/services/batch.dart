@@ -453,7 +453,7 @@ class $BatchService {
   ) async {
     final results = await _applyAllToCache(sync: true);
 
-    if (client.connectivity.canReachServer) {
+    if (client.connectivity.canReachServer && !client.checkExpiredSession()) {
       final revs = <String, int?>{
         for (final r in results)
           if (r.recordId != null && r.body is Map)
@@ -487,13 +487,13 @@ class $BatchService {
   }
 
   /// Tries server first, falls back to caching for pending sync when the
-  /// server is unreachable.
+  /// server is unreachable or the session expired.
   Future<List<$BatchResult>> _sendCacheAndNetwork(
     Map<String, dynamic> body,
     Map<String, dynamic> query,
     Map<String, String> headers,
   ) async {
-    if (client.connectivity.canReachServer) {
+    if (client.connectivity.canReachServer && !client.checkExpiredSession()) {
       if (await _pushReferencedCreates()) {
         try {
           return await _sendOnline(body, query, headers, cache: true);

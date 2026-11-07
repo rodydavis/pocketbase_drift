@@ -110,9 +110,10 @@ class $RecordService extends RecordService with ServiceMixin<RecordModel> {
           : await push.timeout(wait, onTimeout: () => PushOutcome.retryLater);
       yield RetryProgressEvent(current: i + 1, total: total);
       if (outcome == PushOutcome.retryLater &&
-          !client.connectivity.canReachServer) {
+          (!client.connectivity.canReachServer || client.hasExpiredSession)) {
         client.logger.info(
-          'Server unreachable; ${total - i - 1} changes in $service wait for the next sync.',
+          'Server unreachable or session expired; ${total - i - 1} changes '
+          'in $service wait for the next sync.',
         );
         return;
       }
@@ -585,7 +586,9 @@ class _LiveQuery<T> implements LiveQuery {
   void _onListen() {
     _fetching =
         policy != RequestPolicy.cacheOnly &&
-        (_networkOnly || _client.connectivity.canReachServer);
+        (_networkOnly ||
+            (_client.connectivity.canReachServer &&
+                !_client.hasExpiredSession));
     if (!_networkOnly) {
       try {
         _cacheSubscription = cache().listen((data) {
@@ -653,15 +656,20 @@ class _LiveQuery<T> implements LiveQuery {
       _refreshAgain = true;
       return;
     }
-    if (!_networkOnly && !_client.connectivity.canReachServer) {
-      // Keep showing the cache; the hub refreshes when the server is back.
-      _stale = true;
-      _client.connectivity.probeSoon();
-      if (_fetching) {
-        _fetching = false;
-        _emit();
+    if (!_networkOnly) {
+      final offline = !_client.connectivity.canReachServer;
+      if (offline || _client.checkExpiredSession()) {
+        // Keep showing the cache; the hub refreshes when the server is back
+        // or after the next valid login. With an expired session the server
+        // answers a guest, whose empty list would replace the cached rows.
+        _stale = true;
+        if (offline) _client.connectivity.probeSoon();
+        if (_fetching) {
+          _fetching = false;
+          _emit();
+        }
+        return;
       }
-      return;
     }
 
     _refreshing = true;

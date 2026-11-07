@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:pocketbase_drift/pocketbase_drift.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../fake_jwt.dart';
 import '../test_data/collections.json.dart';
 
 class _MockClient extends http.BaseClient {
@@ -138,7 +139,7 @@ void main() {
           .toList(),
     );
     await client.syncCompleted;
-    client.authStore.save('token_a', RecordModel({'id': 'account_a'}));
+    client.authStore.save(fakeJwt(), RecordModel({'id': 'account_a'}));
     await client.syncCompleted;
   });
 
@@ -290,12 +291,12 @@ void main() {
     server[_id] = record(_id);
     await deleteOffline();
     client.authStore.clear();
-    client.authStore.save('token_b', RecordModel({'id': 'account_b'}));
+    client.authStore.save(fakeJwt(), RecordModel({'id': 'account_b'}));
     await Future<void>.delayed(Duration.zero);
     await reconnect();
     expect(server.containsKey(_id), isTrue);
 
-    client.authStore.save('token_a', RecordModel({'id': 'account_a'}));
+    client.authStore.save(fakeJwt(), RecordModel({'id': 'account_a'}));
     await Future<void>.delayed(Duration.zero);
     await client.syncCompleted;
     expect(server.containsKey(_id), isFalse);

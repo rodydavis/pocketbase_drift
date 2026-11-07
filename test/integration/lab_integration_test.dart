@@ -1,6 +1,6 @@
 // Integration tests against the example backend (example/backend: PocketBase
-// with the lab collections and the `/api/lab` chaos/stats routes). Each test
-// is named after the review finding (Pxx, 2026-11-04 review) it guards.
+// with the lab collections and the `/api/lab` chaos/stats routes). Tests of
+// the 2026-11-04 review findings are named after them (Pxx).
 //
 // Needs the example backend running:
 //
@@ -23,6 +23,7 @@ import 'batch.dart';
 import 'connectivity_errors.dart';
 import 'filters_ttl.dart';
 import 'realtime_watchers.dart';
+import 'session_expiry.dart';
 import 'support.dart';
 import 'sync_correctness.dart';
 
@@ -34,4 +35,5 @@ void main() {
   realtimeWatcherTests();
   filterTtlTests();
   batchTests();
+  sessionExpiryTests();
 }

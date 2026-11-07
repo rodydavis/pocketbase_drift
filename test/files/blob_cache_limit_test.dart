@@ -11,6 +11,7 @@ import 'package:pocketbase_drift/pocketbase_drift.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqlite3/sqlite3.dart' as sqlite;
 
+import '../fake_jwt.dart';
 import '../test_data/collections.json.dart';
 
 const _kb = 1024;
@@ -250,17 +251,17 @@ void main() {
         'when that account logs in again', () async {
       client = await open(maxFileCacheBytes: 100 * _kb);
       client.connectivity.setConnectivityStatus(false);
-      client.authStore.save('token', RecordModel({'id': 'account_a'}));
+      client.authStore.save(fakeJwt(), RecordModel({'id': 'account_a'}));
       final bytes = _pattern(20 * _kb, 3);
       final pending = await createWithFile('a.jpg', bytes);
-      client.authStore.save('token', RecordModel({'id': 'account_b'}));
+      client.authStore.save(fakeJwt(), RecordModel({'id': 'account_b'}));
       await client.db.customUpdate('UPDATE BlobFileStats SET lastAccess = 0');
 
       await downloadAll(List.generate(20, (i) => i));
       expect(await blobs(), contains('${pending.id}/a.jpg'));
 
       client.connectivity.setConnectivityStatus(true);
-      client.authStore.save('token', RecordModel({'id': 'account_a'}));
+      client.authStore.save(fakeJwt(), RecordModel({'id': 'account_a'}));
       await Future<void>.delayed(Duration.zero);
       await client.syncCompleted;
 
