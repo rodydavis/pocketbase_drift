@@ -1,6 +1,6 @@
 name: pocketbase_drift
 description: A powerful, offline-first PocketBase client backed by a drift database.
-version: 0.7.0
+version: 0.7.1
 repository: https://github.com/DrDejaVuNG/pocketbase_drift
 issue_tracker: https://github.com/DrDejaVuNG/pocketbase_drift/issues
 

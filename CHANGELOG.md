@@ -1,3 +1,28 @@
+## 0.7.1
+
+### Fixes
+
+- **An expired session no longer empties the cache or drops queued changes.** PocketBase answers a request with an expired token as a guest: owner-scoped list rules (`owner = @request.auth.id`) return no rows, and reads, updates and deletes of the account's records get 404. 0.7.0 replaced the cached rows with that empty answer (live-query refreshes after a realtime reconnect, `getFullList`), removed cached records on the 404 (`getOne`), and the sync dropped queued updates as "deleted on the server", treated queued deletes as done and counted rejected creates towards `localSyncRetryCount`. While the auth store holds an expired token (`client.hasExpiredSession`), the package now treats the server like an unreachable one for cache-backed work:
+  - Sync pauses; queued changes stay pending. `pushPending` returns `PushOutcome.retryLater`. A request whose token expired while it was in flight is retried later, not dropped or counted.
+  - Live queries keep the cache and do not refresh.
+  - Record reads with `cacheFirst`, `networkFirst` or `cacheAndNetwork` (and collection reads) answer from the cache without a request. A cache miss throws `ClientException` with status 401.
+  - `cacheAndNetwork` writes and batches are queued; the background send of `cacheFirst` writes and batches waits.
+  - `networkOnly` and `networkFirst` writes still go to the server, but a 404 no longer removes the cached record.
+  - A login or token refresh that leaves a valid token resumes the work: queued changes sync and the paused live queries refresh. Before, a token refresh of the same account did not start a sync.
+  - Not detected: a token the server revoked before its expiry. Check the session with `authRefresh()` at start and on resume. See "Expired sessions" in the README.
+- **A killed first start no longer leaves a broken database.** The schema is created in one transaction that also writes `user_version`. A database that 0.7.0 or earlier left half-created (the process died during the first open; every later open failed with `trigger blob_files_delete already exists`) is repaired on the next open: the leftover tables, indexes and triggers of the package are dropped and created again. Such a database holds no data.
+- **A killed upgrade no longer leaves a broken database.** Upgrades run in one transaction that also writes `user_version`. A v3 → v4 upgrade that 0.7.0 left unfinished (for example `duplicate column name: cachedAt` on every later open) finishes on the next open.
+
+### New
+
+- **`client.hasExpiredSession`.** `true` when the auth store has a token whose `exp` has passed (the rule of `authStore.isValid`). An empty token (a guest) is not an expired session.
+- **`client.onSessionExpired`.** A `Stream<void>` that emits when the package first pauses work because the session expired, and again only after a valid login. Use it to ask the user to log in again; also check `hasExpiredSession` when you start listening.
+- **`RequestPolicy.fetch(authScoped:)`.** Marks reads whose answer depends on the logged-in account; the package's record and collection reads set it.
+
+### Behaviour changes
+
+- A token that is not a JWT counts as an expired session, like in `authStore.isValid`. Tests with a mock server that log in with a placeholder token (`'token'`) must use a JWT with a future `exp`, or sync and live-query refreshes pause.
+
 ## 0.7.0
 
 ### Breaking changes

@@ -45,6 +45,7 @@ This library extends the official PocketBase Dart SDK to provide a seamless offl
     - [Configuration](#configuration)
     - [Running Maintenance](#running-maintenance)
 - [Authentication Persistence](#authentication-persistence)
+  - [Expired sessions](#expired-sessions)
 - [Testing](#testing)
 - [Advanced: Direct Database Access](#advanced-direct-database-access)
   - [Database Schema](#database-schema)
@@ -268,6 +269,7 @@ Errors from the server and from the network are thrown as `ClientException`:
 
 - `statusCode == 0`: the server is unreachable and the cache cannot answer (nothing cached, or a strict policy such as `networkOnly`).
 - 4xx (400, 401, 403, 404): the server's answer. Cached data never replaces it.
+- 401 without a request: the session expired and a record read with a cache policy finds nothing in the cache (see [Expired sessions](#expired-sessions)).
 - 408, 429, 5xx: the server is busy or down. Offline-first policies use the cache or queue the write; the error reaches you only when the cache cannot answer.
 
 ```dart
@@ -308,7 +310,9 @@ A deletion of a record that is not in the cache is queued too (`cacheAndNetwork`
 - when the client starts,
 - when the server becomes reachable,
 - when the app resumes,
-- after login.
+- after a login or a token refresh (`authRefresh`).
+
+It does nothing while the session is expired (see [Expired sessions](#expired-sessions)).
 
 Only one pass runs at a time. A call during a pass returns a future that completes after one more pass, so changes queued in the meantime are included. The method never throws. `await client.syncCompleted` waits for the running pass.
 
@@ -862,11 +866,33 @@ final client = $PocketBase.database(
 
 `client.db.clearCache()` gives the same result as a logout with `clearOnLogout: true`. `client.db.clearCache(keepPending: false)` is the same as `clearAllData()`.
 
+### Expired sessions
+
+PocketBase answers a request with an expired auth token as a guest. List rules such as `owner = @request.auth.id` return no rows, and reads, updates and deletes of the account's records get 404. Such answers are not the account's data, so while `client.hasExpiredSession` is `true` (the auth store has a token whose `exp` has passed, the rule of `authStore.isValid`), the package treats the server like an unreachable one for cache-backed work:
+
+- Sync pauses. Queued changes stay pending; nothing is dropped or counted as a rejection. `pushPending` returns `PushOutcome.retryLater`.
+- Live queries (`watchRecords`, `watchRecord`, …) keep showing the cache and do not refresh.
+- Record reads with `cacheFirst`, `networkFirst` or `cacheAndNetwork` answer from the cache without a request. When nothing is cached, they throw `ClientException` with status 401.
+- `cacheAndNetwork` writes and batches are queued. `cacheFirst` writes wait in the queue.
+- `networkOnly` and `networkFirst` writes still go to the server. A 404 then does not remove the cached record.
+
+An auth change that leaves a valid token (a login, `authRefresh`) resumes the work: queued changes sync and the paused live queries refresh. Without a token (a guest) nothing pauses. A realtime connection that reconnected while the session was expired stays a guest connection until its next reconnect (the SDK reconnects an idle connection after about 5 minutes); until then, live queries miss the account's realtime events.
+
+`client.onSessionExpired` emits when the package first pauses work, and again only after a valid login. A pause while no one listens is not reported, so also check `hasExpiredSession` when you start listening:
+
+```dart
+if (client.hasExpiredSession) showLogin();
+client.onSessionExpired.listen((_) => showLogin());
+```
+
+A token that the server stops accepting before its expiry (password change, deleted account) still looks valid on the device, and the server answers as a guest. Check the session at start and on resume with `authRefresh()`, and log out when it fails with 401.
+
 ## Testing
 
 - Use `$PocketBase.database(url, inMemory: true)` for an in-memory database.
 - In widget tests, create the client outside the fake-async zone (for example in `setUp`, not in the `testWidgets` body).
 - In `setUp`, `await client.syncCompleted`. The client starts a sync pass when it is created. A database query that still runs on real time blocks the queries of the fake-async zone.
+- With a mock server, log in with a JWT whose `exp` is in the future. A token that is not a JWT counts as an expired session, so sync and refreshes pause.
 
 ## Advanced: Direct Database Access
 

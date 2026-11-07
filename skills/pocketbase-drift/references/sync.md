@@ -77,7 +77,7 @@ Offline deletions are tombstones. Normal reads do not return them (see "Deleted 
 - When the client is created (startup)
 - When the server becomes reachable again (`connectivity.statusStream` emits `true`)
 - When the app resumes from background (and a network interface is up)
-- After login (the auth record id changes to a new non-null value)
+- After a login or a token refresh (`authRefresh`) that leaves a valid token
 
 Rules of a sync pass:
 - **Single-flight:** Only one pass runs at a time. A call during a pass returns a future that completes after one more pass. Changes queued during the pass are included.
@@ -418,6 +418,29 @@ Warn the user before logout when changes are pending:
 final pending = await client.db.pendingRecords().get();
 if (pending.isNotEmpty) {
   // Ask: "N changes are not synced. They will sync when you log in again."
+}
+```
+
+## Expired Sessions
+
+PocketBase answers a request with an expired token as a guest: owner-scoped list rules return no rows, and updates or deletes of the account's records get 404. While `client.hasExpiredSession` is true, the package does not use such answers:
+- Sync pauses. Queued changes stay pending and are not dropped or counted as rejections (`pushPending` returns `PushOutcome.retryLater`).
+- Live queries keep the cache and do not refresh.
+- Record reads with `cacheFirst`, `networkFirst` or `cacheAndNetwork` answer from the cache; a miss throws `ClientException` with status 401.
+- `cacheAndNetwork` writes and batches are queued. `networkOnly`/`networkFirst` writes still go to the server, but a 404 does not remove the cached record.
+
+A login or `authRefresh` with a valid token resumes: queued changes sync and paused live queries refresh.
+
+```dart
+if (client.hasExpiredSession) showLogin();
+client.onSessionExpired.listen((_) => showLogin());
+
+// A revoked token (password change) still looks valid on the device:
+// check it at start and on resume.
+try {
+  await client.collection('users').authRefresh();
+} on ClientException catch (e) {
+  if (e.statusCode == 401) client.authStore.clear();
 }
 ```
 
