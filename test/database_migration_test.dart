@@ -120,4 +120,71 @@ void main() {
     await db.customUpdate("DELETE FROM services WHERE id = 'r1'");
     expect(await hits('omega'), isEmpty);
   });
+
+  test('a first open killed during creation is created again', () async {
+    // What a first open of 0.7.0 left when it was killed after
+    // `blob_files_delete` (statements ran outside a transaction, and
+    // `user_version` was not written yet).
+    final schema = await verifier.schemaAt(4);
+    final raw = schema.rawDatabase;
+    for (final sql in [
+      'DROP TABLE CachedResponses',
+      'DROP INDEX idx_services_service',
+      'DROP INDEX idx_blob_files_record',
+      'DROP INDEX idx_blob_file_stats_access',
+      'DROP TABLE text_entries',
+      'DROP TRIGGER services_insert',
+      'DROP TRIGGER services_delete',
+      'DROP TRIGGER services_update',
+      'PRAGMA user_version = 0',
+    ]) {
+      raw.execute(sql);
+    }
+
+    final db = DataBase(schema.newConnection());
+    addTearDown(db.close);
+    await verifier.migrateAndValidate(db, 4);
+    expect(raw.select('PRAGMA user_version').single.values.single, 4);
+
+    // Search and the blob cache work.
+    await db.customStatement("INSERT INTO Services (id, service, data) "
+        "VALUES ('r1', 'posts', '{\"id\":\"r1\",\"title\":\"alpha\"}')");
+    expect([for (final r in await db.search('alpha').get()) r.id], ['r1']);
+    await db.setFile('r1', 'a.jpg', Uint8List(10));
+    expect(await db.fileCacheBytes(), 10);
+  });
+
+  test('an interrupted v3 -> v4 upgrade finishes on the next open', () async {
+    final v4 = await verifier.schemaAt(4);
+    String ddl(String name) => v4.rawDatabase.select(
+        'SELECT sql FROM sqlite_master WHERE name = ?',
+        [name]).single['sql'] as String;
+    final leftover = [
+      'ALTER TABLE Services ADD COLUMN "cachedAt" INTEGER NULL',
+      ddl('idx_services_service'),
+      ddl('idx_blob_files_record'),
+      ddl('BlobFileStats'),
+      ddl('idx_blob_file_stats_access'),
+      ddl('blob_files_delete'),
+    ];
+
+    // What an upgrade of 0.7.0 left when it was killed while writing the
+    // blob sizes: the v4 objects exist, `user_version` is still 3.
+    final schema = await verifier.schemaAt(3);
+    final raw = schema.rawDatabase;
+    raw.execute(
+      'INSERT INTO BlobFiles (recordId, filename, data) VALUES '
+      "('r1', 'a.jpg', zeroblob(100)), ('r1', 'b.jpg', zeroblob(200))",
+    );
+    for (final sql in leftover) {
+      raw.execute(sql);
+    }
+    raw.execute('INSERT INTO BlobFileStats (fileId, size) VALUES (1, 100)');
+
+    final db = DataBase(schema.newConnection());
+    addTearDown(db.close);
+    await verifier.migrateAndValidate(db, 4);
+    expect(raw.select('PRAGMA user_version').single.values.single, 4);
+    expect(await db.fileCacheBytes(), 300);
+  });
 }

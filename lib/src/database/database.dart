@@ -193,58 +193,109 @@ class DataBase extends _$DataBase {
         // system. The VACUUM applies the mode also when the connection setup
         // already wrote the header (WAL); the database is still empty, so it
         // is cheap. Runs in every executor (native isolate, web worker).
+        // VACUUM cannot run inside a transaction.
         await customStatement('PRAGMA auto_vacuum = INCREMENTAL');
         await customStatement('VACUUM');
-        await m.createAll();
+        // One transaction that also writes the version: a first open that
+        // is killed (e.g. by Android's low-memory killer) leaves no partial
+        // schema that a later `createAll` would trip over.
+        await transaction(() async {
+          await _dropLeftoverSchema(m);
+          await m.createAll();
+          await customStatement('PRAGMA user_version = $schemaVersion');
+        });
       },
       onUpgrade: (Migrator m, int from, int to) async {
-        if (from < 2) {
-          await m.createTable(blobFiles);
-        }
-        if (from < 3) {
-          await m.createTable(cachedResponses);
-        }
-        if (from < 4) {
-          // FTS: re-index only when the record JSON changes, and leave out
-          // the sync bookkeeping keys.
-          for (final trigger in [
-            servicesInsert,
-            servicesDelete,
-            servicesUpdate,
-          ]) {
-            await m.drop(trigger);
-            await m.createTrigger(trigger);
+        // Same as onCreate: a killed upgrade leaves the old version, and a
+        // finished one never runs twice. The steps also accept the objects
+        // that an interrupted upgrade of 0.7.0 (no transaction) left.
+        await transaction(() async {
+          if (from < 2) {
+            await m.createTable(blobFiles);
           }
-          // Not 'rebuild': with external content it indexes the raw data.
-          await customStatement(
-            "INSERT INTO text_entries(text_entries) VALUES ('delete-all')",
-          );
-          await customStatement(
-            'INSERT INTO text_entries(rowid, data) '
-            'SELECT rowid, $_ftsTextSql FROM services',
-          );
-          await m.addColumn(services, services.cachedAt);
-          // Existing rows start their TTL at the upgrade.
-          await update(services)
-              .write(ServicesCompanion(cachedAt: Value(DateTime.now())));
-          await m.createIndex(idxServicesService);
-          await m.createIndex(idxBlobFilesRecord);
-          await m.createTable(blobFileStats);
-          await m.createIndex(idxBlobFileStatsAccess);
-          await m.createTrigger(blobFilesDelete);
-          if (from >= 2) {
-            // Sizes of the cached blobs. length() reads only the record
-            // header, and BlobFiles itself is not written, so the upgrade
-            // costs O(rows), not O(bytes). lastAccess stays null: these
-            // blobs count as the oldest.
-            await customStatement(
-              'INSERT INTO BlobFileStats (fileId, size) '
-              'SELECT id, length(data) FROM BlobFiles',
-            );
+          if (from < 3) {
+            await m.createTable(cachedResponses);
           }
-        }
+          if (from < 4) {
+            await _upgradeToV4(m, from);
+          }
+          await customStatement('PRAGMA user_version = $to');
+        });
       },
     );
+  }
+
+  /// Removes the schema objects of this database that a first open left
+  /// when it was killed before it finished (0.7.0 and earlier created them
+  /// outside a transaction). Such a database holds no data: drift runs no
+  /// query before the creation has finished.
+  Future<void> _dropLeftoverSchema(Migrator m) async {
+    final names = {
+      for (final e in allSchemaEntities) e.entityName.toLowerCase(),
+    };
+    final leftovers = await customSelect(
+      'SELECT name FROM sqlite_master WHERE lower(name) IN '
+      '(${List.filled(names.length, '?').join(', ')})',
+      variables: [for (final n in names) Variable<String>(n)],
+    ).map((row) => row.read<String>('name')).get();
+    if (leftovers.isEmpty) return;
+    logger.warning(
+      'Removing the partial schema of an interrupted first open: $leftovers',
+    );
+    for (final entity in allSchemaEntities) {
+      await m.drop(entity);
+    }
+  }
+
+  Future<void> _upgradeToV4(Migrator m, int from) async {
+    // FTS: re-index only when the record JSON changes, and leave out
+    // the sync bookkeeping keys.
+    for (final trigger in [servicesInsert, servicesDelete, servicesUpdate]) {
+      await m.drop(trigger);
+      await m.createTrigger(trigger);
+    }
+    // Not 'rebuild': with external content it indexes the raw data.
+    await customStatement(
+      "INSERT INTO text_entries(text_entries) VALUES ('delete-all')",
+    );
+    await customStatement(
+      'INSERT INTO text_entries(rowid, data) '
+      'SELECT rowid, $_ftsTextSql FROM services',
+    );
+    final hasCachedAt = await customSelect(
+      "SELECT 1 FROM pragma_table_info('services') WHERE name = 'cachedAt'",
+    ).get();
+    if (hasCachedAt.isEmpty) {
+      await m.addColumn(services, services.cachedAt);
+    }
+    // Existing rows start their TTL at the upgrade.
+    await update(services)
+        .write(ServicesCompanion(cachedAt: Value(DateTime.now())));
+    // Indexes and triggers have no IF NOT EXISTS.
+    for (final entity in [
+      idxServicesService,
+      idxBlobFilesRecord,
+      idxBlobFileStatsAccess,
+      blobFilesDelete,
+    ]) {
+      await m.drop(entity);
+    }
+    await m.createIndex(idxServicesService);
+    await m.createIndex(idxBlobFilesRecord);
+    await m.createTable(blobFileStats);
+    await m.createIndex(idxBlobFileStatsAccess);
+    await m.createTrigger(blobFilesDelete);
+    if (from >= 2) {
+      // Sizes of the cached blobs. length() reads only the record
+      // header, and BlobFiles itself is not written, so the upgrade
+      // costs O(rows), not O(bytes). lastAccess stays null: these
+      // blobs count as the oldest. OR IGNORE: rows an interrupted
+      // upgrade already wrote.
+      await customStatement(
+        'INSERT OR IGNORE INTO BlobFileStats (fileId, size) '
+        'SELECT id, length(data) FROM BlobFiles',
+      );
+    }
   }
 
   static final _inTransaction = Object();
