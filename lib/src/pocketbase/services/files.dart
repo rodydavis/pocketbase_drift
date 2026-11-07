@@ -183,9 +183,8 @@ class $FileService extends FileService {
       recordId,
       blobName,
       bytes,
-      expires: expireAfter != null
-          ? DateTime.now().toUtc().add(expireAfter)
-          : null,
+      expires:
+          expireAfter != null ? DateTime.now().toUtc().add(expireAfter) : null,
     );
     unawaited(client.enforceFileCacheLimit());
   }

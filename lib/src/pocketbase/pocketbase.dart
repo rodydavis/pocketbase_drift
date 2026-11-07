@@ -140,9 +140,8 @@ class $PocketBase extends PocketBase with WidgetsBindingObserver {
 
   /// Default of [maxFileCacheBytes]: 128 MB, 32 MB on the web (where the
   /// IndexedDB storage fallback keeps the whole database in memory).
-  static const int defaultMaxFileCacheBytes = kIsWeb
-      ? 32 * 1024 * 1024
-      : 128 * 1024 * 1024;
+  static const int defaultMaxFileCacheBytes =
+      kIsWeb ? 32 * 1024 * 1024 : 128 * 1024 * 1024;
 
   /// Size limit in bytes of the file blob cache: downloaded files, thumbs
   /// and the cached copies of uploaded files.
@@ -409,7 +408,7 @@ class $PocketBase extends PocketBase with WidgetsBindingObserver {
       }
       final services = includeFailed
           ? {for (final r in await db.pendingRecords().get()) r.service}
-                .toList()
+              .toList()
           : await db.pendingServices();
       if (services.isEmpty) {
         logger.fine('No pending changes to sync.');
@@ -825,8 +824,7 @@ class $PocketBase extends PocketBase with WidgetsBindingObserver {
         requestPolicy: requestPolicy,
       );
     } catch (e) {
-      final cached =
-          await db.collectionByName(collectionIdOrName) ??
+      final cached = await db.collectionByName(collectionIdOrName) ??
           await db.collectionById(collectionIdOrName);
       if (cached == null) rethrow;
       logger.fine(

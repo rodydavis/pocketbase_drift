@@ -77,14 +77,12 @@ class RealtimeHub {
     if (_connectListener == null) {
       final onConnect = _connectListener = (_) => _onConnect();
       unawaited(
-        client.realtime
-            .subscribe('PB_CONNECT', onConnect)
-            .then<void>(
-              (_) {},
-              onError: (Object e) {
-                _logger.fine('Realtime connect listener not active yet', e);
-              },
-            ),
+        client.realtime.subscribe('PB_CONNECT', onConnect).then<void>(
+          (_) {},
+          onError: (Object e) {
+            _logger.fine('Realtime connect listener not active yet', e);
+          },
+        ),
       );
     }
     if (entry.listener == null) {

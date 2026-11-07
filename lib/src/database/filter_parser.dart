@@ -446,9 +446,8 @@ class _FilterReader {
     }
 
     if (isAnyOf) {
-      final jsonPath = isBaseField
-          ? field
-          : "json_extract(services.data, '\$.$field')";
+      final jsonPath =
+          isBaseField ? field : "json_extract(services.data, '\$.$field')";
       return 'EXISTS (SELECT 1 FROM json_each($jsonPath) '
           'WHERE value $sqlOperator $valueSql$suffix)';
     }
@@ -459,9 +458,8 @@ class _FilterReader {
   /// (base fields) or a value in the `data` JSON column.
   String _fieldSql(String field, String? modifier) {
     final isBaseField = baseFields.contains(field.toLowerCase());
-    final fieldSql = isBaseField
-        ? field
-        : "json_extract(services.data, '\$.$field')";
+    final fieldSql =
+        isBaseField ? field : "json_extract(services.data, '\$.$field')";
 
     switch (modifier) {
       case 'lower':

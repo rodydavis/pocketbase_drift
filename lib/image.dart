@@ -134,9 +134,8 @@ class PocketBaseImageProvider extends ImageProvider<PocketBaseImageProvider> {
       final buffer = await ui.ImmutableBuffer.fromUint8List(bytes);
       return await decode(
         buffer,
-        getTargetSize: pixelWidth == null && pixelHeight == null
-            ? null
-            : _targetSize,
+        getTargetSize:
+            pixelWidth == null && pixelHeight == null ? null : _targetSize,
       );
     } catch (_) {
       // Drop the failed entry so the next resolve retries the load.
@@ -151,9 +150,8 @@ class PocketBaseImageProvider extends ImageProvider<PocketBaseImageProvider> {
   /// never larger than the intrinsic size.
   ui.TargetImageSize _targetSize(int intrinsicWidth, int intrinsicHeight) {
     final widthRatio = pixelWidth != null ? pixelWidth! / intrinsicWidth : 0.0;
-    final heightRatio = pixelHeight != null
-        ? pixelHeight! / intrinsicHeight
-        : 0.0;
+    final heightRatio =
+        pixelHeight != null ? pixelHeight! / intrinsicHeight : 0.0;
     final ratio = math.max(widthRatio, heightRatio);
     if (ratio >= 1) return const ui.TargetImageSize();
     return ui.TargetImageSize(
@@ -195,20 +193,19 @@ class PocketBaseImageProvider extends ImageProvider<PocketBaseImageProvider> {
 
   @override
   int get hashCode => Object.hash(
-    identityHashCode(client),
-    recordId,
-    recordCollectionName,
-    filename,
-    thumb,
-    scale,
-    pixelWidth,
-    pixelHeight,
-    size,
-  );
+        identityHashCode(client),
+        recordId,
+        recordCollectionName,
+        filename,
+        thumb,
+        scale,
+        pixelWidth,
+        pixelHeight,
+        size,
+      );
 
   @override
-  String toString() =>
-      '${objectRuntimeType(this, 'PocketBaseImageProvider')}('
+  String toString() => '${objectRuntimeType(this, 'PocketBaseImageProvider')}('
       '"$recordCollectionName/$recordId/$filename", thumb: $thumb, '
       'scale: $scale, pixelWidth: $pixelWidth, pixelHeight: $pixelHeight)';
 }

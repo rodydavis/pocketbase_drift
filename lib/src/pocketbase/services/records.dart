@@ -59,11 +59,11 @@ class $RecordService extends RecordService with ServiceMixin<RecordModel> {
   }
 
   RecordModel _fromRow(Service row) => itemFactoryFunc({
-    ...row.data,
-    'created': row.created,
-    'updated': row.updated,
-    'id': row.id,
-  });
+        ...row.data,
+        'created': row.created,
+        'updated': row.updated,
+        'id': row.id,
+      });
 
   /// Records of this collection with unsynced local changes (including
   /// offline deletions), oldest first. Rows the server rejected carry
@@ -217,9 +217,12 @@ class $RecordService extends RecordService with ServiceMixin<RecordModel> {
         requestPolicy: RequestPolicy.networkOnly,
       );
       if (policy != RequestPolicy.networkOnly) {
-        await client.db.upsertServerRecords(service, [
-          record.toJson(),
-        ], partial: fields?.isNotEmpty ?? false);
+        await client.db.upsertServerRecords(
+            service,
+            [
+              record.toJson(),
+            ],
+            partial: fields?.isNotEmpty ?? false);
       }
       return record;
     } on ClientException catch (e) {
@@ -253,7 +256,8 @@ class $RecordService extends RecordService with ServiceMixin<RecordModel> {
             sort: sort,
             fields: fields,
             requestPolicy: RequestPolicy.networkOnly,
-          )).items;
+          ))
+            .items;
     if (policy == RequestPolicy.networkOnly) return items;
 
     final json = items.map((e) => e.toJson()).toList();
@@ -429,14 +433,15 @@ class $RecordService extends RecordService with ServiceMixin<RecordModel> {
     String? fields,
     RequestPolicy? requestPolicy,
     bool distinctResults = true,
-  }) => _recordQuery(
-    id,
-    expand: expand,
-    fields: fields,
-    requestPolicy: requestPolicy,
-    distinctResults: distinctResults,
-    emitStates: false,
-  ).stream.map((s) => s.data);
+  }) =>
+      _recordQuery(
+        id,
+        expand: expand,
+        fields: fields,
+        requestPolicy: requestPolicy,
+        distinctResults: distinctResults,
+        emitStates: false,
+      ).stream.map((s) => s.data);
 
   /// Watches the records matching [filter] (see [watchRecord] for the
   /// policies). With [limit], only that many records are fetched from the
@@ -449,16 +454,17 @@ class $RecordService extends RecordService with ServiceMixin<RecordModel> {
     String? fields,
     RequestPolicy? requestPolicy,
     bool distinctResults = true,
-  }) => _listQuery(
-    expand: expand,
-    filter: filter,
-    sort: sort,
-    limit: limit,
-    fields: fields,
-    requestPolicy: requestPolicy,
-    distinctResults: distinctResults,
-    emitStates: false,
-  ).stream.map((s) => s.data);
+  }) =>
+      _listQuery(
+        expand: expand,
+        filter: filter,
+        sort: sort,
+        limit: limit,
+        fields: fields,
+        requestPolicy: requestPolicy,
+        distinctResults: distinctResults,
+        emitStates: false,
+      ).stream.map((s) => s.data);
 
   /// Like [watchRecord], with the fetch status and last fetch error.
   Stream<QueryState<RecordModel?>> watchRecordState(
@@ -467,14 +473,15 @@ class $RecordService extends RecordService with ServiceMixin<RecordModel> {
     String? fields,
     RequestPolicy? requestPolicy,
     bool distinctResults = true,
-  }) => _recordQuery(
-    id,
-    expand: expand,
-    fields: fields,
-    requestPolicy: requestPolicy,
-    distinctResults: distinctResults,
-    emitStates: true,
-  ).stream;
+  }) =>
+      _recordQuery(
+        id,
+        expand: expand,
+        fields: fields,
+        requestPolicy: requestPolicy,
+        distinctResults: distinctResults,
+        emitStates: true,
+      ).stream;
 
   /// Like [watchRecords], with the fetch status and last fetch error.
   Stream<QueryState<List<RecordModel>>> watchRecordsState({
@@ -485,16 +492,17 @@ class $RecordService extends RecordService with ServiceMixin<RecordModel> {
     String? fields,
     RequestPolicy? requestPolicy,
     bool distinctResults = true,
-  }) => _listQuery(
-    expand: expand,
-    filter: filter,
-    sort: sort,
-    limit: limit,
-    fields: fields,
-    requestPolicy: requestPolicy,
-    distinctResults: distinctResults,
-    emitStates: true,
-  ).stream;
+  }) =>
+      _listQuery(
+        expand: expand,
+        filter: filter,
+        sort: sort,
+        limit: limit,
+        fields: fields,
+        requestPolicy: requestPolicy,
+        distinctResults: distinctResults,
+        emitStates: true,
+      ).stream;
 }
 
 /// One listened watch stream: a cache stream (or the server's data for
@@ -596,8 +604,7 @@ class _LiveQuery<T> implements LiveQuery {
   }
 
   void _onListen() {
-    _fetching =
-        policy != RequestPolicy.cacheOnly &&
+    _fetching = policy != RequestPolicy.cacheOnly &&
         (_networkOnly ||
             (_client.connectivity.canReachServer &&
                 !_client.hasExpiredSession));

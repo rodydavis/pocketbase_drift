@@ -350,10 +350,10 @@ class $BatchService {
       RequestPolicy.networkFirst => _sendNetworkFirst(body, query, headers),
       RequestPolicy.cacheFirst => _sendCacheFirst(body, query, headers),
       RequestPolicy.cacheAndNetwork => _sendCacheAndNetwork(
-        body,
-        query,
-        headers,
-      ),
+          body,
+          query,
+          headers,
+        ),
     };
   }
 
@@ -382,10 +382,10 @@ class $BatchService {
 
   /// `collection/id` of every record the batch writes.
   List<String> get _recordKeys => [
-    for (final request in _requests)
-      if ((request.recordId ?? request.body['id']) case final String id)
-        '${request.collection}/$id',
-  ];
+        for (final request in _requests)
+          if ((request.recordId ?? request.body['id']) case final String id)
+            '${request.collection}/$id',
+      ];
 
   /// Sends the batch once running pushes of its records are done and blocks
   /// their pushes until the results are cached (see [runOnline]). Without
@@ -395,19 +395,20 @@ class $BatchService {
     Map<String, dynamic> query,
     Map<String, String> headers, {
     required bool cache,
-  }) => runOnline(client, _recordKeys, client.requestTimeout, () async {
-    final before = <String, Map<String, dynamic>?>{
-      for (final request in _requests)
-        if (request.recordId case final String id)
-          '${request.collection}/$id': await client.db.rowById(
-            request.collection,
-            id,
-          ),
-    };
-    final results = await _sendToServer(body, query, headers);
-    await _syncResultsToCache(results, before: before, pendingOnly: !cache);
-    return results;
-  });
+  }) =>
+      runOnline(client, _recordKeys, client.requestTimeout, () async {
+        final before = <String, Map<String, dynamic>?>{
+          for (final request in _requests)
+            if (request.recordId case final String id)
+              '${request.collection}/$id': await client.db.rowById(
+                request.collection,
+                id,
+              ),
+        };
+        final results = await _sendToServer(body, query, headers);
+        await _syncResultsToCache(results, before: before, pendingOnly: !cache);
+        return results;
+      });
 
   /// Pushes the queued creates of records this batch updates or deletes:
   /// the server rejects the whole batch when one of them does not exist
@@ -726,9 +727,12 @@ class $BatchService {
             partial: request.fields?.isNotEmpty ?? false,
           );
         } else if (request.isCreate) {
-          await client.db.upsertServerRecords(request.collection, [
-            data,
-          ], partial: request.fields?.isNotEmpty ?? false);
+          await client.db.upsertServerRecords(
+              request.collection,
+              [
+                data,
+              ],
+              partial: request.fields?.isNotEmpty ?? false);
         } else {
           // Queued local changes of the fields this request set are older,
           // unless they were made while the batch was in flight: the row
@@ -747,12 +751,17 @@ class $BatchService {
               revChanged &&
               (jsonEncode(row[field]) != jsonEncode(prior[field]) ||
                   !queuedBefore.contains(field));
-          await client.db.acceptServerWrite(request.collection, id, data, {
-            for (final k in request.body.keys)
-              if (k != 'id' && !editedMeanwhile(baseFieldName(k))) k,
-            for (final f in request.files)
-              if (baseFieldName(f.$1) == f.$1) f.$1,
-          }, partial: request.fields?.isNotEmpty ?? false);
+          await client.db.acceptServerWrite(
+              request.collection,
+              id,
+              data,
+              {
+                for (final k in request.body.keys)
+                  if (k != 'id' && !editedMeanwhile(baseFieldName(k))) k,
+                for (final f in request.files)
+                  if (baseFieldName(f.$1) == f.$1) f.$1,
+              },
+              partial: request.fields?.isNotEmpty ?? false);
         }
       } catch (e) {
         client.logger.warning(

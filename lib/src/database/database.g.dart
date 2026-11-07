@@ -20,7 +20,7 @@ class $ServicesTable extends Services with TableInfo<$ServicesTable, Service> {
   );
   @override
   late final GeneratedColumnWithTypeConverter<Map<String, dynamic>, String>
-  data = GeneratedColumn<String>(
+      data = GeneratedColumn<String>(
     'data',
     aliasedName,
     false,
@@ -73,13 +73,13 @@ class $ServicesTable extends Services with TableInfo<$ServicesTable, Service> {
   );
   @override
   List<GeneratedColumn> get $columns => [
-    id,
-    data,
-    service,
-    created,
-    updated,
-    cachedAt,
-  ];
+        id,
+        data,
+        service,
+        created,
+        updated,
+        cachedAt,
+      ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -258,14 +258,15 @@ class Service extends DataClass implements Insertable<Service> {
     Value<String?> created = const Value.absent(),
     Value<String?> updated = const Value.absent(),
     Value<DateTime?> cachedAt = const Value.absent(),
-  }) => Service(
-    id: id ?? this.id,
-    data: data ?? this.data,
-    service: service ?? this.service,
-    created: created.present ? created.value : this.created,
-    updated: updated.present ? updated.value : this.updated,
-    cachedAt: cachedAt.present ? cachedAt.value : this.cachedAt,
-  );
+  }) =>
+      Service(
+        id: id ?? this.id,
+        data: data ?? this.data,
+        service: service ?? this.service,
+        created: created.present ? created.value : this.created,
+        updated: updated.present ? updated.value : this.updated,
+        cachedAt: cachedAt.present ? cachedAt.value : this.cachedAt,
+      );
   Service copyWithCompanion(ServicesCompanion data) {
     return Service(
       id: data.id.present ? data.id.value : this.id,
@@ -330,8 +331,8 @@ class ServicesCompanion extends UpdateCompanion<Service> {
     this.updated = const Value.absent(),
     this.cachedAt = const Value.absent(),
     this.rowid = const Value.absent(),
-  }) : data = Value(data),
-       service = Value(service);
+  })  : data = Value(data),
+        service = Value(service);
   static Insertable<Service> custom({
     Expression<String>? id,
     Expression<String>? data,
@@ -504,14 +505,14 @@ class $BlobFilesTable extends BlobFiles
   );
   @override
   List<GeneratedColumn> get $columns => [
-    id,
-    recordId,
-    filename,
-    data,
-    expiration,
-    created,
-    updated,
-  ];
+        id,
+        recordId,
+        filename,
+        data,
+        expiration,
+        created,
+        updated,
+      ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -706,24 +707,24 @@ class BlobFile extends DataClass implements Insertable<BlobFile> {
     Value<DateTime?> expiration = const Value.absent(),
     Value<String?> created = const Value.absent(),
     Value<String?> updated = const Value.absent(),
-  }) => BlobFile(
-    id: id ?? this.id,
-    recordId: recordId ?? this.recordId,
-    filename: filename ?? this.filename,
-    data: data ?? this.data,
-    expiration: expiration.present ? expiration.value : this.expiration,
-    created: created.present ? created.value : this.created,
-    updated: updated.present ? updated.value : this.updated,
-  );
+  }) =>
+      BlobFile(
+        id: id ?? this.id,
+        recordId: recordId ?? this.recordId,
+        filename: filename ?? this.filename,
+        data: data ?? this.data,
+        expiration: expiration.present ? expiration.value : this.expiration,
+        created: created.present ? created.value : this.created,
+        updated: updated.present ? updated.value : this.updated,
+      );
   BlobFile copyWithCompanion(BlobFilesCompanion data) {
     return BlobFile(
       id: data.id.present ? data.id.value : this.id,
       recordId: data.recordId.present ? data.recordId.value : this.recordId,
       filename: data.filename.present ? data.filename.value : this.filename,
       data: data.data.present ? data.data.value : this.data,
-      expiration: data.expiration.present
-          ? data.expiration.value
-          : this.expiration,
+      expiration:
+          data.expiration.present ? data.expiration.value : this.expiration,
       created: data.created.present ? data.created.value : this.created,
       updated: data.updated.present ? data.updated.value : this.updated,
     );
@@ -745,14 +746,14 @@ class BlobFile extends DataClass implements Insertable<BlobFile> {
 
   @override
   int get hashCode => Object.hash(
-    id,
-    recordId,
-    filename,
-    $driftBlobEquality.hash(data),
-    expiration,
-    created,
-    updated,
-  );
+        id,
+        recordId,
+        filename,
+        $driftBlobEquality.hash(data),
+        expiration,
+        created,
+        updated,
+      );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -791,9 +792,9 @@ class BlobFilesCompanion extends UpdateCompanion<BlobFile> {
     this.expiration = const Value.absent(),
     this.created = const Value.absent(),
     this.updated = const Value.absent(),
-  }) : recordId = Value(recordId),
-       filename = Value(filename),
-       data = Value(data);
+  })  : recordId = Value(recordId),
+        filename = Value(filename),
+        data = Value(data);
   static Insertable<BlobFile> custom({
     Expression<int>? id,
     Expression<String>? recordId,
@@ -1036,18 +1037,18 @@ class BlobFileStat extends DataClass implements Insertable<BlobFileStat> {
     int? fileId,
     int? size,
     Value<DateTime?> lastAccess = const Value.absent(),
-  }) => BlobFileStat(
-    fileId: fileId ?? this.fileId,
-    size: size ?? this.size,
-    lastAccess: lastAccess.present ? lastAccess.value : this.lastAccess,
-  );
+  }) =>
+      BlobFileStat(
+        fileId: fileId ?? this.fileId,
+        size: size ?? this.size,
+        lastAccess: lastAccess.present ? lastAccess.value : this.lastAccess,
+      );
   BlobFileStat copyWithCompanion(BlobFileStatsCompanion data) {
     return BlobFileStat(
       fileId: data.fileId.present ? data.fileId.value : this.fileId,
       size: data.size.present ? data.size.value : this.size,
-      lastAccess: data.lastAccess.present
-          ? data.lastAccess.value
-          : this.lastAccess,
+      lastAccess:
+          data.lastAccess.present ? data.lastAccess.value : this.lastAccess,
     );
   }
 
@@ -1303,16 +1304,16 @@ class CachedResponse extends DataClass implements Insertable<CachedResponse> {
     String? requestKey,
     String? responseData,
     DateTime? cachedAt,
-  }) => CachedResponse(
-    requestKey: requestKey ?? this.requestKey,
-    responseData: responseData ?? this.responseData,
-    cachedAt: cachedAt ?? this.cachedAt,
-  );
+  }) =>
+      CachedResponse(
+        requestKey: requestKey ?? this.requestKey,
+        responseData: responseData ?? this.responseData,
+        cachedAt: cachedAt ?? this.cachedAt,
+      );
   CachedResponse copyWithCompanion(CachedResponsesCompanion data) {
     return CachedResponse(
-      requestKey: data.requestKey.present
-          ? data.requestKey.value
-          : this.requestKey,
+      requestKey:
+          data.requestKey.present ? data.requestKey.value : this.requestKey,
       responseData: data.responseData.present
           ? data.responseData.value
           : this.responseData,
@@ -1357,8 +1358,8 @@ class CachedResponsesCompanion extends UpdateCompanion<CachedResponse> {
     required String responseData,
     this.cachedAt = const Value.absent(),
     this.rowid = const Value.absent(),
-  }) : requestKey = Value(requestKey),
-       responseData = Value(responseData);
+  })  : requestKey = Value(requestKey),
+        responseData = Value(responseData);
   static Insertable<CachedResponse> custom({
     Expression<String>? requestKey,
     Expression<String>? responseData,
@@ -1656,50 +1657,50 @@ abstract class _$DataBase extends GeneratedDatabase {
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
   @override
   List<DatabaseSchemaEntity> get allSchemaEntities => [
-    services,
-    blobFiles,
-    blobFileStats,
-    blobFilesDelete,
-    cachedResponses,
-    idxServicesService,
-    idxBlobFilesRecord,
-    idxBlobFileStatsAccess,
-    textEntries,
-    servicesInsert,
-    servicesDelete,
-    servicesUpdate,
-  ];
+        services,
+        blobFiles,
+        blobFileStats,
+        blobFilesDelete,
+        cachedResponses,
+        idxServicesService,
+        idxBlobFilesRecord,
+        idxBlobFileStatsAccess,
+        textEntries,
+        servicesInsert,
+        servicesDelete,
+        servicesUpdate,
+      ];
   @override
   StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
-    WritePropagation(
-      on: TableUpdateQuery.onTableName(
-        'BlobFiles',
-        limitUpdateKind: UpdateKind.delete,
-      ),
-      result: [TableUpdate('BlobFileStats', kind: UpdateKind.delete)],
-    ),
-    WritePropagation(
-      on: TableUpdateQuery.onTableName(
-        'Services',
-        limitUpdateKind: UpdateKind.insert,
-      ),
-      result: [TableUpdate('text_entries', kind: UpdateKind.insert)],
-    ),
-    WritePropagation(
-      on: TableUpdateQuery.onTableName(
-        'Services',
-        limitUpdateKind: UpdateKind.delete,
-      ),
-      result: [TableUpdate('text_entries', kind: UpdateKind.insert)],
-    ),
-    WritePropagation(
-      on: TableUpdateQuery.onTableName(
-        'Services',
-        limitUpdateKind: UpdateKind.update,
-      ),
-      result: [TableUpdate('text_entries', kind: UpdateKind.insert)],
-    ),
-  ]);
+        WritePropagation(
+          on: TableUpdateQuery.onTableName(
+            'BlobFiles',
+            limitUpdateKind: UpdateKind.delete,
+          ),
+          result: [TableUpdate('BlobFileStats', kind: UpdateKind.delete)],
+        ),
+        WritePropagation(
+          on: TableUpdateQuery.onTableName(
+            'Services',
+            limitUpdateKind: UpdateKind.insert,
+          ),
+          result: [TableUpdate('text_entries', kind: UpdateKind.insert)],
+        ),
+        WritePropagation(
+          on: TableUpdateQuery.onTableName(
+            'Services',
+            limitUpdateKind: UpdateKind.delete,
+          ),
+          result: [TableUpdate('text_entries', kind: UpdateKind.insert)],
+        ),
+        WritePropagation(
+          on: TableUpdateQuery.onTableName(
+            'Services',
+            limitUpdateKind: UpdateKind.update,
+          ),
+          result: [TableUpdate('text_entries', kind: UpdateKind.insert)],
+        ),
+      ]);
 }
 
 typedef $$ServicesTableCreateCompanionBuilder = ServicesCompanion Function({
@@ -1726,10 +1727,10 @@ final class $$ServicesTableReferences
   $$ServicesTableReferences(super.$_db, super.$_table, super.$_typedResult);
 
   static MultiTypedResultKey<$BlobFilesTable, List<BlobFile>>
-  _blobFilesRefsTable(_$DataBase db) => MultiTypedResultKey.fromTable(
-    db.blobFiles,
-    aliasName: 'Services__id__BlobFiles__recordId',
-  );
+      _blobFilesRefsTable(_$DataBase db) => MultiTypedResultKey.fromTable(
+            db.blobFiles,
+            aliasName: 'Services__id__BlobFiles__recordId',
+          );
 
   $$BlobFilesTableProcessedTableManager get blobFilesRefs {
     final manager = $$BlobFilesTableTableManager(
@@ -1754,39 +1755,36 @@ class $$ServicesTableFilterComposer
     super.$removeJoinBuilderFromRootComposer,
   });
   ColumnFilters<String> get id => $composableBuilder(
-    column: $table.id,
-    builder: (column) => ColumnFilters(column),
-  );
+        column: $table.id,
+        builder: (column) => ColumnFilters(column),
+      );
 
   ColumnWithTypeConverterFilters<
-    Map<String, dynamic>,
-    Map<String, dynamic>,
-    String
-  >
-  get data => $composableBuilder(
-    column: $table.data,
-    builder: (column) => ColumnWithTypeConverterFilters(column),
-  );
+          Map<String, dynamic>, Map<String, dynamic>, String>
+      get data => $composableBuilder(
+            column: $table.data,
+            builder: (column) => ColumnWithTypeConverterFilters(column),
+          );
 
   ColumnFilters<String> get service => $composableBuilder(
-    column: $table.service,
-    builder: (column) => ColumnFilters(column),
-  );
+        column: $table.service,
+        builder: (column) => ColumnFilters(column),
+      );
 
   ColumnFilters<String> get created => $composableBuilder(
-    column: $table.created,
-    builder: (column) => ColumnFilters(column),
-  );
+        column: $table.created,
+        builder: (column) => ColumnFilters(column),
+      );
 
   ColumnFilters<String> get updated => $composableBuilder(
-    column: $table.updated,
-    builder: (column) => ColumnFilters(column),
-  );
+        column: $table.updated,
+        builder: (column) => ColumnFilters(column),
+      );
 
   ColumnFilters<DateTime> get cachedAt => $composableBuilder(
-    column: $table.cachedAt,
-    builder: (column) => ColumnFilters(column),
-  );
+        column: $table.cachedAt,
+        builder: (column) => ColumnFilters(column),
+      );
 
   Expression<bool> blobFilesRefs(
     Expression<bool> Function($$BlobFilesTableFilterComposer f) f,
@@ -1796,19 +1794,18 @@ class $$ServicesTableFilterComposer
       getCurrentColumn: (t) => t.id,
       referencedTable: $db.blobFiles,
       getReferencedColumn: (t) => t.recordId,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$BlobFilesTableFilterComposer(
-            $db: $db,
-            $table: $db.blobFiles,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
+      builder: (
+        joinBuilder, {
+        $addJoinBuilderToRootComposer,
+        $removeJoinBuilderFromRootComposer,
+      }) =>
+          $$BlobFilesTableFilterComposer(
+        $db: $db,
+        $table: $db.blobFiles,
+        $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+        joinBuilder: joinBuilder,
+        $removeJoinBuilderFromRootComposer: $removeJoinBuilderFromRootComposer,
+      ),
     );
     return f(composer);
   }
@@ -1824,34 +1821,34 @@ class $$ServicesTableOrderingComposer
     super.$removeJoinBuilderFromRootComposer,
   });
   ColumnOrderings<String> get id => $composableBuilder(
-    column: $table.id,
-    builder: (column) => ColumnOrderings(column),
-  );
+        column: $table.id,
+        builder: (column) => ColumnOrderings(column),
+      );
 
   ColumnOrderings<String> get data => $composableBuilder(
-    column: $table.data,
-    builder: (column) => ColumnOrderings(column),
-  );
+        column: $table.data,
+        builder: (column) => ColumnOrderings(column),
+      );
 
   ColumnOrderings<String> get service => $composableBuilder(
-    column: $table.service,
-    builder: (column) => ColumnOrderings(column),
-  );
+        column: $table.service,
+        builder: (column) => ColumnOrderings(column),
+      );
 
   ColumnOrderings<String> get created => $composableBuilder(
-    column: $table.created,
-    builder: (column) => ColumnOrderings(column),
-  );
+        column: $table.created,
+        builder: (column) => ColumnOrderings(column),
+      );
 
   ColumnOrderings<String> get updated => $composableBuilder(
-    column: $table.updated,
-    builder: (column) => ColumnOrderings(column),
-  );
+        column: $table.updated,
+        builder: (column) => ColumnOrderings(column),
+      );
 
   ColumnOrderings<DateTime> get cachedAt => $composableBuilder(
-    column: $table.cachedAt,
-    builder: (column) => ColumnOrderings(column),
-  );
+        column: $table.cachedAt,
+        builder: (column) => ColumnOrderings(column),
+      );
 }
 
 class $$ServicesTableAnnotationComposer
@@ -1889,142 +1886,133 @@ class $$ServicesTableAnnotationComposer
       getCurrentColumn: (t) => t.id,
       referencedTable: $db.blobFiles,
       getReferencedColumn: (t) => t.recordId,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$BlobFilesTableAnnotationComposer(
-            $db: $db,
-            $table: $db.blobFiles,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
+      builder: (
+        joinBuilder, {
+        $addJoinBuilderToRootComposer,
+        $removeJoinBuilderFromRootComposer,
+      }) =>
+          $$BlobFilesTableAnnotationComposer(
+        $db: $db,
+        $table: $db.blobFiles,
+        $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+        joinBuilder: joinBuilder,
+        $removeJoinBuilderFromRootComposer: $removeJoinBuilderFromRootComposer,
+      ),
     );
     return f(composer);
   }
 }
 
-class $$ServicesTableTableManager
-    extends
-        RootTableManager<
-          _$DataBase,
-          $ServicesTable,
-          Service,
-          $$ServicesTableFilterComposer,
-          $$ServicesTableOrderingComposer,
-          $$ServicesTableAnnotationComposer,
-          $$ServicesTableCreateCompanionBuilder,
-          $$ServicesTableUpdateCompanionBuilder,
-          (Service, $$ServicesTableReferences),
-          Service,
-          PrefetchHooks Function({bool blobFilesRefs})
-        > {
+class $$ServicesTableTableManager extends RootTableManager<
+    _$DataBase,
+    $ServicesTable,
+    Service,
+    $$ServicesTableFilterComposer,
+    $$ServicesTableOrderingComposer,
+    $$ServicesTableAnnotationComposer,
+    $$ServicesTableCreateCompanionBuilder,
+    $$ServicesTableUpdateCompanionBuilder,
+    (Service, $$ServicesTableReferences),
+    Service,
+    PrefetchHooks Function({bool blobFilesRefs})> {
   $$ServicesTableTableManager(_$DataBase db, $ServicesTable table)
-    : super(
-        TableManagerState(
-          db: db,
-          table: table,
-          createFilteringComposer: () =>
-              $$ServicesTableFilterComposer($db: db, $table: table),
-          createOrderingComposer: () =>
-              $$ServicesTableOrderingComposer($db: db, $table: table),
-          createComputedFieldComposer: () =>
-              $$ServicesTableAnnotationComposer($db: db, $table: table),
-          updateCompanionCallback:
-              ({
-                Value<String> id = const Value.absent(),
-                Value<Map<String, dynamic>> data = const Value.absent(),
-                Value<String> service = const Value.absent(),
-                Value<String?> created = const Value.absent(),
-                Value<String?> updated = const Value.absent(),
-                Value<DateTime?> cachedAt = const Value.absent(),
-                Value<int> rowid = const Value.absent(),
-              }) => ServicesCompanion(
-                id: id,
-                data: data,
-                service: service,
-                created: created,
-                updated: updated,
-                cachedAt: cachedAt,
-                rowid: rowid,
-              ),
-          createCompanionCallback:
-              ({
-                Value<String> id = const Value.absent(),
-                required Map<String, dynamic> data,
-                required String service,
-                Value<String?> created = const Value.absent(),
-                Value<String?> updated = const Value.absent(),
-                Value<DateTime?> cachedAt = const Value.absent(),
-                Value<int> rowid = const Value.absent(),
-              }) => ServicesCompanion.insert(
-                id: id,
-                data: data,
-                service: service,
-                created: created,
-                updated: updated,
-                cachedAt: cachedAt,
-                rowid: rowid,
-              ),
-          withReferenceMapper: (p0) => p0
-              .map(
-                (e) => (
-                  e.readTable<$ServicesTable, Service>(table),
-                  $$ServicesTableReferences(db, table, e),
-                ),
-              )
-              .toList(),
-          prefetchHooksCallback: ({blobFilesRefs = false}) {
-            return PrefetchHooks(
-              db: db,
-              explicitlyWatchedTables: [if (blobFilesRefs) db.blobFiles],
-              addJoins: null,
-              getPrefetchedDataCallback: (items) async {
-                return [
-                  if (blobFilesRefs)
-                    await $_getPrefetchedDataByColumns<
-                      Service,
-                      $ServicesTable,
-                      BlobFile,
-                      $BlobFilesTable
-                    >(
-                      currentTable: table,
-                      referencedTable: $$ServicesTableReferences
-                          ._blobFilesRefsTable(db),
-                      managerFromTypedResult: (p0) => $$ServicesTableReferences(
-                        db,
-                        table,
-                        p0,
-                      ).blobFilesRefs,
-                      currentColumn: 'id',
-                      referencedColumn: 'recordId',
-                      typedResults: items,
-                    ),
-                ];
-              },
-            );
-          },
-        ),
-      );
+      : super(
+          TableManagerState(
+            db: db,
+            table: table,
+            createFilteringComposer: () =>
+                $$ServicesTableFilterComposer($db: db, $table: table),
+            createOrderingComposer: () =>
+                $$ServicesTableOrderingComposer($db: db, $table: table),
+            createComputedFieldComposer: () =>
+                $$ServicesTableAnnotationComposer($db: db, $table: table),
+            updateCompanionCallback: ({
+              Value<String> id = const Value.absent(),
+              Value<Map<String, dynamic>> data = const Value.absent(),
+              Value<String> service = const Value.absent(),
+              Value<String?> created = const Value.absent(),
+              Value<String?> updated = const Value.absent(),
+              Value<DateTime?> cachedAt = const Value.absent(),
+              Value<int> rowid = const Value.absent(),
+            }) =>
+                ServicesCompanion(
+              id: id,
+              data: data,
+              service: service,
+              created: created,
+              updated: updated,
+              cachedAt: cachedAt,
+              rowid: rowid,
+            ),
+            createCompanionCallback: ({
+              Value<String> id = const Value.absent(),
+              required Map<String, dynamic> data,
+              required String service,
+              Value<String?> created = const Value.absent(),
+              Value<String?> updated = const Value.absent(),
+              Value<DateTime?> cachedAt = const Value.absent(),
+              Value<int> rowid = const Value.absent(),
+            }) =>
+                ServicesCompanion.insert(
+              id: id,
+              data: data,
+              service: service,
+              created: created,
+              updated: updated,
+              cachedAt: cachedAt,
+              rowid: rowid,
+            ),
+            withReferenceMapper: (p0) => p0
+                .map(
+                  (e) => (
+                    e.readTable<$ServicesTable, Service>(table),
+                    $$ServicesTableReferences(db, table, e),
+                  ),
+                )
+                .toList(),
+            prefetchHooksCallback: ({blobFilesRefs = false}) {
+              return PrefetchHooks(
+                db: db,
+                explicitlyWatchedTables: [if (blobFilesRefs) db.blobFiles],
+                addJoins: null,
+                getPrefetchedDataCallback: (items) async {
+                  return [
+                    if (blobFilesRefs)
+                      await $_getPrefetchedDataByColumns<Service,
+                          $ServicesTable, BlobFile, $BlobFilesTable>(
+                        currentTable: table,
+                        referencedTable:
+                            $$ServicesTableReferences._blobFilesRefsTable(db),
+                        managerFromTypedResult: (p0) =>
+                            $$ServicesTableReferences(
+                          db,
+                          table,
+                          p0,
+                        ).blobFilesRefs,
+                        currentColumn: 'id',
+                        referencedColumn: 'recordId',
+                        typedResults: items,
+                      ),
+                  ];
+                },
+              );
+            },
+          ),
+        );
 }
 
-typedef $$ServicesTableProcessedTableManager =
-    ProcessedTableManager<
-      _$DataBase,
-      $ServicesTable,
-      Service,
-      $$ServicesTableFilterComposer,
-      $$ServicesTableOrderingComposer,
-      $$ServicesTableAnnotationComposer,
-      $$ServicesTableCreateCompanionBuilder,
-      $$ServicesTableUpdateCompanionBuilder,
-      (Service, $$ServicesTableReferences),
-      Service,
-      PrefetchHooks Function({bool blobFilesRefs})
-    >;
+typedef $$ServicesTableProcessedTableManager = ProcessedTableManager<
+    _$DataBase,
+    $ServicesTable,
+    Service,
+    $$ServicesTableFilterComposer,
+    $$ServicesTableOrderingComposer,
+    $$ServicesTableAnnotationComposer,
+    $$ServicesTableCreateCompanionBuilder,
+    $$ServicesTableUpdateCompanionBuilder,
+    (Service, $$ServicesTableReferences),
+    Service,
+    PrefetchHooks Function({bool blobFilesRefs})>;
 typedef $$BlobFilesTableCreateCompanionBuilder = BlobFilesCompanion Function({
   Value<int> id,
   required String recordId,
@@ -2076,34 +2064,34 @@ class $$BlobFilesTableFilterComposer
     super.$removeJoinBuilderFromRootComposer,
   });
   ColumnFilters<int> get id => $composableBuilder(
-    column: $table.id,
-    builder: (column) => ColumnFilters(column),
-  );
+        column: $table.id,
+        builder: (column) => ColumnFilters(column),
+      );
 
   ColumnFilters<String> get filename => $composableBuilder(
-    column: $table.filename,
-    builder: (column) => ColumnFilters(column),
-  );
+        column: $table.filename,
+        builder: (column) => ColumnFilters(column),
+      );
 
   ColumnFilters<Uint8List> get data => $composableBuilder(
-    column: $table.data,
-    builder: (column) => ColumnFilters(column),
-  );
+        column: $table.data,
+        builder: (column) => ColumnFilters(column),
+      );
 
   ColumnFilters<DateTime> get expiration => $composableBuilder(
-    column: $table.expiration,
-    builder: (column) => ColumnFilters(column),
-  );
+        column: $table.expiration,
+        builder: (column) => ColumnFilters(column),
+      );
 
   ColumnFilters<String> get created => $composableBuilder(
-    column: $table.created,
-    builder: (column) => ColumnFilters(column),
-  );
+        column: $table.created,
+        builder: (column) => ColumnFilters(column),
+      );
 
   ColumnFilters<String> get updated => $composableBuilder(
-    column: $table.updated,
-    builder: (column) => ColumnFilters(column),
-  );
+        column: $table.updated,
+        builder: (column) => ColumnFilters(column),
+      );
 
   $$ServicesTableFilterComposer get recordId {
     final $$ServicesTableFilterComposer composer = $composerBuilder(
@@ -2111,19 +2099,18 @@ class $$BlobFilesTableFilterComposer
       getCurrentColumn: (t) => t.recordId,
       referencedTable: $db.services,
       getReferencedColumn: (t) => t.id,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$ServicesTableFilterComposer(
-            $db: $db,
-            $table: $db.services,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
+      builder: (
+        joinBuilder, {
+        $addJoinBuilderToRootComposer,
+        $removeJoinBuilderFromRootComposer,
+      }) =>
+          $$ServicesTableFilterComposer(
+        $db: $db,
+        $table: $db.services,
+        $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+        joinBuilder: joinBuilder,
+        $removeJoinBuilderFromRootComposer: $removeJoinBuilderFromRootComposer,
+      ),
     );
     return composer;
   }
@@ -2139,34 +2126,34 @@ class $$BlobFilesTableOrderingComposer
     super.$removeJoinBuilderFromRootComposer,
   });
   ColumnOrderings<int> get id => $composableBuilder(
-    column: $table.id,
-    builder: (column) => ColumnOrderings(column),
-  );
+        column: $table.id,
+        builder: (column) => ColumnOrderings(column),
+      );
 
   ColumnOrderings<String> get filename => $composableBuilder(
-    column: $table.filename,
-    builder: (column) => ColumnOrderings(column),
-  );
+        column: $table.filename,
+        builder: (column) => ColumnOrderings(column),
+      );
 
   ColumnOrderings<Uint8List> get data => $composableBuilder(
-    column: $table.data,
-    builder: (column) => ColumnOrderings(column),
-  );
+        column: $table.data,
+        builder: (column) => ColumnOrderings(column),
+      );
 
   ColumnOrderings<DateTime> get expiration => $composableBuilder(
-    column: $table.expiration,
-    builder: (column) => ColumnOrderings(column),
-  );
+        column: $table.expiration,
+        builder: (column) => ColumnOrderings(column),
+      );
 
   ColumnOrderings<String> get created => $composableBuilder(
-    column: $table.created,
-    builder: (column) => ColumnOrderings(column),
-  );
+        column: $table.created,
+        builder: (column) => ColumnOrderings(column),
+      );
 
   ColumnOrderings<String> get updated => $composableBuilder(
-    column: $table.updated,
-    builder: (column) => ColumnOrderings(column),
-  );
+        column: $table.updated,
+        builder: (column) => ColumnOrderings(column),
+      );
 
   $$ServicesTableOrderingComposer get recordId {
     final $$ServicesTableOrderingComposer composer = $composerBuilder(
@@ -2174,19 +2161,18 @@ class $$BlobFilesTableOrderingComposer
       getCurrentColumn: (t) => t.recordId,
       referencedTable: $db.services,
       getReferencedColumn: (t) => t.id,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$ServicesTableOrderingComposer(
-            $db: $db,
-            $table: $db.services,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
+      builder: (
+        joinBuilder, {
+        $addJoinBuilderToRootComposer,
+        $removeJoinBuilderFromRootComposer,
+      }) =>
+          $$ServicesTableOrderingComposer(
+        $db: $db,
+        $table: $db.services,
+        $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+        joinBuilder: joinBuilder,
+        $removeJoinBuilderFromRootComposer: $removeJoinBuilderFromRootComposer,
+      ),
     );
     return composer;
   }
@@ -2211,9 +2197,9 @@ class $$BlobFilesTableAnnotationComposer
       $composableBuilder(column: $table.data, builder: (column) => column);
 
   GeneratedColumn<DateTime> get expiration => $composableBuilder(
-    column: $table.expiration,
-    builder: (column) => column,
-  );
+        column: $table.expiration,
+        builder: (column) => column,
+      );
 
   GeneratedColumn<String> get created =>
       $composableBuilder(column: $table.created, builder: (column) => column);
@@ -2227,163 +2213,153 @@ class $$BlobFilesTableAnnotationComposer
       getCurrentColumn: (t) => t.recordId,
       referencedTable: $db.services,
       getReferencedColumn: (t) => t.id,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$ServicesTableAnnotationComposer(
-            $db: $db,
-            $table: $db.services,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
+      builder: (
+        joinBuilder, {
+        $addJoinBuilderToRootComposer,
+        $removeJoinBuilderFromRootComposer,
+      }) =>
+          $$ServicesTableAnnotationComposer(
+        $db: $db,
+        $table: $db.services,
+        $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+        joinBuilder: joinBuilder,
+        $removeJoinBuilderFromRootComposer: $removeJoinBuilderFromRootComposer,
+      ),
     );
     return composer;
   }
 }
 
-class $$BlobFilesTableTableManager
-    extends
-        RootTableManager<
-          _$DataBase,
-          $BlobFilesTable,
-          BlobFile,
-          $$BlobFilesTableFilterComposer,
-          $$BlobFilesTableOrderingComposer,
-          $$BlobFilesTableAnnotationComposer,
-          $$BlobFilesTableCreateCompanionBuilder,
-          $$BlobFilesTableUpdateCompanionBuilder,
-          (BlobFile, $$BlobFilesTableReferences),
-          BlobFile,
-          PrefetchHooks Function({bool recordId})
-        > {
+class $$BlobFilesTableTableManager extends RootTableManager<
+    _$DataBase,
+    $BlobFilesTable,
+    BlobFile,
+    $$BlobFilesTableFilterComposer,
+    $$BlobFilesTableOrderingComposer,
+    $$BlobFilesTableAnnotationComposer,
+    $$BlobFilesTableCreateCompanionBuilder,
+    $$BlobFilesTableUpdateCompanionBuilder,
+    (BlobFile, $$BlobFilesTableReferences),
+    BlobFile,
+    PrefetchHooks Function({bool recordId})> {
   $$BlobFilesTableTableManager(_$DataBase db, $BlobFilesTable table)
-    : super(
-        TableManagerState(
-          db: db,
-          table: table,
-          createFilteringComposer: () =>
-              $$BlobFilesTableFilterComposer($db: db, $table: table),
-          createOrderingComposer: () =>
-              $$BlobFilesTableOrderingComposer($db: db, $table: table),
-          createComputedFieldComposer: () =>
-              $$BlobFilesTableAnnotationComposer($db: db, $table: table),
-          updateCompanionCallback:
-              ({
-                Value<int> id = const Value.absent(),
-                Value<String> recordId = const Value.absent(),
-                Value<String> filename = const Value.absent(),
-                Value<Uint8List> data = const Value.absent(),
-                Value<DateTime?> expiration = const Value.absent(),
-                Value<String?> created = const Value.absent(),
-                Value<String?> updated = const Value.absent(),
-              }) => BlobFilesCompanion(
-                id: id,
-                recordId: recordId,
-                filename: filename,
-                data: data,
-                expiration: expiration,
-                created: created,
-                updated: updated,
-              ),
-          createCompanionCallback:
-              ({
-                Value<int> id = const Value.absent(),
-                required String recordId,
-                required String filename,
-                required Uint8List data,
-                Value<DateTime?> expiration = const Value.absent(),
-                Value<String?> created = const Value.absent(),
-                Value<String?> updated = const Value.absent(),
-              }) => BlobFilesCompanion.insert(
-                id: id,
-                recordId: recordId,
-                filename: filename,
-                data: data,
-                expiration: expiration,
-                created: created,
-                updated: updated,
-              ),
-          withReferenceMapper: (p0) => p0
-              .map(
-                (e) => (
-                  e.readTable<$BlobFilesTable, BlobFile>(table),
-                  $$BlobFilesTableReferences(db, table, e),
-                ),
-              )
-              .toList(),
-          prefetchHooksCallback: ({recordId = false}) {
-            return PrefetchHooks(
-              db: db,
-              explicitlyWatchedTables: [],
-              addJoins:
-                  <
+      : super(
+          TableManagerState(
+            db: db,
+            table: table,
+            createFilteringComposer: () =>
+                $$BlobFilesTableFilterComposer($db: db, $table: table),
+            createOrderingComposer: () =>
+                $$BlobFilesTableOrderingComposer($db: db, $table: table),
+            createComputedFieldComposer: () =>
+                $$BlobFilesTableAnnotationComposer($db: db, $table: table),
+            updateCompanionCallback: ({
+              Value<int> id = const Value.absent(),
+              Value<String> recordId = const Value.absent(),
+              Value<String> filename = const Value.absent(),
+              Value<Uint8List> data = const Value.absent(),
+              Value<DateTime?> expiration = const Value.absent(),
+              Value<String?> created = const Value.absent(),
+              Value<String?> updated = const Value.absent(),
+            }) =>
+                BlobFilesCompanion(
+              id: id,
+              recordId: recordId,
+              filename: filename,
+              data: data,
+              expiration: expiration,
+              created: created,
+              updated: updated,
+            ),
+            createCompanionCallback: ({
+              Value<int> id = const Value.absent(),
+              required String recordId,
+              required String filename,
+              required Uint8List data,
+              Value<DateTime?> expiration = const Value.absent(),
+              Value<String?> created = const Value.absent(),
+              Value<String?> updated = const Value.absent(),
+            }) =>
+                BlobFilesCompanion.insert(
+              id: id,
+              recordId: recordId,
+              filename: filename,
+              data: data,
+              expiration: expiration,
+              created: created,
+              updated: updated,
+            ),
+            withReferenceMapper: (p0) => p0
+                .map(
+                  (e) => (
+                    e.readTable<$BlobFilesTable, BlobFile>(table),
+                    $$BlobFilesTableReferences(db, table, e),
+                  ),
+                )
+                .toList(),
+            prefetchHooksCallback: ({recordId = false}) {
+              return PrefetchHooks(
+                db: db,
+                explicitlyWatchedTables: [],
+                addJoins: <
                     T extends TableManagerState<
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic
-                    >
-                  >(state) {
-                    if (recordId) {
-                      state = state.withJoin(
-                        currentTable: table,
-                        currentColumn: table.recordId,
-                        referencedTable: $$BlobFilesTableReferences
-                            ._recordIdTable(db),
-                        referencedColumn: $$BlobFilesTableReferences
-                            ._recordIdTable(db)
-                            .id,
-                      ) as T;
-                    }
+                        dynamic,
+                        dynamic,
+                        dynamic,
+                        dynamic,
+                        dynamic,
+                        dynamic,
+                        dynamic,
+                        dynamic,
+                        dynamic,
+                        dynamic,
+                        dynamic>>(state) {
+                  if (recordId) {
+                    state = state.withJoin(
+                      currentTable: table,
+                      currentColumn: table.recordId,
+                      referencedTable:
+                          $$BlobFilesTableReferences._recordIdTable(db),
+                      referencedColumn:
+                          $$BlobFilesTableReferences._recordIdTable(db).id,
+                    ) as T;
+                  }
 
-                    return state;
-                  },
-              getPrefetchedDataCallback: (items) async {
-                return [];
-              },
-            );
-          },
-        ),
-      );
+                  return state;
+                },
+                getPrefetchedDataCallback: (items) async {
+                  return [];
+                },
+              );
+            },
+          ),
+        );
 }
 
-typedef $$BlobFilesTableProcessedTableManager =
-    ProcessedTableManager<
-      _$DataBase,
-      $BlobFilesTable,
-      BlobFile,
-      $$BlobFilesTableFilterComposer,
-      $$BlobFilesTableOrderingComposer,
-      $$BlobFilesTableAnnotationComposer,
-      $$BlobFilesTableCreateCompanionBuilder,
-      $$BlobFilesTableUpdateCompanionBuilder,
-      (BlobFile, $$BlobFilesTableReferences),
-      BlobFile,
-      PrefetchHooks Function({bool recordId})
-    >;
-typedef $$BlobFileStatsTableCreateCompanionBuilder =
-    BlobFileStatsCompanion Function({
-      Value<int> fileId,
-      required int size,
-      Value<DateTime?> lastAccess,
-    });
-typedef $$BlobFileStatsTableUpdateCompanionBuilder =
-    BlobFileStatsCompanion Function({
-      Value<int> fileId,
-      Value<int> size,
-      Value<DateTime?> lastAccess,
-    });
+typedef $$BlobFilesTableProcessedTableManager = ProcessedTableManager<
+    _$DataBase,
+    $BlobFilesTable,
+    BlobFile,
+    $$BlobFilesTableFilterComposer,
+    $$BlobFilesTableOrderingComposer,
+    $$BlobFilesTableAnnotationComposer,
+    $$BlobFilesTableCreateCompanionBuilder,
+    $$BlobFilesTableUpdateCompanionBuilder,
+    (BlobFile, $$BlobFilesTableReferences),
+    BlobFile,
+    PrefetchHooks Function({bool recordId})>;
+typedef $$BlobFileStatsTableCreateCompanionBuilder = BlobFileStatsCompanion
+    Function({
+  Value<int> fileId,
+  required int size,
+  Value<DateTime?> lastAccess,
+});
+typedef $$BlobFileStatsTableUpdateCompanionBuilder = BlobFileStatsCompanion
+    Function({
+  Value<int> fileId,
+  Value<int> size,
+  Value<DateTime?> lastAccess,
+});
 
 class $$BlobFileStatsTableFilterComposer
     extends Composer<_$DataBase, $BlobFileStatsTable> {
@@ -2395,19 +2371,19 @@ class $$BlobFileStatsTableFilterComposer
     super.$removeJoinBuilderFromRootComposer,
   });
   ColumnFilters<int> get fileId => $composableBuilder(
-    column: $table.fileId,
-    builder: (column) => ColumnFilters(column),
-  );
+        column: $table.fileId,
+        builder: (column) => ColumnFilters(column),
+      );
 
   ColumnFilters<int> get size => $composableBuilder(
-    column: $table.size,
-    builder: (column) => ColumnFilters(column),
-  );
+        column: $table.size,
+        builder: (column) => ColumnFilters(column),
+      );
 
   ColumnFilters<DateTime> get lastAccess => $composableBuilder(
-    column: $table.lastAccess,
-    builder: (column) => ColumnFilters(column),
-  );
+        column: $table.lastAccess,
+        builder: (column) => ColumnFilters(column),
+      );
 }
 
 class $$BlobFileStatsTableOrderingComposer
@@ -2420,19 +2396,19 @@ class $$BlobFileStatsTableOrderingComposer
     super.$removeJoinBuilderFromRootComposer,
   });
   ColumnOrderings<int> get fileId => $composableBuilder(
-    column: $table.fileId,
-    builder: (column) => ColumnOrderings(column),
-  );
+        column: $table.fileId,
+        builder: (column) => ColumnOrderings(column),
+      );
 
   ColumnOrderings<int> get size => $composableBuilder(
-    column: $table.size,
-    builder: (column) => ColumnOrderings(column),
-  );
+        column: $table.size,
+        builder: (column) => ColumnOrderings(column),
+      );
 
   ColumnOrderings<DateTime> get lastAccess => $composableBuilder(
-    column: $table.lastAccess,
-    builder: (column) => ColumnOrderings(column),
-  );
+        column: $table.lastAccess,
+        builder: (column) => ColumnOrderings(column),
+      );
 }
 
 class $$BlobFileStatsTableAnnotationComposer
@@ -2451,108 +2427,104 @@ class $$BlobFileStatsTableAnnotationComposer
       $composableBuilder(column: $table.size, builder: (column) => column);
 
   GeneratedColumn<DateTime> get lastAccess => $composableBuilder(
-    column: $table.lastAccess,
-    builder: (column) => column,
-  );
-}
-
-class $$BlobFileStatsTableTableManager
-    extends
-        RootTableManager<
-          _$DataBase,
-          $BlobFileStatsTable,
-          BlobFileStat,
-          $$BlobFileStatsTableFilterComposer,
-          $$BlobFileStatsTableOrderingComposer,
-          $$BlobFileStatsTableAnnotationComposer,
-          $$BlobFileStatsTableCreateCompanionBuilder,
-          $$BlobFileStatsTableUpdateCompanionBuilder,
-          (
-            BlobFileStat,
-            BaseReferences<_$DataBase, $BlobFileStatsTable, BlobFileStat>,
-          ),
-          BlobFileStat,
-          PrefetchHooks Function()
-        > {
-  $$BlobFileStatsTableTableManager(_$DataBase db, $BlobFileStatsTable table)
-    : super(
-        TableManagerState(
-          db: db,
-          table: table,
-          createFilteringComposer: () =>
-              $$BlobFileStatsTableFilterComposer($db: db, $table: table),
-          createOrderingComposer: () =>
-              $$BlobFileStatsTableOrderingComposer($db: db, $table: table),
-          createComputedFieldComposer: () =>
-              $$BlobFileStatsTableAnnotationComposer($db: db, $table: table),
-          updateCompanionCallback:
-              ({
-                Value<int> fileId = const Value.absent(),
-                Value<int> size = const Value.absent(),
-                Value<DateTime?> lastAccess = const Value.absent(),
-              }) => BlobFileStatsCompanion(
-                fileId: fileId,
-                size: size,
-                lastAccess: lastAccess,
-              ),
-          createCompanionCallback:
-              ({
-                Value<int> fileId = const Value.absent(),
-                required int size,
-                Value<DateTime?> lastAccess = const Value.absent(),
-              }) => BlobFileStatsCompanion.insert(
-                fileId: fileId,
-                size: size,
-                lastAccess: lastAccess,
-              ),
-          withReferenceMapper: (p0) => p0
-              .map(
-                (e) => (
-                  e.readTable<$BlobFileStatsTable, BlobFileStat>(table),
-                  BaseReferences<_$DataBase, $BlobFileStatsTable, BlobFileStat>(
-                    db,
-                    table,
-                    e,
-                  ),
-                ),
-              )
-              .toList(),
-          prefetchHooksCallback: null,
-        ),
+        column: $table.lastAccess,
+        builder: (column) => column,
       );
 }
 
-typedef $$BlobFileStatsTableProcessedTableManager =
-    ProcessedTableManager<
-      _$DataBase,
-      $BlobFileStatsTable,
+class $$BlobFileStatsTableTableManager extends RootTableManager<
+    _$DataBase,
+    $BlobFileStatsTable,
+    BlobFileStat,
+    $$BlobFileStatsTableFilterComposer,
+    $$BlobFileStatsTableOrderingComposer,
+    $$BlobFileStatsTableAnnotationComposer,
+    $$BlobFileStatsTableCreateCompanionBuilder,
+    $$BlobFileStatsTableUpdateCompanionBuilder,
+    (
       BlobFileStat,
-      $$BlobFileStatsTableFilterComposer,
-      $$BlobFileStatsTableOrderingComposer,
-      $$BlobFileStatsTableAnnotationComposer,
-      $$BlobFileStatsTableCreateCompanionBuilder,
-      $$BlobFileStatsTableUpdateCompanionBuilder,
-      (
-        BlobFileStat,
-        BaseReferences<_$DataBase, $BlobFileStatsTable, BlobFileStat>,
-      ),
+      BaseReferences<_$DataBase, $BlobFileStatsTable, BlobFileStat>,
+    ),
+    BlobFileStat,
+    PrefetchHooks Function()> {
+  $$BlobFileStatsTableTableManager(_$DataBase db, $BlobFileStatsTable table)
+      : super(
+          TableManagerState(
+            db: db,
+            table: table,
+            createFilteringComposer: () =>
+                $$BlobFileStatsTableFilterComposer($db: db, $table: table),
+            createOrderingComposer: () =>
+                $$BlobFileStatsTableOrderingComposer($db: db, $table: table),
+            createComputedFieldComposer: () =>
+                $$BlobFileStatsTableAnnotationComposer($db: db, $table: table),
+            updateCompanionCallback: ({
+              Value<int> fileId = const Value.absent(),
+              Value<int> size = const Value.absent(),
+              Value<DateTime?> lastAccess = const Value.absent(),
+            }) =>
+                BlobFileStatsCompanion(
+              fileId: fileId,
+              size: size,
+              lastAccess: lastAccess,
+            ),
+            createCompanionCallback: ({
+              Value<int> fileId = const Value.absent(),
+              required int size,
+              Value<DateTime?> lastAccess = const Value.absent(),
+            }) =>
+                BlobFileStatsCompanion.insert(
+              fileId: fileId,
+              size: size,
+              lastAccess: lastAccess,
+            ),
+            withReferenceMapper: (p0) => p0
+                .map(
+                  (e) => (
+                    e.readTable<$BlobFileStatsTable, BlobFileStat>(table),
+                    BaseReferences<_$DataBase, $BlobFileStatsTable,
+                        BlobFileStat>(
+                      db,
+                      table,
+                      e,
+                    ),
+                  ),
+                )
+                .toList(),
+            prefetchHooksCallback: null,
+          ),
+        );
+}
+
+typedef $$BlobFileStatsTableProcessedTableManager = ProcessedTableManager<
+    _$DataBase,
+    $BlobFileStatsTable,
+    BlobFileStat,
+    $$BlobFileStatsTableFilterComposer,
+    $$BlobFileStatsTableOrderingComposer,
+    $$BlobFileStatsTableAnnotationComposer,
+    $$BlobFileStatsTableCreateCompanionBuilder,
+    $$BlobFileStatsTableUpdateCompanionBuilder,
+    (
       BlobFileStat,
-      PrefetchHooks Function()
-    >;
-typedef $$CachedResponsesTableCreateCompanionBuilder =
-    CachedResponsesCompanion Function({
-      required String requestKey,
-      required String responseData,
-      Value<DateTime> cachedAt,
-      Value<int> rowid,
-    });
-typedef $$CachedResponsesTableUpdateCompanionBuilder =
-    CachedResponsesCompanion Function({
-      Value<String> requestKey,
-      Value<String> responseData,
-      Value<DateTime> cachedAt,
-      Value<int> rowid,
-    });
+      BaseReferences<_$DataBase, $BlobFileStatsTable, BlobFileStat>,
+    ),
+    BlobFileStat,
+    PrefetchHooks Function()>;
+typedef $$CachedResponsesTableCreateCompanionBuilder = CachedResponsesCompanion
+    Function({
+  required String requestKey,
+  required String responseData,
+  Value<DateTime> cachedAt,
+  Value<int> rowid,
+});
+typedef $$CachedResponsesTableUpdateCompanionBuilder = CachedResponsesCompanion
+    Function({
+  Value<String> requestKey,
+  Value<String> responseData,
+  Value<DateTime> cachedAt,
+  Value<int> rowid,
+});
 
 class $$CachedResponsesTableFilterComposer
     extends Composer<_$DataBase, $CachedResponsesTable> {
@@ -2564,19 +2536,19 @@ class $$CachedResponsesTableFilterComposer
     super.$removeJoinBuilderFromRootComposer,
   });
   ColumnFilters<String> get requestKey => $composableBuilder(
-    column: $table.requestKey,
-    builder: (column) => ColumnFilters(column),
-  );
+        column: $table.requestKey,
+        builder: (column) => ColumnFilters(column),
+      );
 
   ColumnFilters<String> get responseData => $composableBuilder(
-    column: $table.responseData,
-    builder: (column) => ColumnFilters(column),
-  );
+        column: $table.responseData,
+        builder: (column) => ColumnFilters(column),
+      );
 
   ColumnFilters<DateTime> get cachedAt => $composableBuilder(
-    column: $table.cachedAt,
-    builder: (column) => ColumnFilters(column),
-  );
+        column: $table.cachedAt,
+        builder: (column) => ColumnFilters(column),
+      );
 }
 
 class $$CachedResponsesTableOrderingComposer
@@ -2589,19 +2561,19 @@ class $$CachedResponsesTableOrderingComposer
     super.$removeJoinBuilderFromRootComposer,
   });
   ColumnOrderings<String> get requestKey => $composableBuilder(
-    column: $table.requestKey,
-    builder: (column) => ColumnOrderings(column),
-  );
+        column: $table.requestKey,
+        builder: (column) => ColumnOrderings(column),
+      );
 
   ColumnOrderings<String> get responseData => $composableBuilder(
-    column: $table.responseData,
-    builder: (column) => ColumnOrderings(column),
-  );
+        column: $table.responseData,
+        builder: (column) => ColumnOrderings(column),
+      );
 
   ColumnOrderings<DateTime> get cachedAt => $composableBuilder(
-    column: $table.cachedAt,
-    builder: (column) => ColumnOrderings(column),
-  );
+        column: $table.cachedAt,
+        builder: (column) => ColumnOrderings(column),
+      );
 }
 
 class $$CachedResponsesTableAnnotationComposer
@@ -2614,106 +2586,99 @@ class $$CachedResponsesTableAnnotationComposer
     super.$removeJoinBuilderFromRootComposer,
   });
   GeneratedColumn<String> get requestKey => $composableBuilder(
-    column: $table.requestKey,
-    builder: (column) => column,
-  );
+        column: $table.requestKey,
+        builder: (column) => column,
+      );
 
   GeneratedColumn<String> get responseData => $composableBuilder(
-    column: $table.responseData,
-    builder: (column) => column,
-  );
+        column: $table.responseData,
+        builder: (column) => column,
+      );
 
   GeneratedColumn<DateTime> get cachedAt =>
       $composableBuilder(column: $table.cachedAt, builder: (column) => column);
 }
 
-class $$CachedResponsesTableTableManager
-    extends
-        RootTableManager<
-          _$DataBase,
-          $CachedResponsesTable,
-          CachedResponse,
-          $$CachedResponsesTableFilterComposer,
-          $$CachedResponsesTableOrderingComposer,
-          $$CachedResponsesTableAnnotationComposer,
-          $$CachedResponsesTableCreateCompanionBuilder,
-          $$CachedResponsesTableUpdateCompanionBuilder,
-          (
-            CachedResponse,
-            BaseReferences<_$DataBase, $CachedResponsesTable, CachedResponse>,
-          ),
-          CachedResponse,
-          PrefetchHooks Function()
-        > {
+class $$CachedResponsesTableTableManager extends RootTableManager<
+    _$DataBase,
+    $CachedResponsesTable,
+    CachedResponse,
+    $$CachedResponsesTableFilterComposer,
+    $$CachedResponsesTableOrderingComposer,
+    $$CachedResponsesTableAnnotationComposer,
+    $$CachedResponsesTableCreateCompanionBuilder,
+    $$CachedResponsesTableUpdateCompanionBuilder,
+    (
+      CachedResponse,
+      BaseReferences<_$DataBase, $CachedResponsesTable, CachedResponse>,
+    ),
+    CachedResponse,
+    PrefetchHooks Function()> {
   $$CachedResponsesTableTableManager(_$DataBase db, $CachedResponsesTable table)
-    : super(
-        TableManagerState(
-          db: db,
-          table: table,
-          createFilteringComposer: () =>
-              $$CachedResponsesTableFilterComposer($db: db, $table: table),
-          createOrderingComposer: () =>
-              $$CachedResponsesTableOrderingComposer($db: db, $table: table),
-          createComputedFieldComposer: () =>
-              $$CachedResponsesTableAnnotationComposer($db: db, $table: table),
-          updateCompanionCallback:
-              ({
-                Value<String> requestKey = const Value.absent(),
-                Value<String> responseData = const Value.absent(),
-                Value<DateTime> cachedAt = const Value.absent(),
-                Value<int> rowid = const Value.absent(),
-              }) => CachedResponsesCompanion(
-                requestKey: requestKey,
-                responseData: responseData,
-                cachedAt: cachedAt,
-                rowid: rowid,
-              ),
-          createCompanionCallback:
-              ({
-                required String requestKey,
-                required String responseData,
-                Value<DateTime> cachedAt = const Value.absent(),
-                Value<int> rowid = const Value.absent(),
-              }) => CachedResponsesCompanion.insert(
-                requestKey: requestKey,
-                responseData: responseData,
-                cachedAt: cachedAt,
-                rowid: rowid,
-              ),
-          withReferenceMapper: (p0) => p0
-              .map(
-                (e) => (
-                  e.readTable<$CachedResponsesTable, CachedResponse>(table),
-                  BaseReferences<
-                    _$DataBase,
-                    $CachedResponsesTable,
-                    CachedResponse
-                  >(db, table, e),
-                ),
-              )
-              .toList(),
-          prefetchHooksCallback: null,
-        ),
-      );
+      : super(
+          TableManagerState(
+            db: db,
+            table: table,
+            createFilteringComposer: () =>
+                $$CachedResponsesTableFilterComposer($db: db, $table: table),
+            createOrderingComposer: () =>
+                $$CachedResponsesTableOrderingComposer($db: db, $table: table),
+            createComputedFieldComposer: () =>
+                $$CachedResponsesTableAnnotationComposer(
+                    $db: db, $table: table),
+            updateCompanionCallback: ({
+              Value<String> requestKey = const Value.absent(),
+              Value<String> responseData = const Value.absent(),
+              Value<DateTime> cachedAt = const Value.absent(),
+              Value<int> rowid = const Value.absent(),
+            }) =>
+                CachedResponsesCompanion(
+              requestKey: requestKey,
+              responseData: responseData,
+              cachedAt: cachedAt,
+              rowid: rowid,
+            ),
+            createCompanionCallback: ({
+              required String requestKey,
+              required String responseData,
+              Value<DateTime> cachedAt = const Value.absent(),
+              Value<int> rowid = const Value.absent(),
+            }) =>
+                CachedResponsesCompanion.insert(
+              requestKey: requestKey,
+              responseData: responseData,
+              cachedAt: cachedAt,
+              rowid: rowid,
+            ),
+            withReferenceMapper: (p0) => p0
+                .map(
+                  (e) => (
+                    e.readTable<$CachedResponsesTable, CachedResponse>(table),
+                    BaseReferences<_$DataBase, $CachedResponsesTable,
+                        CachedResponse>(db, table, e),
+                  ),
+                )
+                .toList(),
+            prefetchHooksCallback: null,
+          ),
+        );
 }
 
-typedef $$CachedResponsesTableProcessedTableManager =
-    ProcessedTableManager<
-      _$DataBase,
-      $CachedResponsesTable,
+typedef $$CachedResponsesTableProcessedTableManager = ProcessedTableManager<
+    _$DataBase,
+    $CachedResponsesTable,
+    CachedResponse,
+    $$CachedResponsesTableFilterComposer,
+    $$CachedResponsesTableOrderingComposer,
+    $$CachedResponsesTableAnnotationComposer,
+    $$CachedResponsesTableCreateCompanionBuilder,
+    $$CachedResponsesTableUpdateCompanionBuilder,
+    (
       CachedResponse,
-      $$CachedResponsesTableFilterComposer,
-      $$CachedResponsesTableOrderingComposer,
-      $$CachedResponsesTableAnnotationComposer,
-      $$CachedResponsesTableCreateCompanionBuilder,
-      $$CachedResponsesTableUpdateCompanionBuilder,
-      (
-        CachedResponse,
-        BaseReferences<_$DataBase, $CachedResponsesTable, CachedResponse>,
-      ),
-      CachedResponse,
-      PrefetchHooks Function()
-    >;
+      BaseReferences<_$DataBase, $CachedResponsesTable, CachedResponse>,
+    ),
+    CachedResponse,
+    PrefetchHooks Function()>;
 typedef $TextEntriesCreateCompanionBuilder = TextEntriesCompanion Function({
   required String data,
   Value<int> rowid,
@@ -2732,9 +2697,9 @@ class $TextEntriesFilterComposer extends Composer<_$DataBase, TextEntries> {
     super.$removeJoinBuilderFromRootComposer,
   });
   ColumnFilters<String> get data => $composableBuilder(
-    column: $table.data,
-    builder: (column) => ColumnFilters(column),
-  );
+        column: $table.data,
+        builder: (column) => ColumnFilters(column),
+      );
 }
 
 class $TextEntriesOrderingComposer extends Composer<_$DataBase, TextEntries> {
@@ -2746,9 +2711,9 @@ class $TextEntriesOrderingComposer extends Composer<_$DataBase, TextEntries> {
     super.$removeJoinBuilderFromRootComposer,
   });
   ColumnOrderings<String> get data => $composableBuilder(
-    column: $table.data,
-    builder: (column) => ColumnOrderings(column),
-  );
+        column: $table.data,
+        builder: (column) => ColumnOrderings(column),
+      );
 }
 
 class $TextEntriesAnnotationComposer extends Composer<_$DataBase, TextEntries> {
@@ -2763,71 +2728,68 @@ class $TextEntriesAnnotationComposer extends Composer<_$DataBase, TextEntries> {
       $composableBuilder(column: $table.data, builder: (column) => column);
 }
 
-class $TextEntriesTableManager
-    extends
-        RootTableManager<
-          _$DataBase,
-          TextEntries,
-          TextEntry,
-          $TextEntriesFilterComposer,
-          $TextEntriesOrderingComposer,
-          $TextEntriesAnnotationComposer,
-          $TextEntriesCreateCompanionBuilder,
-          $TextEntriesUpdateCompanionBuilder,
-          (TextEntry, BaseReferences<_$DataBase, TextEntries, TextEntry>),
-          TextEntry,
-          PrefetchHooks Function()
-        > {
+class $TextEntriesTableManager extends RootTableManager<
+    _$DataBase,
+    TextEntries,
+    TextEntry,
+    $TextEntriesFilterComposer,
+    $TextEntriesOrderingComposer,
+    $TextEntriesAnnotationComposer,
+    $TextEntriesCreateCompanionBuilder,
+    $TextEntriesUpdateCompanionBuilder,
+    (TextEntry, BaseReferences<_$DataBase, TextEntries, TextEntry>),
+    TextEntry,
+    PrefetchHooks Function()> {
   $TextEntriesTableManager(_$DataBase db, TextEntries table)
-    : super(
-        TableManagerState(
-          db: db,
-          table: table,
-          createFilteringComposer: () =>
-              $TextEntriesFilterComposer($db: db, $table: table),
-          createOrderingComposer: () =>
-              $TextEntriesOrderingComposer($db: db, $table: table),
-          createComputedFieldComposer: () =>
-              $TextEntriesAnnotationComposer($db: db, $table: table),
-          updateCompanionCallback: ({
-            Value<String> data = const Value.absent(),
-            Value<int> rowid = const Value.absent(),
-          }) => TextEntriesCompanion(data: data, rowid: rowid),
-          createCompanionCallback: ({
-            required String data,
-            Value<int> rowid = const Value.absent(),
-          }) => TextEntriesCompanion.insert(data: data, rowid: rowid),
-          withReferenceMapper: (p0) => p0
-              .map(
-                (e) => (
-                  e.readTable<TextEntries, TextEntry>(table),
-                  BaseReferences<_$DataBase, TextEntries, TextEntry>(
-                    db,
-                    table,
-                    e,
+      : super(
+          TableManagerState(
+            db: db,
+            table: table,
+            createFilteringComposer: () =>
+                $TextEntriesFilterComposer($db: db, $table: table),
+            createOrderingComposer: () =>
+                $TextEntriesOrderingComposer($db: db, $table: table),
+            createComputedFieldComposer: () =>
+                $TextEntriesAnnotationComposer($db: db, $table: table),
+            updateCompanionCallback: ({
+              Value<String> data = const Value.absent(),
+              Value<int> rowid = const Value.absent(),
+            }) =>
+                TextEntriesCompanion(data: data, rowid: rowid),
+            createCompanionCallback: ({
+              required String data,
+              Value<int> rowid = const Value.absent(),
+            }) =>
+                TextEntriesCompanion.insert(data: data, rowid: rowid),
+            withReferenceMapper: (p0) => p0
+                .map(
+                  (e) => (
+                    e.readTable<TextEntries, TextEntry>(table),
+                    BaseReferences<_$DataBase, TextEntries, TextEntry>(
+                      db,
+                      table,
+                      e,
+                    ),
                   ),
-                ),
-              )
-              .toList(),
-          prefetchHooksCallback: null,
-        ),
-      );
+                )
+                .toList(),
+            prefetchHooksCallback: null,
+          ),
+        );
 }
 
-typedef $TextEntriesProcessedTableManager =
-    ProcessedTableManager<
-      _$DataBase,
-      TextEntries,
-      TextEntry,
-      $TextEntriesFilterComposer,
-      $TextEntriesOrderingComposer,
-      $TextEntriesAnnotationComposer,
-      $TextEntriesCreateCompanionBuilder,
-      $TextEntriesUpdateCompanionBuilder,
-      (TextEntry, BaseReferences<_$DataBase, TextEntries, TextEntry>),
-      TextEntry,
-      PrefetchHooks Function()
-    >;
+typedef $TextEntriesProcessedTableManager = ProcessedTableManager<
+    _$DataBase,
+    TextEntries,
+    TextEntry,
+    $TextEntriesFilterComposer,
+    $TextEntriesOrderingComposer,
+    $TextEntriesAnnotationComposer,
+    $TextEntriesCreateCompanionBuilder,
+    $TextEntriesUpdateCompanionBuilder,
+    (TextEntry, BaseReferences<_$DataBase, TextEntries, TextEntry>),
+    TextEntry,
+    PrefetchHooks Function()>;
 
 class $DataBaseManager {
   final _$DataBase _db;

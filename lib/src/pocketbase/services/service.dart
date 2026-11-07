@@ -108,9 +108,9 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
   }
 
   List<http.MultipartFile> _multipart(List<_BufferedFile> files) => [
-    for (final f in files)
-      http.MultipartFile.fromBytes(f.$1, f.$3, filename: f.$2),
-  ];
+        for (final f in files)
+          http.MultipartFile.fromBytes(f.$1, f.$3, filename: f.$2),
+      ];
 
   /// Applies [client.requestTimeout] unless the request uploads files
   /// (large uploads on slow links legitimately take long).
@@ -153,9 +153,9 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
   }
 
   List<Map<String, String>> _pendingFileList(List<_BufferedFile> files) => [
-    for (final f in files)
-      if (f.$2 != null) {'field': f.$1, 'name': f.$2!},
-  ];
+        for (final f in files)
+          if (f.$2 != null) {'field': f.$1, 'name': f.$2!},
+      ];
 
   Future<void> _storeBlobs(String recordId, List<_BufferedFile> files) async {
     for (final f in files) {
@@ -186,8 +186,7 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
       final unmatched = names.toList();
       for (final f in entry.value) {
         final stem = pbFileStem(f.$2!);
-        final match =
-            unmatched
+        final match = unmatched
                 .where((n) => n == f.$2 || n.startsWith('${stem}_'))
                 .firstOrNull ??
             (entry.value.length == 1 && unmatched.length == 1
@@ -221,9 +220,12 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
   }
 
   Future<void> _cacheServerRecord(M value, {bool partial = false}) async {
-    await client.db.upsertServerRecords(service, [
-      value.toJson(),
-    ], partial: partial);
+    await client.db.upsertServerRecords(
+        service,
+        [
+          value.toJson(),
+        ],
+        partial: partial);
   }
 
   /// Caches the server's answer to an online update of [id] that set [body]
@@ -235,13 +237,19 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
     Map<String, dynamic> body,
     List<_BufferedFile> files, {
     bool partial = false,
-  }) => client.db.acceptServerWrite(service, id, value.toJson(), {
-    // Raw keys: a modifier does not supersede a queued delta.
-    ...body.keys,
-    // A plain key (no `+`/`-` modifier) replaces the field's files.
-    for (final f in files)
-      if (baseFieldName(f.$1) == f.$1) f.$1,
-  }, partial: partial);
+  }) =>
+      client.db.acceptServerWrite(
+          service,
+          id,
+          value.toJson(),
+          {
+            // Raw keys: a modifier does not supersede a queued delta.
+            ...body.keys,
+            // A plain key (no `+`/`-` modifier) replaces the field's files.
+            for (final f in files)
+              if (baseFieldName(f.$1) == f.$1) f.$1,
+          },
+          partial: partial);
 
   M _localModel(Map<String, dynamic> row) => itemFactoryFunc(row);
 
@@ -327,7 +335,7 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
       authScoped: true,
       remote: () async {
         final result = <M>[];
-        for (var page = 1; ; page++) {
+        for (var page = 1;; page++) {
           final list = await super
               .getList(
                 page: page,
@@ -630,7 +638,8 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
     Map<String, dynamic> body, {
     List<(String field, String? filename, Uint8List bytes)> files = const [],
     required bool sync,
-  }) => _createLocal(body, files, sync: sync);
+  }) =>
+      _createLocal(body, files, sync: sync);
 
   /// Writes an update of [id] to the cache only (see [writeLocalCreate]).
   Future<M> writeLocalUpdate(
@@ -638,7 +647,8 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
     Map<String, dynamic> body, {
     List<(String field, String? filename, Uint8List bytes)> files = const [],
     required bool sync,
-  }) => _updateLocal(id, body, files, sync: sync);
+  }) =>
+      _updateLocal(id, body, files, sync: sync);
 
   /// Deletes [id] in the cache only; with [sync] the deletion is queued
   /// (also for a record that is not cached). Returns false when the record
@@ -863,52 +873,52 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
     // The cache update runs inside the record lock too, so no push sends
     // the superseded fields in between.
     Future<M> server({required bool cacheAll}) => _online(id, () async {
-      final M result;
-      try {
-        result = await _serverUpdate(
-          id,
-          body,
-          query,
-          buffered,
-          headers,
-          expand,
-          fields,
-        );
-        connectivity.reportNetworkSuccess();
-      } catch (e) {
-        _reportOutcome(e);
-        if (e is ClientException &&
-            e.statusCode == 404 &&
-            !client.hasExpiredSession) {
-          await _dropIfNotPending(id);
-        }
-        if (isConnectivityFailure(e)) throw toNetworkError(e);
-        rethrow;
-      }
-      final partial = fields?.isNotEmpty ?? false;
-      if (cacheAll) {
-        await _cacheAcceptedUpdate(
-          id,
-          result,
-          body,
-          buffered,
-          partial: partial,
-        );
-        await _cacheUploadedBlobs(id, result.toJson(), buffered);
-      } else if (RecordMeta.isPending(
-        await client.db.rowById(service, id) ?? const {},
-      )) {
-        // A queued change of the same fields is older than this one.
-        await _cacheAcceptedUpdate(
-          id,
-          result,
-          body,
-          buffered,
-          partial: partial,
-        );
-      }
-      return result;
-    });
+          final M result;
+          try {
+            result = await _serverUpdate(
+              id,
+              body,
+              query,
+              buffered,
+              headers,
+              expand,
+              fields,
+            );
+            connectivity.reportNetworkSuccess();
+          } catch (e) {
+            _reportOutcome(e);
+            if (e is ClientException &&
+                e.statusCode == 404 &&
+                !client.hasExpiredSession) {
+              await _dropIfNotPending(id);
+            }
+            if (isConnectivityFailure(e)) throw toNetworkError(e);
+            rethrow;
+          }
+          final partial = fields?.isNotEmpty ?? false;
+          if (cacheAll) {
+            await _cacheAcceptedUpdate(
+              id,
+              result,
+              body,
+              buffered,
+              partial: partial,
+            );
+            await _cacheUploadedBlobs(id, result.toJson(), buffered);
+          } else if (RecordMeta.isPending(
+            await client.db.rowById(service, id) ?? const {},
+          )) {
+            // A queued change of the same fields is older than this one.
+            await _cacheAcceptedUpdate(
+              id,
+              result,
+              body,
+              buffered,
+              partial: partial,
+            );
+          }
+          return result;
+        });
 
     switch (policy) {
       case RequestPolicy.cacheOnly:
@@ -924,8 +934,7 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
 
       case RequestPolicy.cacheAndNetwork:
         final existing = await client.db.rowById(service, id);
-        final pendingCreate =
-            existing != null &&
+        final pendingCreate = existing != null &&
             RecordMeta.isPending(existing) &&
             RecordMeta.flag(existing[RecordMeta.isNew]);
         if (pendingCreate) {
@@ -976,24 +985,24 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
     // The cache update runs inside the record lock too, so no push sends
     // the deleted record's queued change in between.
     Future<void> server({required bool cache}) => _online(id, () async {
-      try {
-        await _timed(
-          super.delete(id, body: body, query: query, headers: headers),
-        );
-        connectivity.reportNetworkSuccess();
-      } catch (e) {
-        _reportOutcome(e);
-        if (cache &&
-            e is ClientException &&
-            e.statusCode == 404 &&
-            !client.hasExpiredSession) {
-          await client.db.$delete(service, id);
-        }
-        if (isConnectivityFailure(e)) throw toNetworkError(e);
-        rethrow;
-      }
-      if (cache) await client.db.$delete(service, id);
-    });
+          try {
+            await _timed(
+              super.delete(id, body: body, query: query, headers: headers),
+            );
+            connectivity.reportNetworkSuccess();
+          } catch (e) {
+            _reportOutcome(e);
+            if (cache &&
+                e is ClientException &&
+                e.statusCode == 404 &&
+                !client.hasExpiredSession) {
+              await client.db.$delete(service, id);
+            }
+            if (isConnectivityFailure(e)) throw toNetworkError(e);
+            rethrow;
+          }
+          if (cache) await client.db.$delete(service, id);
+        });
 
     switch (policy) {
       case RequestPolicy.cacheOnly:
@@ -1059,9 +1068,9 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
   }
 
   Set<String> _pendingFileNames(Map<String, dynamic> row) => {
-    for (final f in (row[RecordMeta.pendingFiles] as List? ?? const []))
-      if (f is Map && f['name'] is String) f['name'] as String,
-  };
+        for (final f in (row[RecordMeta.pendingFiles] as List? ?? const []))
+          if (f is Map && f['name'] is String) f['name'] as String,
+      };
 
   Future<List<http.MultipartFile>> _pendingParts(
     String id,
@@ -1075,9 +1084,8 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
         if (f is! Map || f['name'] is! String || f['field'] is! String) {
           continue;
         }
-        final blob = await client.db
-            .getFile(id, f['name'] as String)
-            .getSingleOrNull();
+        final blob =
+            await client.db.getFile(id, f['name'] as String).getSingleOrNull();
         if (blob == null) {
           client.logger.warning(
             'Pending upload "${f['name']}" of $service/$id has no cached bytes; skipped.',
@@ -1148,9 +1156,9 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
         final local = row[key];
         value = local is List
             ? local
-                  .whereType<String>()
-                  .where((n) => !localFiles.contains(n))
-                  .toList()
+                .whereType<String>()
+                .where((n) => !localFiles.contains(n))
+                .toList()
             : (local is String && localFiles.contains(local) ? '' : local);
       } else {
         value = row[key];
@@ -1177,9 +1185,9 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
   }
 
   List<Map<String, dynamic>> _sentFiles(List<http.MultipartFile> parts) => [
-    for (final p in parts)
-      if (p.filename != null) {'field': p.field, 'name': p.filename},
-  ];
+        for (final p in parts)
+          if (p.filename != null) {'field': p.field, 'name': p.filename},
+      ];
 
   /// Pushes the pending local change of record [id] to the server.
   ///
@@ -1250,8 +1258,8 @@ mixin ServiceMixin<M extends Jsonable> on BaseCrudService<M> {
     final operation = RecordMeta.flag(row[RecordMeta.deleted])
         ? SyncOperation.delete
         : RecordMeta.flag(row[RecordMeta.isNew])
-        ? SyncOperation.create
-        : SyncOperation.update;
+            ? SyncOperation.create
+            : SyncOperation.update;
     try {
       switch (operation) {
         case SyncOperation.delete:
@@ -1489,26 +1497,26 @@ extension RequestPolicyUtils on RequestPolicy {
       RequestPolicy.cacheOnly => getLocal(),
       RequestPolicy.networkOnly => _fetchNetworkOnly(label, client, remote),
       RequestPolicy.cacheFirst => _fetchCacheFirst(
-        label,
-        client,
-        remote,
-        getLocal,
-        setLocal,
-      ),
+          label,
+          client,
+          remote,
+          getLocal,
+          setLocal,
+        ),
       RequestPolicy.networkFirst => _fetchNetworkFirst(
-        label,
-        client,
-        remote,
-        getLocal,
-        setLocal,
-      ),
+          label,
+          client,
+          remote,
+          getLocal,
+          setLocal,
+        ),
       RequestPolicy.cacheAndNetwork => _fetchNetworkFirst(
-        label,
-        client,
-        remote,
-        getLocal,
-        setLocal,
-      ),
+          label,
+          client,
+          remote,
+          getLocal,
+          setLocal,
+        ),
     };
   }
 
@@ -1609,8 +1617,8 @@ extension RequestPolicyUtils on RequestPolicy {
         _remote(client, remote)
             .then((value) => _safeSetLocal(label, client, setLocal, value))
             .catchError((Object e) {
-              client.logger.fine('Background refresh of "$label" failed.', e);
-            }),
+          client.logger.fine('Background refresh of "$label" failed.', e);
+        }),
       );
     }
     return cached;
