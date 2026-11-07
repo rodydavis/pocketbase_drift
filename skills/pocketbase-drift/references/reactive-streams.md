@@ -48,25 +48,26 @@ stream.listen((posts) {
 
 ### QueryState Errors
 
-`QueryState.error` holds the error of the last network fetch. The next successful fetch clears it.
+`QueryState.error` holds the error of the last network fetch. The next successful fetch clears it. `copyWith(clearError: true)` removes it from a copy.
 
 - An unreachable server is not an error for cache-backed queries. They keep the cached data and mark it stale. `cacheAndNetwork` and `networkFirst` queries refresh when the server is reachable again.
-- Other fetch errors (for example 403, or a bad filter) set `error` and add an error event to the stream. The stream stays open.
+- Other fetch errors (for example 403, or a bad filter) set `error`. State streams never emit them as stream error events, so the data stays available. Plain streams (`watchRecord(s)`) emit them as stream errors. The stream stays open.
 - Local filters with `@request.*` (other than `@request.auth.id`), `@collection.*` or field references on the right side throw `UnsupportedError`. `@` tokens on the left side also throw `UnsupportedError`. A malformed filter throws `FormatException`. The query reports these errors in the same way.
 
 ```dart
-client.collection('posts').watchRecordsState(limit: 20).listen(
-  (state) {
-    if (state.hasError) {
-      print('Last fetch failed: ${state.error}');
-    }
-    print('${state.data.length} posts, fetching: ${state.isFetchingNetwork}');
-  },
-  onError: (Object e) {
-    // The same error, also delivered as a stream error event.
-  },
-);
+client.collection('posts').watchRecordsState(limit: 20).listen((state) {
+  if (state.hasError) {
+    print('Last fetch failed: ${state.error}');
+  }
+  print('${state.data.length} posts, fetching: ${state.isFetchingNetwork}');
+});
 ```
+
+### State or Plain Stream
+
+- **`StreamBuilder`, or UI that shows a refresh indicator or an error next to cached data:** use `watchRecord(s)State`. `StreamBuilder` drops its data on a stream error (`AsyncSnapshot.withError` has no data), so with `watchRecords` a failed refresh (403, or 401 after the session expired) blanks a list the cache could still show.
+- **Riverpod `StreamProvider`:** either. `AsyncValue` keeps the previous data when a plain stream errors; use the state stream when the UI needs `isFetchingNetwork`.
+- **Composition (`map` to models, `asyncMap`, `combineLatest`), non-UI consumers, `.first` in tests:** use `watchRecord(s)`. Plain values that emit only when the data changes; errors are stream errors.
 
 ## Watch Single Record
 

@@ -503,9 +503,19 @@ stateStream.listen((state) {
   );
   ```
 - An unreachable server is **not** an error for cache-backed queries. They keep the cached data and refresh when the server is back. The stream does not emit an error and `QueryState.error` is not set for it.
-- Other fetch errors (for example a 403 from an API rule, or a filter that the cache cannot evaluate) are delivered as stream errors and as `QueryState.error`. The stream stays open. The next successful fetch clears the error.
+- Other fetch errors (for example a 403 from an API rule, or a filter that the cache cannot evaluate) are delivered as stream errors by `watchRecord`/`watchRecords`, and in `QueryState.error` by `watchRecordState`/`watchRecordsState` (never as a stream error). The stream stays open. The next successful fetch clears the error.
 - A cache-backed stream re-runs its query only for writes to its own collection and to the collections in its `expand` (and, with `expand`, for schema changes). Writes to other collections do not re-run it.
 - After a login with another account, open streams change to the data of the new account (pending changes, `@request.auth.id` filters) without a new listen.
+
+#### Which one to use
+
+| Use | Stream | Why |
+|-----|--------|-----|
+| UI with `StreamBuilder`, or UI that shows a refresh indicator or an error next to the cached data | `watchRecordState` / `watchRecordsState` | Errors stay in `QueryState.error`, so the data stays on screen. `isFetchingNetwork` tells when a refresh runs. |
+| Riverpod `StreamProvider` | either | `AsyncValue` keeps the previous data when the plain stream errors. Use the state stream when the UI needs `isFetchingNetwork`. |
+| Composing streams (`map` to models, `asyncMap`, `combineLatest`), non-UI consumers, `.first` in tests | `watchRecord` / `watchRecords` | Plain values that emit only when the data changes (`distinctResults`); errors are stream errors. |
+
+`StreamBuilder` replaces the snapshot's data with the error when a stream emits an error (`AsyncSnapshot.withError` has no data). With `watchRecords`, a failed refresh (a 403, or 401 after the session expired) therefore blanks a list that the cache could still show.
 
 ### Expanding Relations
 

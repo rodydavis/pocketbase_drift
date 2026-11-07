@@ -1,3 +1,21 @@
+## 0.7.2
+
+### Fixes
+
+- **State streams report errors only in `QueryState.error`.** `watchRecordState` and `watchRecordsState` emitted a fetch or cache-query error twice: as a stream error event and in the next `QueryState`. With `StreamBuilder`, the error event replaced the snapshot's data for one build (`AsyncSnapshot.withError` has no data), and with Riverpod's `StreamProvider` the value flipped from `AsyncError` to `AsyncData`. They now emit only the state with `error` set; the data stays available next to it. `watchRecord` and `watchRecords` still emit errors as stream errors.
+
+### New
+
+- **`QueryState.copyWith(clearError: true)`.** Removes the error from the copy; `copyWith(error: null)` keeps it, as before.
+
+### Behaviour changes
+
+- Code that handled errors of `watchRecordState`/`watchRecordsState` in `onError`, or through `AsyncValue.error` of a `StreamProvider`, must read `QueryState.error` (`state.hasError`) instead.
+
+### Docs
+
+- README "Which one to use": state streams for `StreamBuilder` and for UI that shows refresh or error state next to cached data; plain streams for composition, non-UI consumers and tests; either with Riverpod.
+
 ## 0.7.1
 
 ### Fixes
