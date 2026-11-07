@@ -16,6 +16,10 @@
 
 - README "Which one to use": state streams for `StreamBuilder` and for UI that shows refresh or error state next to cached data; plain streams for composition, non-UI consumers and tests; either with Riverpod.
 
+### Dependencies
+
+- **`sqlite3` `^3.9.0`** (was `^3.5.2`): SQLite 3.54.0, faster opening of IndexedDB-backed web databases with dart2wasm, and memory-safety fixes on the web. The minimum Dart SDK stays 3.10, as with 3.5.2.
+
 ## 0.7.1
 
 ### Fixes
