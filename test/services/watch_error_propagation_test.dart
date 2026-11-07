@@ -82,9 +82,8 @@ void main() {
   });
 
   test(
-      'watchRecordsState surfaces a networkOnly fetch failure as a stream '
-      'error AND embeds it in QueryState.error without losing error visibility',
-      () async {
+      'watchRecordsState reports a networkOnly fetch failure in '
+      'QueryState.error, not as a stream error', () async {
     final service = await client.$collection('todo');
 
     final errors = <Object>[];
@@ -99,14 +98,13 @@ void main() {
     await Future<void>.delayed(const Duration(seconds: 2));
     await subscription.cancel();
 
-    expect(errors, isNotEmpty,
-        reason: 'the networkOnly fetch failure inside onListen must reach '
-            'this stream as a catchable error, not vanish silently');
+    expect(errors, isEmpty,
+        reason: 'a stream error would make StreamBuilder drop the data');
     expect(states, isNotEmpty);
     expect(states.last.hasError, isTrue,
         reason:
             'QueryState must embed the network error for UI state builders');
-    expect(states.last.error, isNotNull);
+    expect(states.last.isFetchingNetwork, isFalse);
   });
 
   test(

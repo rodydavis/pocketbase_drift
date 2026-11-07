@@ -145,7 +145,7 @@ void realtimeWatcherTests() {
       RequestPolicy.cacheAndNetwork
     ]) {
       test(
-          'P26 a bad filter in watchRecordsState (${policy.name}) arrives as a stream error, not an uncaught error',
+          'P26 a bad filter in watchRecordsState (${policy.name}) arrives in QueryState.error, not as a stream or uncaught error',
           () async {
         final errors = <Object>[];
         final states = <QueryState<List<RecordModel>>>[];
@@ -156,12 +156,12 @@ void realtimeWatcherTests() {
               .watchRecordsState(
                   filter: 'title ==== nope', requestPolicy: policy)
               .listen(states.add, onError: errors.add);
-          await eventually(() => errors.isNotEmpty, reason: 'a stream error');
           await eventually(() => states.any((s) => s.hasError),
               reason: 'QueryState.error');
           await Future<void>.delayed(const Duration(milliseconds: 300));
           await sub.cancel();
         });
+        expect(errors, isEmpty);
         expect(uncaught, isEmpty);
       });
     }

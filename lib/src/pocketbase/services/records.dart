@@ -32,11 +32,18 @@ class QueryState<T> {
   /// Whether an error occurred during the most recent network fetch.
   bool get hasError => error != null;
 
-  QueryState<T> copyWith({T? data, bool? isFetchingNetwork, Object? error}) {
+  /// A copy with the given values. `error: null` keeps the error; pass
+  /// [clearError] to remove it.
+  QueryState<T> copyWith({
+    T? data,
+    bool? isFetchingNetwork,
+    Object? error,
+    bool clearError = false,
+  }) {
     return QueryState<T>(
       data: data ?? this.data,
       isFetchingNetwork: isFetchingNetwork ?? this.isFetchingNetwork,
-      error: error ?? this.error,
+      error: clearError ? null : error ?? this.error,
     );
   }
 }
@@ -426,7 +433,9 @@ class $RecordService extends RecordService with ServiceMixin<RecordModel> {
   /// `cacheAndNetwork` also on every realtime change and after a realtime
   /// reconnect. `networkOnly` emits the server's record, refetched on every
   /// realtime change, and never uses the cache. Fetch errors are emitted as
-  /// stream errors; the stream stays open.
+  /// stream errors; the stream stays open. `StreamBuilder` drops its data
+  /// on an error event, so for UI that keeps showing the cache next to an
+  /// error, use [watchRecordState].
   Stream<RecordModel?> watchRecord(
     String id, {
     String? expand,
@@ -467,6 +476,12 @@ class $RecordService extends RecordService with ServiceMixin<RecordModel> {
       ).stream.map((s) => s.data);
 
   /// Like [watchRecord], with the fetch status and last fetch error.
+  ///
+  /// Errors arrive in [QueryState.error], never as stream errors, so the
+  /// last data stays available next to the error (a stream error would
+  /// make `StreamBuilder` drop its data). Use it for UI that shows cached
+  /// data with a refresh indicator or an error; use [watchRecord] to
+  /// compose streams or with Riverpod's `StreamProvider`.
   Stream<QueryState<RecordModel?>> watchRecordState(
     String id, {
     String? expand,
@@ -484,6 +499,9 @@ class $RecordService extends RecordService with ServiceMixin<RecordModel> {
       ).stream;
 
   /// Like [watchRecords], with the fetch status and last fetch error.
+  ///
+  /// Errors arrive in [QueryState.error], never as stream errors (see
+  /// [watchRecordState]).
   Stream<QueryState<List<RecordModel>>> watchRecordsState({
     String? expand,
     String? filter,
@@ -627,11 +645,14 @@ class _LiveQuery<T> implements LiveQuery {
   void _onCacheError(Object error, StackTrace st) {
     _client.logger.warning('Cache query for "$label" failed', error);
     _error = error;
-    if (!_controller.isClosed) _controller.addError(error, st);
-    // State streams report the error; data streams only get the error event.
+    // State streams carry the error in QueryState.error (an error event
+    // would replace the data in StreamBuilder and flip Riverpod's
+    // AsyncValue); data streams get the error event.
     if (emitStates) {
       _hasData = true;
       _emit();
+    } else if (!_controller.isClosed) {
+      _controller.addError(error, st);
     }
   }
 
@@ -711,7 +732,9 @@ class _LiveQuery<T> implements LiveQuery {
         _client.logger.fine('Refresh of "$label" deferred: server unreachable');
       } else {
         _error = e;
-        if (!_cancelled && !_controller.isClosed) _controller.addError(e, st);
+        if (!emitStates && !_cancelled && !_controller.isClosed) {
+          _controller.addError(e, st);
+        }
       }
     } finally {
       _refreshing = false;
