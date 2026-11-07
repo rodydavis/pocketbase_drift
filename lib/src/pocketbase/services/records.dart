@@ -123,7 +123,10 @@ class $RecordService extends RecordService with ServiceMixin<RecordModel> {
   }
 
   /// Subscribes to realtime events of [topic] (`*` or a record id). Events
-  /// are also written to the cache, so cache watchers update.
+  /// are also written to the cache, so cache watchers update. Events that
+  /// a connection still authenticated as the previous account receives
+  /// after a logout or an account switch are dropped (see
+  /// [$PocketBase.realtimeMatchesSession]).
   @override
   Future<UnsubscribeFunc> subscribe(
     String topic,
@@ -138,6 +141,7 @@ class $RecordService extends RecordService with ServiceMixin<RecordModel> {
     return super.subscribe(
       topic,
       (e) async {
+        if (!client.realtimeMatchesSession) return;
         await onEvent(e, partial: partial);
         callback(e);
       },
@@ -153,14 +157,22 @@ class $RecordService extends RecordService with ServiceMixin<RecordModel> {
   ///
   /// Pending local changes win (see [DataBase.upsertServerRecords]); a
   /// remote deletion of a record with a pending local edit is left to the
-  /// sync, which reports it as a [SyncFailure]. Errors are logged, never
-  /// thrown.
+  /// sync, which reports it as a [SyncFailure]. Events of a connection that
+  /// is still authenticated as another account are dropped. Errors are
+  /// logged, never thrown.
   Future<void> onEvent(
     RecordSubscriptionEvent e, {
     bool partial = false,
   }) async {
     final record = e.record;
     if (record == null) return;
+    if (!client.realtimeMatchesSession) {
+      client.logger.fine(
+        'Dropped a realtime ${e.action} of $service: the connection still '
+        'has the previous account.',
+      );
+      return;
+    }
     try {
       switch (e.action) {
         case 'create':

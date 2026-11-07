@@ -135,7 +135,8 @@ class RealtimeHub {
   }
 
   Future<void> _dispatch(_Topic entry, RecordSubscriptionEvent event) async {
-    if (_disposed) return;
+    // An event of a connection still authenticated as the previous account.
+    if (_disposed || !client.realtimeMatchesSession) return;
     if (entry.writesCache) {
       try {
         await client.collection(entry.service).onEvent(event);

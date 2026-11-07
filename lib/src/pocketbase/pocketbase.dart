@@ -487,12 +487,89 @@ class $PocketBase extends PocketBase with WidgetsBindingObserver {
       // the new account reappear in) every live query.
       db.markTablesUpdated({db.services});
     }
+    // The realtime connection keeps the auth it had when its subscriptions
+    // were sent; the server allows no change but guest -> account, and the
+    // SDK sends them again only for new topics. A new connection sends them
+    // with the current token, and its PB_CONNECT refetches the live queries.
+    final account = hasExpiredSession ? null : _sessionAccount;
+    final reconnecting = account != _realtimeAuth && _restartRealtime();
     if (owner == null || hasExpiredSession) return;
     // A login or a new token: resume the work paused while the session was
     // expired (stale live queries refresh, queued changes sync).
     _sessionExpiredReported = false;
-    realtimeHub.scheduleRefresh();
+    if (!reconnecting) realtimeHub.scheduleRefresh();
     unawaited(syncPendingChanges());
+  }
+
+  /// The account of the auth store's token (valid or expired); null for a
+  /// guest.
+  String? get _sessionAccount =>
+      authStore.token.isEmpty ? null : authStore.record?.id;
+
+  /// Id of the realtime client whose subscriptions were sent last.
+  String? _realtimeClientId;
+
+  /// The account the server holds for that realtime client (null: guest),
+  /// recorded from the successful subscription requests.
+  String? _realtimeAuth;
+
+  /// Ends the realtime (SSE) responses still open, see [_restartRealtime].
+  final _realtimeStreams = <void Function()>{};
+
+  /// Whether realtime events may reach the cache: the realtime connection
+  /// is a guest or authenticated as the account logged in now. After a
+  /// logout or an account switch it keeps the previous account's auth until
+  /// it reconnects, and that account's records must not show up for the
+  /// next user.
+  bool get realtimeMatchesSession {
+    final auth = _realtimeAuth;
+    return auth == null || auth == _sessionAccount;
+  }
+
+  /// Ends the open realtime responses; the SDK then reconnects and sends
+  /// the subscriptions (the app's too) with the current token. Returns
+  /// whether a connection was open.
+  bool _restartRealtime() {
+    if (_realtimeStreams.isEmpty) return false;
+    logger.fine('Account changed: reconnecting realtime with the new token.');
+    for (final end in _realtimeStreams.toList()) {
+      end();
+    }
+    return true;
+  }
+
+  /// The HTTP clients of this instance hand out the realtime (SSE)
+  /// response through a stream [_restartRealtime] can end.
+  @override
+  http.Client Function() get httpClientFactory => _trackingClient;
+
+  http.Client _trackingClient() =>
+      _RealtimeTrackingClient(super.httpClientFactory(), _realtimeStreams);
+
+  /// Sends the realtime subscriptions and records the auth the server now
+  /// holds for the realtime client.
+  Future<T> _sendRealtimeSubscriptions<T>(
+    String path,
+    Map<String, String> headers,
+    Map<String, dynamic> query,
+    Map<String, dynamic> body,
+  ) async {
+    final clientId = body['clientId'];
+    if (clientId is String && clientId != _realtimeClientId) {
+      // A new connection starts as a guest.
+      _realtimeClientId = clientId;
+      _realtimeAuth = null;
+    }
+    final sent = hasExpiredSession ? null : _sessionAccount;
+    final result = await super.send<T>(
+      path,
+      method: 'POST',
+      headers: headers,
+      query: query,
+      body: body,
+    );
+    if (clientId == _realtimeClientId) _realtimeAuth = sent;
+    return result;
   }
 
   /// Runs maintenance tasks to clean up expired cached data.
@@ -650,6 +727,9 @@ class $PocketBase extends PocketBase with WidgetsBindingObserver {
     List<http.MultipartFile> files = const [],
     RequestPolicy requestPolicy = RequestPolicy.cacheAndNetwork,
   }) async {
+    if (path == '/api/realtime' && method.toUpperCase() == 'POST') {
+      return _sendRealtimeSubscriptions<T>(path, headers, query, body);
+    }
     final cacheKey = _generateRequestCacheKey(
       path,
       method: method,
@@ -850,4 +930,59 @@ class MaintenanceResult {
   @override
   String toString() =>
       'MaintenanceResult(records: $deletedRecords, responses: $deletedResponses, files: $deletedFiles, evicted: $evictedFiles ($evictedBytes bytes), total: $totalDeleted)';
+}
+
+/// Passes requests to [_inner] and hands out each realtime (SSE) response
+/// through a stream that [_open] can end. The SDK has no public reconnect;
+/// it reconnects by itself when the response stream ends.
+class _RealtimeTrackingClient extends http.BaseClient {
+  _RealtimeTrackingClient(this._inner, this._open);
+
+  final http.Client _inner;
+  final Set<void Function()> _open;
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    final response = await _inner.send(request);
+    if (request.method != 'GET' ||
+        !request.url.path.endsWith('/api/realtime') ||
+        response.statusCode >= 400) {
+      return response;
+    }
+    StreamSubscription<List<int>>? source;
+    late final StreamController<List<int>> out;
+    void end() {
+      _open.remove(end);
+      unawaited(source?.cancel());
+      if (!out.isClosed) unawaited(out.close());
+    }
+
+    out = StreamController<List<int>>(
+      onListen: () => source = response.stream.listen(
+        out.add,
+        onError: out.addError,
+        onDone: end,
+      ),
+      onPause: () => source?.pause(),
+      onResume: () => source?.resume(),
+      onCancel: () {
+        _open.remove(end);
+        return source?.cancel();
+      },
+    );
+    _open.add(end);
+    return http.StreamedResponse(
+      out.stream,
+      response.statusCode,
+      contentLength: response.contentLength,
+      request: response.request,
+      headers: response.headers,
+      isRedirect: response.isRedirect,
+      persistentConnection: response.persistentConnection,
+      reasonPhrase: response.reasonPhrase,
+    );
+  }
+
+  @override
+  void close() => _inner.close();
 }

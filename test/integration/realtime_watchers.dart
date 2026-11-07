@@ -2,6 +2,7 @@ import 'package:drift/drift.dart' show TableUpdateQuery;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pocketbase_drift/pocketbase_drift.dart';
 
+import '../fake_jwt.dart';
 import 'support.dart';
 
 /// Live queries and realtime events.
@@ -241,6 +242,113 @@ void realtimeWatcherTests() {
           .first
           .timeout(const Duration(seconds: 10));
       expect(watched.map((r) => r.id), [id]);
+    });
+  });
+
+  group('realtime and auth changes', () {
+    for (final next in ['a guest', 'another account']) {
+      test(
+          'after a logout to $next, realtime events of the previous account do not reach the cache',
+          () async {
+        final c = await clients.create();
+        final a = c.authStore.record!.id;
+        final notes = c.collection('notes');
+        await notes.create(body: {'owner': a, 'text': uniq('seed')});
+        var shown = <String>[];
+        final sub = notes
+            .watchRecords()
+            .listen((list) => shown = [for (final r in list) r.id]);
+        addTearDown(sub.cancel);
+        await eventually(() => shown.isNotEmpty, reason: 'initial emission');
+        await _realtimeReady(c, 'notes/*');
+        final previous = c.realtime.clientId;
+
+        c.authStore.clear();
+        if (next == 'another account') {
+          await c.collection('users').authWithPassword(lab2Email, labPassword);
+        }
+        await eventually(
+            () =>
+                c.realtime.clientId.isNotEmpty &&
+                c.realtime.clientId != previous,
+            reason: 'realtime reconnects with the current token');
+        await _realtimeReady(c, 'notes/*');
+
+        final leaked = (await Lab.create(
+            'notes', {'owner': a, 'text': uniq('previous')}))['id'] as String;
+        if (next == 'another account') {
+          final b = c.authStore.record!.id;
+          final own = (await Lab.create(
+              'notes', {'owner': b, 'text': uniq('own')}))['id'] as String;
+          await eventually(() => shown.contains(own),
+              reason: 'the new account gets its own realtime events');
+        } else {
+          await Future<void>.delayed(const Duration(seconds: 2));
+        }
+        expect(await c.db.rowById('notes', leaked), isNull);
+        expect(shown, isNot(contains(leaked)));
+      });
+    }
+
+    test(
+        'a re-login after a realtime reconnect with an expired token restores realtime events',
+        () async {
+      final c = await clients.create();
+      final me = c.authStore.record!;
+      final notes = c.collection('notes');
+      final note =
+          await notes.create(body: {'owner': me.id, 'text': uniq('a')});
+      String? text;
+      final sub = notes.watchRecords(filter: 'id = "${note.id}"').listen(
+          (list) =>
+              text = list.isEmpty ? null : list.single.getStringValue('text'));
+      addTearDown(sub.cancel);
+      await eventually(() => text != null, reason: 'initial emission');
+      await _realtimeReady(c, 'notes/*');
+
+      c.authStore.save(
+        fakeJwt(
+            id: me.id,
+            expires: DateTime.now().subtract(const Duration(minutes: 1))),
+        me,
+      );
+      final beforeDrop = c.realtime.clientId;
+      await Lab.dropRealtime();
+      await eventually(
+          () =>
+              c.realtime.clientId.isNotEmpty &&
+              c.realtime.clientId != beforeDrop,
+          timeout: const Duration(seconds: 20),
+          reason: 'realtime reconnects with the expired token');
+      await _realtimeReady(c, 'notes/*');
+
+      final guest = c.realtime.clientId;
+      await c.collection('users').authWithPassword(labEmail, labPassword);
+      await eventually(
+          () => c.realtime.clientId.isNotEmpty && c.realtime.clientId != guest,
+          reason: 'realtime reconnects with the new token');
+      await _realtimeReady(c, 'notes/*');
+      // Let the PB_CONNECT refetch finish, so only realtime can deliver.
+      await Future<void>.delayed(const Duration(seconds: 1));
+
+      final live = uniq('live');
+      await Lab.mutate('notes', note.id, {'text': live});
+      await eventually(() => text == live,
+          timeout: const Duration(seconds: 5),
+          reason: 'the realtime event of the account arrives');
+    });
+
+    test('a token refresh of the same account keeps the realtime connection',
+        () async {
+      final c = await clients.create();
+      final sub = c.collection('notes').watchRecords().listen((_) {});
+      addTearDown(sub.cancel);
+      await _realtimeReady(c, 'notes/*');
+      final before = c.realtime.clientId;
+
+      await c.collection('users').authRefresh();
+      await Future<void>.delayed(const Duration(seconds: 1));
+      expect(c.realtime.clientId, before);
     });
   });
 }
